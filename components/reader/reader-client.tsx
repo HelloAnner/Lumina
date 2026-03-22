@@ -64,6 +64,7 @@ function buildSidebarTree(
 ) {
   const roots: SidebarNode[] = []
   let currentParent: SidebarNode | null = null
+  let fallbackParent: SidebarNode | null = null
 
   entries.forEach((entry) => {
     const level = inferSidebarLevel(entry.title, entry.level ?? 0)
@@ -80,6 +81,18 @@ function buildSidebarTree(
       !["目录", "封面", "扉页"].includes(currentParent.title)
     ) {
       currentParent.children.push(node)
+    } else if (level === 1) {
+      if (!fallbackParent) {
+        fallbackParent = {
+          id: "__body__",
+          title: "正文",
+          sourceIndex: node.sourceIndex,
+          level: 0,
+          children: []
+        }
+        roots.push(fallbackParent)
+      }
+      fallbackParent.children.push(node)
     } else {
       roots.push(node)
       currentParent = node
