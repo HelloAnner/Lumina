@@ -6,9 +6,9 @@ export default async function SettingsPage() {
   const user = await requirePageUser()
   return (
     <SettingsClient
+      modelBindings={repository.listModelBindings(user.id)}
       modelConfigs={repository.listModelConfigs(user.id)}
       readerSettings={repository.getReaderSettings(user.id)}
-      storageConfig={repository.getStorageConfig(user.id)}
       user={user}
     />
   )

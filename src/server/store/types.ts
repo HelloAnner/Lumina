@@ -1,7 +1,13 @@
 export type ReaderTheme = "day" | "sepia" | "night"
 export type HighlightColor = "yellow" | "green" | "blue" | "pink"
 export type BookFormat = "PDF" | "EPUB"
-export type ModelUsage = "aggregation" | "synthesis" | "explain" | "embedding"
+export type ModelCategory = "language" | "speech" | "embedding"
+export type ModelFeature =
+  | "instant_explain"
+  | "article_generate"
+  | "aggregation_analyze"
+  | "voice_read"
+  | "embedding_index"
 export type PublishFormat = "markdown" | "html" | "pdf"
 export type TriggerType = "manual" | "cron" | "on_change"
 
@@ -40,6 +46,7 @@ export interface TocItem {
   title: string
   pageIndex?: number
   href?: string
+  level?: number
 }
 
 export interface ReaderSection {
@@ -47,6 +54,7 @@ export interface ReaderSection {
   title: string
   pageIndex: number
   content: string
+  href?: string
 }
 
 export interface Highlight {
@@ -97,10 +105,18 @@ export interface ViewpointRelation {
 export interface ModelConfig {
   id: string
   userId: string
-  usage: ModelUsage
+  category: ModelCategory
+  name: string
   baseUrl: string
   apiKey: string
   modelName: string
+}
+
+export interface ModelBinding {
+  id: string
+  userId: string
+  feature: ModelFeature
+  modelId: string
 }
 
 export interface StorageConfig {
@@ -175,6 +191,7 @@ export interface Database {
   highlightViewpoints: HighlightViewpoint[]
   relations: ViewpointRelation[]
   modelConfigs: ModelConfig[]
+  modelBindings: ModelBinding[]
   storageConfigs: StorageConfig[]
   readerSettings: ReaderSettings[]
   publishTargets: PublishTarget[]

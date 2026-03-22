@@ -5,10 +5,23 @@ import type { AppEnv } from "@/src/server/lib/hono"
 import { repository } from "@/src/server/repositories"
 
 const modelSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(1),
   baseUrl: z.string().optional().default(""),
   apiKey: z.string().optional().default(""),
   modelName: z.string().optional().default(""),
-  usage: z.enum(["aggregation", "synthesis", "explain", "embedding"])
+  category: z.enum(["language", "speech", "embedding"])
+})
+
+const bindingSchema = z.object({
+  feature: z.enum([
+    "instant_explain",
+    "article_generate",
+    "aggregation_analyze",
+    "voice_read",
+    "embedding_index"
+  ]),
+  modelId: z.string()
 })
 
 const app = new Hono<AppEnv>()
@@ -18,21 +31,28 @@ app.get("/models", (c) => {
     items: repository.listModelConfigs(c.get("userId")).map((item) => ({
       ...item,
       apiKey: item.apiKey ? maskSecret(item.apiKey) : ""
-    }))
+    })),
+    bindings: repository.listModelBindings(c.get("userId"))
   })
 })
 
-app.put("/models/:usage", async (c) => {
+app.post("/models", async (c) => {
+  const payload = modelSchema.parse(await c.req.json())
+  const item = repository.saveModelConfig(c.get("userId"), payload)
+  return c.json({ item })
+})
+
+app.put("/models/:id", async (c) => {
   const payload = modelSchema.parse({
     ...(await c.req.json()),
-    usage: c.req.param("usage")
+    id: c.req.param("id")
   })
   const item = repository.saveModelConfig(c.get("userId"), payload)
   return c.json({ item })
 })
 
-app.delete("/models/:usage", (c) => {
-  repository.deleteModelConfig(c.get("userId"), c.req.param("usage") as never)
+app.delete("/models/:id", (c) => {
+  repository.deleteModelConfig(c.get("userId"), c.req.param("id"))
   return c.json({ ok: true })
 })
 
@@ -41,29 +61,97 @@ app.post("/models/test", async (c) => {
   if (!payload.baseUrl || !payload.modelName) {
     return c.json({ success: false, error: "配置不完整" }, 400)
   }
-  return c.json({ success: true, usage: payload.usage })
+  try {
+    if (payload.category === "embedding") {
+      const response = await fetch(
+        `${payload.baseUrl.replace(/\/$/, "")}/embeddings`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${payload.apiKey}`
+          },
+          body: JSON.stringify({
+            model: payload.modelName,
+            input: "hello"
+          })
+        }
+      )
+      if (!response.ok) {
+        throw new Error("embedding test failed")
+      }
+    } else if (payload.category === "speech") {
+      const response = await fetch(
+        `${payload.baseUrl.replace(/\/$/, "")}/audio/speech`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${payload.apiKey}`
+          },
+          body: JSON.stringify({
+            model: payload.modelName,
+            input: "hello",
+            voice: "alloy"
+          })
+        }
+      )
+      if (!response.ok) {
+        throw new Error("speech test failed")
+      }
+    } else {
+      const response = await fetch(
+        `${payload.baseUrl.replace(/\/$/, "")}/chat/completions`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${payload.apiKey}`
+          },
+          body: JSON.stringify({
+            model: payload.modelName,
+            messages: [{ role: "user", content: "hello" }]
+          })
+        }
+      )
+      if (!response.ok) {
+        throw new Error("language test failed")
+      }
+    }
+    return c.json({ success: true })
+  } catch (error) {
+    return c.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "连通失败"
+      },
+      400
+    )
+  }
+})
+
+app.get("/model-bindings", (c) => {
+  return c.json({ items: repository.listModelBindings(c.get("userId")) })
+})
+
+app.put("/model-bindings", async (c) => {
+  const payload = bindingSchema.parse(await c.req.json())
+  const item = repository.saveModelBinding(c.get("userId"), payload)
+  return c.json({ item })
 })
 
 app.get("/storage", (c) => {
-  return c.json({ item: repository.getStorageConfig(c.get("userId")) })
+  return c.json({
+    item: {
+      mode: "platform-default",
+      endpoint: process.env.MINIO_ENDPOINT ?? "http://localhost:29000",
+      bucket: process.env.MINIO_BUCKET ?? "lumina-books"
+    }
+  })
 })
 
 app.put("/storage", async (c) => {
-  const payload = z
-    .object({
-      useCustom: z.boolean(),
-      endpoint: z.string().optional(),
-      accessKey: z.string().optional(),
-      secretKey: z.string().optional(),
-      bucket: z.string().optional(),
-      region: z.string().optional()
-    })
-    .parse(await c.req.json())
-  const item = repository.saveStorageConfig(c.get("userId"), {
-    userId: c.get("userId"),
-    ...payload
-  })
-  return c.json({ item })
+  return c.json({ ok: true, message: "平台默认存储无需自定义配置" })
 })
 
 app.get("/schedule", (c) => {

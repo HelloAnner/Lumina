@@ -6,6 +6,7 @@ import type {
   Book,
   Highlight,
   HighlightViewpoint,
+  ModelBinding,
   ModelConfig,
   PublishRecord,
   PublishTarget,
@@ -291,26 +292,37 @@ export const repository = {
     })
   },
   listModelConfigs(userId: string) {
-    return readDatabase().modelConfigs.filter((item) => item.userId === userId)
+    return readDatabase().modelConfigs
+      .filter((item) => item.userId === userId)
+      .map((item) => ({
+        ...item,
+        category:
+          (item as ModelConfig).category ||
+          ((item as any).usage === "embedding" ? "embedding" : "language"),
+        name: (item as ModelConfig).name || (item as any).modelName || "未命名模型"
+      }))
   },
   saveModelConfig(
     userId: string,
-    input: Omit<ModelConfig, "id" | "userId"> & { apiKey?: string }
+    input: Omit<ModelConfig, "userId" | "id"> & { id?: string; apiKey?: string }
   ) {
     return mutateDatabase((database) => {
       const existing = database.modelConfigs.find(
-        (item) => item.userId === userId && item.usage === input.usage
+        (item) => item.userId === userId && item.id === input.id
       )
       if (existing) {
+        existing.category = input.category
+        existing.name = input.name
         existing.baseUrl = input.baseUrl
         existing.modelName = input.modelName
         existing.apiKey = input.apiKey ? encryptValue(input.apiKey) : existing.apiKey
         return existing
       }
       const entry: ModelConfig = {
-        id: randomUUID(),
+        id: input.id || randomUUID(),
         userId,
-        usage: input.usage,
+        category: input.category,
+        name: input.name,
         baseUrl: input.baseUrl,
         apiKey: input.apiKey ? encryptValue(input.apiKey) : "",
         modelName: input.modelName
@@ -319,12 +331,55 @@ export const repository = {
       return entry
     })
   },
-  deleteModelConfig(userId: string, usage: ModelConfig["usage"]) {
+  deleteModelConfig(userId: string, modelId: string) {
     return mutateDatabase((database) => {
       database.modelConfigs = database.modelConfigs.filter(
-        (item) => !(item.userId === userId && item.usage === usage)
+        (item) => !(item.userId === userId && item.id === modelId)
+      )
+      database.modelBindings = (database.modelBindings || []).filter(
+        (item) => !(item.userId === userId && item.modelId === modelId)
       )
     })
+  },
+  listModelBindings(userId: string): ModelBinding[] {
+    return (readDatabase().modelBindings || []).filter((item) => item.userId === userId)
+  },
+  saveModelBinding(
+    userId: string,
+    input: Omit<ModelBinding, "id" | "userId">
+  ) {
+    return mutateDatabase((database) => {
+      if (!database.modelBindings) {
+        database.modelBindings = []
+      }
+      const existing = database.modelBindings.find(
+        (item) => item.userId === userId && item.feature === input.feature
+      )
+      if (existing) {
+        existing.modelId = input.modelId
+        return existing
+      }
+      const entry: ModelBinding = {
+        id: randomUUID(),
+        userId,
+        feature: input.feature,
+        modelId: input.modelId
+      }
+      database.modelBindings.push(entry)
+      return entry
+    })
+  },
+  getModelByFeature(userId: string, feature: ModelBinding["feature"]) {
+    const database = readDatabase()
+    const binding = (database.modelBindings || []).find(
+      (item) => item.userId === userId && item.feature === feature
+    )
+    if (!binding) {
+      return null
+    }
+    return database.modelConfigs.find(
+      (item) => item.userId === userId && item.id === binding.modelId
+    ) || null
   },
   getStorageConfig(userId: string) {
     return readDatabase().storageConfigs.find((item) => item.userId === userId)

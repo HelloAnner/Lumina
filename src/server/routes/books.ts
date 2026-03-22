@@ -16,6 +16,10 @@ import {
   updateBookInStore
 } from "@/src/server/services/books/store"
 import {
+  getReaderProgress,
+  saveReaderProgress
+} from "@/src/server/services/books/progress"
+import {
   getBookObjectUrl,
   removeBookObject,
   uploadBookObject
@@ -40,18 +44,8 @@ app.post("/upload", async (c) => {
   const buffer = Buffer.from(await file.arrayBuffer())
   const format = file.name.toLowerCase().endsWith(".epub") ? "EPUB" : "PDF"
   const bookId = randomUUID()
-  const storageConfig = repository.getStorageConfig(c.get("userId"))
 
-  const explainConfig = repository
-    .listModelConfigs(c.get("userId"))
-    .find(
-      (item) =>
-        ["aggregation", "synthesis", "explain"].includes(item.usage) &&
-        item.baseUrl &&
-        item.apiKey &&
-        item.modelName &&
-        item.modelName !== "未配置"
-    )
+  const explainConfig = repository.getModelByFeature(c.get("userId"), "instant_explain")
 
   const hardParsed =
     format === "EPUB"
@@ -78,7 +72,7 @@ app.post("/upload", async (c) => {
     fileName: file.name,
     userId: c.get("userId"),
     hardParsed,
-    llmConfig: explainConfig
+    llmConfig: explainConfig && explainConfig.baseUrl && explainConfig.apiKey
       ? {
           baseUrl: explainConfig.baseUrl,
           apiKey: decryptValue(explainConfig.apiKey),
@@ -92,15 +86,7 @@ app.post("/upload", async (c) => {
     bookId,
     fileName: file.name,
     buffer,
-    contentType: file.type || "application/octet-stream",
-    runtimeConfig: storageConfig?.useCustom
-      ? {
-          endpoint: storageConfig.endpoint,
-          accessKey: storageConfig.accessKey,
-          secretKey: storageConfig.secretKey ? decryptValue(storageConfig.secretKey) : "",
-          bucket: storageConfig.bucket
-        }
-      : undefined
+    contentType: file.type || "application/octet-stream"
   })
 
   const filePath = `minio://${uploaded.bucket}/${uploaded.objectName}`
@@ -143,22 +129,8 @@ app.get("/:id/access-url", async (c) => {
   if (!book) {
     return c.json({ error: "书籍不存在" }, 404)
   }
-  const storageConfig = repository.getStorageConfig(c.get("userId"))
   const match = book.filePath.match(/^minio:\/\/([^/]+)\/(.+)$/)
-  const fileUrl = match
-    ? await getBookObjectUrl(
-        match[1],
-        match[2],
-        storageConfig?.useCustom
-          ? {
-              endpoint: storageConfig.endpoint,
-              accessKey: storageConfig.accessKey,
-              secretKey: storageConfig.secretKey ? decryptValue(storageConfig.secretKey) : "",
-              bucket: storageConfig.bucket
-            }
-          : undefined
-      )
-    : ""
+  const fileUrl = match ? await getBookObjectUrl(match[1], match[2]) : ""
   return c.json({
     fileUrl,
     format: book.format,
@@ -188,21 +160,9 @@ app.put("/:id", async (c) => {
 app.delete("/:id", async (c) => {
   const book = await getBookFromStore(c.get("userId"), c.req.param("id"))
   if (book?.filePath?.startsWith("minio://")) {
-    const storageConfig = repository.getStorageConfig(c.get("userId"))
     const match = book.filePath.match(/^minio:\/\/([^/]+)\/(.+)$/)
     if (match) {
-      await removeBookObject(
-        match[1],
-        match[2],
-        storageConfig?.useCustom
-          ? {
-              endpoint: storageConfig.endpoint,
-              accessKey: storageConfig.accessKey,
-              secretKey: storageConfig.secretKey ? decryptValue(storageConfig.secretKey) : "",
-              bucket: storageConfig.bucket
-            }
-          : undefined
-      )
+      await removeBookObject(match[1], match[2])
     }
   }
   await deleteBookFromStore(c.get("userId"), c.req.param("id"))
@@ -211,18 +171,32 @@ app.delete("/:id", async (c) => {
 
 app.get("/:id/progress", async (c) => {
   const book = await getBookFromStore(c.get("userId"), c.req.param("id"))
-  return c.json({ progress: book?.readProgress ?? 0 })
+  const progress = await getReaderProgress(c.get("userId"), c.req.param("id"))
+  return c.json({
+    progress: book?.readProgress ?? progress.progress ?? 0,
+    currentSectionIndex: progress.currentSectionIndex,
+    currentParagraphIndex: progress.currentParagraphIndex
+  })
 })
 
 app.put("/:id/progress", async (c) => {
-  const payload = z.object({ progress: z.number().min(0).max(1) }).parse(
-    await c.req.json()
-  )
+  const payload = z
+    .object({
+      progress: z.number().min(0).max(1),
+      currentSectionIndex: z.number().min(0).optional(),
+      currentParagraphIndex: z.number().min(0).optional()
+    })
+    .parse(await c.req.json())
   const book = await updateBookInStore(c.get("userId"), c.req.param("id"), {
     readProgress: payload.progress,
     lastReadAt: new Date().toISOString()
   })
-  return c.json({ item: book })
+  const readerProgress = await saveReaderProgress(c.get("userId"), c.req.param("id"), {
+    progress: payload.progress,
+    currentSectionIndex: payload.currentSectionIndex,
+    currentParagraphIndex: payload.currentParagraphIndex
+  })
+  return c.json({ item: book, readerProgress })
 })
 
 app.get("/:id/highlights", (c) => {

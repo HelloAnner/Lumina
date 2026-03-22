@@ -7,6 +7,8 @@ interface ParsedEntries {
   containerXml: string
   opfXml: string
   sections: Record<string, string>
+  navXml?: string
+  ncxXml?: string
 }
 
 export interface HardParsedBookMetadata {
@@ -86,6 +88,55 @@ function deriveSectionTitle(html: string, href: string, index: number) {
   return fileName || `Chapter ${index + 1}`
 }
 
+function buildNavMap(entries: ParsedEntries) {
+  const navMap = new Map<string, { title: string; level: number }>()
+
+  function walkLinks(value: any, level: number) {
+    if (!value) {
+      return
+    }
+    const nodes = ensureArray(value)
+    nodes.forEach((node) => {
+      const item = node?.a ?? node
+      const href = normalizeTextValue(item?.href)
+      const title = normalizeTextValue(item?.["#text"] ?? item?.span ?? item?.text)
+      if (href && title) {
+        navMap.set(href.split("#")[0], { title, level })
+      }
+      walkLinks(node?.ol?.li ?? node?.li, level + 1)
+    })
+  }
+
+  try {
+    if (entries.navXml) {
+      const parsed = xmlParser.parse(entries.navXml)
+      const navs = ensureArray(parsed?.html?.body?.nav)
+      navs.forEach((nav) => {
+        walkLinks(nav?.ol?.li ?? nav?.li, 0)
+      })
+    }
+    if (entries.ncxXml) {
+      const parsed = xmlParser.parse(entries.ncxXml)
+      const navPoints = ensureArray(parsed?.ncx?.navMap?.navPoint)
+      const walkNcx = (points: any[], level: number) => {
+        points.forEach((point) => {
+          const src = normalizeTextValue(point?.content?.src).split("#")[0]
+          const title = normalizeTextValue(point?.navLabel?.text)
+          if (src && title) {
+            navMap.set(src, { title, level })
+          }
+          walkNcx(ensureArray(point?.navPoint), level + 1)
+        })
+      }
+      walkNcx(navPoints, 0)
+    }
+  } catch {
+    return navMap
+  }
+
+  return navMap
+}
+
 function createSynopsis(title: string, sections: ReaderSection[]) {
   const sample = sections
     .map((item) => item.content)
@@ -122,7 +173,8 @@ export function parseEpubMetadataFromEntries(entries: ParsedEntries): HardParsed
     .slice(0, 6)
 
   const sections: ReaderSection[] = []
-  const toc: { id: string; title: string; href?: string; pageIndex?: number }[] = []
+  const toc: { id: string; title: string; href?: string; pageIndex?: number; level?: number }[] = []
+  const navMap = buildNavMap(entries)
 
   spineItems.forEach((spineItem: Record<string, string>, index: number) => {
     const manifestItem = manifestMap.get(spineItem.idref)
@@ -131,19 +183,23 @@ export function parseEpubMetadataFromEntries(entries: ParsedEntries): HardParsed
     }
     const fullHref = path.posix.join(opfBasePath, manifestItem.href)
     const html = entries.sections[fullHref] ?? entries.sections[manifestItem.href] ?? ""
-    const sectionTitle = deriveSectionTitle(html, manifestItem.href, index)
+    const navInfo =
+      navMap.get(manifestItem.href) ?? navMap.get(fullHref) ?? navMap.get(path.posix.basename(manifestItem.href))
+    const sectionTitle = navInfo?.title || deriveSectionTitle(html, manifestItem.href, index)
     const content = stripHtml(html)
     sections.push({
       id: crypto.randomUUID(),
       title: sectionTitle,
       pageIndex: index + 1,
-      content: content || `${sectionTitle} 暂无可渲染文本。`
+      content: content || `${sectionTitle} 暂无可渲染文本。`,
+      href: manifestItem.href
     })
     toc.push({
       id: crypto.randomUUID(),
       title: sectionTitle,
       href: manifestItem.href,
-      pageIndex: index + 1
+      pageIndex: index + 1,
+      level: navInfo?.level ?? 0
     })
   })
 
@@ -214,6 +270,8 @@ export async function extractEpubMetadata(
   }
 
   const sectionEntries: Record<string, string> = {}
+  let navXml = ""
+  let ncxXml = ""
   await Promise.all(
     Object.keys(zip.files)
       .filter((entry) => /\.(xhtml|html|htm)$/i.test(entry))
@@ -222,10 +280,25 @@ export async function extractEpubMetadata(
       })
   )
 
+  await Promise.all(
+    Object.keys(zip.files)
+      .filter((entry) => /\.(ncx)$/i.test(entry) || /nav\.(xhtml|html)$/i.test(entry))
+      .map(async (entry) => {
+        const content = await zip.file(entry)!.async("string")
+        if (/\.ncx$/i.test(entry)) {
+          ncxXml = content
+        } else {
+          navXml = content
+        }
+      })
+  )
+
   const hardParsed = parseEpubMetadataFromEntries({
     containerXml,
     opfXml,
-    sections: sectionEntries
+    sections: sectionEntries,
+    navXml,
+    ncxXml
   })
 
   if (hardParsed.sections.length === 0) {

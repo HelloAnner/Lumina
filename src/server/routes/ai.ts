@@ -15,8 +15,7 @@ app.post("/explain", async (c) => {
     .parse(await c.req.json())
 
   const config = repository
-    .listModelConfigs(c.get("userId"))
-    .find((item) => item.usage === "explain")
+    .getModelByFeature(c.get("userId"), "instant_explain")
 
   if (config?.baseUrl && config.apiKey && config.modelName !== "未配置") {
     try {

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { ChevronRight, Plus, Search, Sparkles, Trash2, Upload } from "lucide-react"
+import { ChevronRight, Plus, Search, Trash2, Upload } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -54,38 +54,20 @@ export function LibraryClient({ initialBooks }: { initialBooks: Book[] }) {
 
   return (
     <div className="flex min-h-screen flex-col bg-base">
-      <header className="border-b border-border/80 px-8 pb-6 pt-8">
-        <div className="flex items-start justify-between gap-8">
-          <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs text-primary">
-              <Sparkles className="h-3.5 w-3.5" />
-              WeRead 风格书架
-            </div>
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">我的书库</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-secondary">
-                让书更像一本真正被摆在书架上的书。上传入口已切到独立页面，书籍信息会自动解析并进入对象存储与数据库。
-              </p>
-            </div>
-            <div className="flex gap-3 text-xs text-secondary">
-              <div className="rounded-full border border-border px-3 py-1">
-                书籍 {books.length}
-              </div>
-              <div className="rounded-full border border-border px-3 py-1">
-                标签 {tags.length}
-              </div>
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <Button variant="secondary">
-              <Plus className="mr-2 h-4 w-4" />
-              新建分类
-            </Button>
-            <Button onClick={() => router.push("/library/upload")}>
-              <Upload className="mr-2 h-4 w-4" />
-              上传 EPUB
-            </Button>
-          </div>
+      <header className="flex items-center justify-between border-b border-border px-8 py-5">
+        <div className="flex gap-3 text-xs text-secondary">
+          <div className="rounded-full border border-border px-3 py-1">书籍 {books.length}</div>
+          <div className="rounded-full border border-border px-3 py-1">标签 {tags.length}</div>
+        </div>
+        <div className="flex gap-3">
+          <Button variant="secondary">
+            <Plus className="mr-2 h-4 w-4" />
+            新建分类
+          </Button>
+          <Button onClick={() => router.push("/library/upload")}>
+            <Upload className="mr-2 h-4 w-4" />
+            上传 EPUB
+          </Button>
         </div>
       </header>
       <div className="flex items-center justify-between border-b border-border px-8 py-4">
@@ -114,7 +96,7 @@ export function LibraryClient({ initialBooks }: { initialBooks: Book[] }) {
             ))}
           </div>
         </div>
-        <div className="text-xs text-secondary">视图：细长书脊 / 微信读书风格</div>
+        <div className="text-xs text-secondary">细长书脊视图</div>
       </div>
       <div className="flex-1 p-6">
         <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-x-5 gap-y-8">

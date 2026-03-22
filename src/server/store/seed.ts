@@ -7,6 +7,7 @@ import type {
   Highlight,
   HighlightViewpoint,
   ModelConfig,
+  ModelBinding,
   PublishRecord,
   PublishTarget,
   PublishTask,
@@ -241,12 +242,15 @@ export function buildSeedDatabase(): Database {
     {
       id: randomUUID(),
       userId,
-      usage: "explain",
+      category: "language",
+      name: "默认语言模型",
       baseUrl: "",
       apiKey: "",
       modelName: "未配置"
     }
   ]
+
+  const modelBindings: ModelBinding[] = []
 
   const storageConfigs: StorageConfig[] = [
     {
@@ -324,6 +328,7 @@ export function buildSeedDatabase(): Database {
     highlightViewpoints,
     relations,
     modelConfigs,
+    modelBindings,
     storageConfigs,
     readerSettings,
     publishTargets,
