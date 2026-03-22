@@ -1,0 +1,458 @@
+{
+  "users": [
+    {
+      "id": "ad4ae220-c137-40e1-a652-24d9724c55f8",
+      "email": "demo@lumina.local",
+      "passwordHash": "$2a$10$MtpODtBCjrLJ65HzUKaYaOzBSZJkQZhLNKeZWacQCg.OfZYdVQsz2",
+      "name": "Lumina Demo",
+      "aggregateSchedule": "manual",
+      "aggregateCron": "",
+      "createdAt": "2026-03-22T13:17:14.406Z"
+    }
+  ],
+  "books": [
+    {
+      "id": "7789daa6-7771-434b-842f-e5ca449b4632",
+      "userId": "ad4ae220-c137-40e1-a652-24d9724c55f8",
+      "title": "第一性原理",
+      "author": "A. Maxwell",
+      "format": "PDF",
+      "filePath": "demo/first-principles.pdf",
+      "coverPath": "",
+      "totalPages": 312,
+      "readProgress": 0.64,
+      "lastReadAt": "2026-03-22T13:17:14.461Z",
+      "tags": [
+        "思维",
+        "方法论"
+      ],
+      "status": "READY",
+      "synopsis": "围绕问题拆解、约束识别与底层规律的阅读摘录。",
+      "toc": [
+        {
+          "id": "790a6dae-3570-4d74-b3b7-3be5f8a0c0db",
+          "title": "第一章 重新定义问题",
+          "pageIndex": 1
+        },
+        {
+          "id": "5a817301-ee19-424b-bcc5-8850aa553fdd",
+          "title": "第二章 约束与变量",
+          "pageIndex": 18
+        },
+        {
+          "id": "828745a2-ed9b-4b4f-8c70-30d51ee01fcf",
+          "title": "第三章 两次穿透表象",
+          "pageIndex": 42
+        }
+      ],
+      "content": [
+        {
+          "id": "90315bab-167f-4030-b582-77d49c7ae4bd",
+          "title": "第三章 两次穿透表象",
+          "pageIndex": 42,
+          "content": "真正决定行动效率的，不是方案有多完整，而是你是否清楚问题的第一约束。把复杂系统拆成可验证的最小单元，再分别求解，往往能得到更稳的结果。"
+        },
+        {
+          "id": "58b5598a-8581-4370-bebc-e6316312accd",
+          "title": "第四章 迭代与回路",
+          "pageIndex": 55,
+          "content": "好的决策不是一次完成，而是不断用反馈修正原始假设。每一次修正，都是向真问题靠近的一步。"
+        }
+      ],
+      "createdAt": "2026-03-22T13:17:14.461Z"
+    },
+    {
+      "id": "7f293d8d-d21c-4abe-9633-1101a1da4c75",
+      "userId": "ad4ae220-c137-40e1-a652-24d9724c55f8",
+      "title": "长期主义",
+      "author": "Eliza Reed",
+      "format": "EPUB",
+      "filePath": "demo/long-termism.epub",
+      "coverPath": "",
+      "totalPages": 228,
+      "readProgress": 0.36,
+      "lastReadAt": "2026-03-22T13:17:14.461Z",
+      "tags": [
+        "战略",
+        "复利"
+      ],
+      "status": "READY",
+      "synopsis": "关于时间尺度、复利与耐心的跨章节摘录。",
+      "toc": [
+        {
+          "id": "21703299-e723-4acb-b84d-32bda72bd171",
+          "title": "时间的朋友",
+          "href": "chapter-1"
+        },
+        {
+          "id": "326997ea-9318-49ea-bef2-277c54324d3e",
+          "title": "复利型选择",
+          "href": "chapter-2"
+        }
+      ],
+      "content": [
+        {
+          "id": "bacde0a8-081b-4787-82fe-43526eb53c6a",
+          "title": "时间的朋友",
+          "pageIndex": 12,
+          "content": "长期主义不是慢，而是把有限注意力投入会持续积累价值的事情。很多看似不起眼的动作，只要方向正确，在足够长的时间里都会放大。"
+        },
+        {
+          "id": "d4a1a14d-9e76-47bd-a023-55633094a0ed",
+          "title": "复利型选择",
+          "pageIndex": 31,
+          "content": "复利来自重复兑现的小优势。真正值得追求的，并不是一次性的大胜，而是可被不断重复的高质量决策。"
+        }
+      ],
+      "createdAt": "2026-03-22T13:17:14.461Z"
+    }
+  ],
+  "highlights": [
+    {
+      "id": "8c700c1e-796c-41ca-8145-0d4be4a5a9ee",
+      "userId": "ad4ae220-c137-40e1-a652-24d9724c55f8",
+      "bookId": "7789daa6-7771-434b-842f-e5ca449b4632",
+      "format": "PDF",
+      "pageIndex": 42,
+      "paraOffsetStart": 0,
+      "paraOffsetEnd": 32,
+      "content": "把复杂系统拆成可验证的最小单元，再分别求解。",
+      "note": "先拆解再求解，是我做架构设计时最稳定的路径。",
+      "color": "yellow",
+      "status": "PROCESSED",
+      "createdAt": "2026-03-22T13:17:14.461Z"
+    },
+    {
+      "id": "cfe58646-cf8b-458a-8ba9-6ac6e81cb2be",
+      "userId": "ad4ae220-c137-40e1-a652-24d9724c55f8",
+      "bookId": "7789daa6-7771-434b-842f-e5ca449b4632",
+      "format": "PDF",
+      "pageIndex": 55,
+      "paraOffsetStart": 0,
+      "paraOffsetEnd": 20,
+      "content": "好的决策不是一次完成，而是不断用反馈修正原始假设。",
+      "note": "这句话和长期主义里的复盘、反馈是一回事。",
+      "color": "blue",
+      "status": "PROCESSED",
+      "createdAt": "2026-03-22T13:17:14.461Z"
+    },
+    {
+      "id": "879f9861-9f21-492b-9850-0189ccb05081",
+      "userId": "ad4ae220-c137-40e1-a652-24d9724c55f8",
+      "bookId": "7f293d8d-d21c-4abe-9633-1101a1da4c75",
+      "format": "EPUB",
+      "chapterHref": "chapter-2",
+      "cfiRange": "epubcfi(/6/4!/4/2/1:0,/1:22)",
+      "content": "真正值得追求的，是可被不断重复的高质量决策。",
+      "note": "复利背后仍然是稳定决策框架。",
+      "color": "green",
+      "status": "PROCESSED",
+      "createdAt": "2026-03-22T13:17:14.461Z"
+    }
+  ],
+  "viewpoints": [
+    {
+      "id": "57dc58a7-4da9-45ab-a511-c751bcfe15cd",
+      "userId": "ad4ae220-c137-40e1-a652-24d9724c55f8",
+      "title": "第一性原理",
+      "isFolder": false,
+      "isCandidate": false,
+      "sortOrder": 1,
+      "highlightCount": 2,
+      "relatedBookIds": [
+        "7789daa6-7771-434b-842f-e5ca449b4632",
+        "7f293d8d-d21c-4abe-9633-1101a1da4c75"
+      ],
+      "articleContent": "# 第一性原理\n\n## 核心论点\n我越来越确认，真正能提升判断质量的，不是更快做决定，而是先回到问题的第一约束。\n\n## 论据与展开\n> 《第一性原理》\n> 把复杂系统拆成可验证的最小单元，再分别求解。\n\n我的批注：先拆解再求解，是我做架构设计时最稳定的路径。\n\n## 我的理解\n第一性原理不是推翻一切，而是拒绝在未经验证的共识上继续堆方案。",
+      "lastSynthesizedAt": "2026-03-22T13:17:14.406Z",
+      "createdAt": "2026-03-22T13:17:14.406Z"
+    },
+    {
+      "id": "d9e88245-09a6-447f-8352-71c6fa521695",
+      "userId": "ad4ae220-c137-40e1-a652-24d9724c55f8",
+      "title": "长期主义",
+      "isFolder": false,
+      "isCandidate": true,
+      "sortOrder": 2,
+      "highlightCount": 1,
+      "relatedBookIds": [
+        "7789daa6-7771-434b-842f-e5ca449b4632"
+      ],
+      "articleContent": "# 长期主义\n\n## 核心论点\n我把这个主题理解为一个不断被验证的认知框架。\n\n## 论据与展开\n> 引用\n> 好的决策不是一次完成，而是不断用反馈修正原始假设。\n我的批注：这句话和长期主义里的复盘、反馈是一回事。\n\n## 我的理解\n这些材料说明，真正有效的学习不是堆积信息，而是持续把信息转成稳定行动。",
+      "lastSynthesizedAt": "2026-03-22T13:17:14.468Z",
+      "createdAt": "2026-03-22T13:17:14.406Z"
+    },
+    {
+      "userId": "ad4ae220-c137-40e1-a652-24d9724c55f8",
+      "title": "把复杂系统拆成可",
+      "isFolder": false,
+      "isCandidate": true,
+      "sortOrder": 3,
+      "articleContent": "# 把复杂系统拆成可\n\n## 核心论点\n我把这个主题理解为一个不断被验证的认知框架。\n\n## 论据与展开\n> 引用\n> 把复杂系统拆成可验证的最小单元，再分别求解。\n我的批注：先拆解再求解，是我做架构设计时最稳定的路径。\n\n## 我的理解\n这些材料说明，真正有效的学习不是堆积信息，而是持续把信息转成稳定行动。",
+      "relatedBookIds": [
+        "7789daa6-7771-434b-842f-e5ca449b4632"
+      ],
+      "id": "a76d422c-5406-4368-96a6-3aac2a4dcf0b",
+      "highlightCount": 1,
+      "createdAt": "2026-03-22T13:17:14.467Z",
+      "lastSynthesizedAt": "2026-03-22T13:17:14.467Z"
+    },
+    {
+      "userId": "ad4ae220-c137-40e1-a652-24d9724c55f8",
+      "title": "决策",
+      "isFolder": false,
+      "isCandidate": false,
+      "sortOrder": 3,
+      "articleContent": "# 决策\n\n## 核心论点\n我把这个主题理解为一个不断被验证的认知框架。\n\n## 论据与展开\n> 引用\n> 好的决策不是一次完成，而是不断用反馈修正原始假设。\n我的批注：这句话和长期主义里的复盘、反馈是一回事。\n\n> 引用\n> 真正值得追求的，是可被不断重复的高质量决策。\n我的批注：复利背后仍然是稳定决策框架。\n\n## 我的理解\n这些材料说明，真正有效的学习不是堆积信息，而是持续把信息转成稳定行动。",
+      "relatedBookIds": [
+        "7789daa6-7771-434b-842f-e5ca449b4632",
+        "7f293d8d-d21c-4abe-9633-1101a1da4c75"
+      ],
+      "id": "2592eec0-f678-4dab-ad2c-40a242dd85f7",
+      "highlightCount": 2,
+      "createdAt": "2026-03-22T13:17:14.469Z",
+      "lastSynthesizedAt": "2026-03-22T13:17:14.469Z"
+    },
+    {
+      "userId": "ad4ae220-c137-40e1-a652-24d9724c55f8",
+      "title": "复利",
+      "isFolder": false,
+      "isCandidate": true,
+      "sortOrder": 3,
+      "articleContent": "# 复利\n\n## 核心论点\n我把这个主题理解为一个不断被验证的认知框架。\n\n## 论据与展开\n> 引用\n> 真正值得追求的，是可被不断重复的高质量决策。\n我的批注：复利背后仍然是稳定决策框架。\n\n## 我的理解\n这些材料说明，真正有效的学习不是堆积信息，而是持续把信息转成稳定行动。",
+      "relatedBookIds": [
+        "7f293d8d-d21c-4abe-9633-1101a1da4c75"
+      ],
+      "id": "779c5dac-8cc0-484b-9e28-88c94f09fba4",
+      "highlightCount": 1,
+      "createdAt": "2026-03-22T13:17:14.470Z",
+      "lastSynthesizedAt": "2026-03-22T13:17:14.470Z"
+    }
+  ],
+  "highlightViewpoints": [
+    {
+      "highlightId": "8c700c1e-796c-41ca-8145-0d4be4a5a9ee",
+      "viewpointId": "57dc58a7-4da9-45ab-a511-c751bcfe15cd",
+      "similarityScore": 0.93,
+      "confirmed": true
+    },
+    {
+      "highlightId": "cfe58646-cf8b-458a-8ba9-6ac6e81cb2be",
+      "viewpointId": "57dc58a7-4da9-45ab-a511-c751bcfe15cd",
+      "similarityScore": 0.81,
+      "confirmed": true
+    },
+    {
+      "highlightId": "cfe58646-cf8b-458a-8ba9-6ac6e81cb2be",
+      "viewpointId": "d9e88245-09a6-447f-8352-71c6fa521695",
+      "similarityScore": 0.88,
+      "confirmed": true
+    },
+    {
+      "highlightId": "879f9861-9f21-492b-9850-0189ccb05081",
+      "viewpointId": "d9e88245-09a6-447f-8352-71c6fa521695",
+      "similarityScore": 0.91,
+      "confirmed": true
+    },
+    {
+      "highlightId": "8c700c1e-796c-41ca-8145-0d4be4a5a9ee",
+      "viewpointId": "a76d422c-5406-4368-96a6-3aac2a4dcf0b",
+      "similarityScore": 0.88,
+      "confirmed": true
+    },
+    {
+      "highlightId": "cfe58646-cf8b-458a-8ba9-6ac6e81cb2be",
+      "viewpointId": "2592eec0-f678-4dab-ad2c-40a242dd85f7",
+      "similarityScore": 0.88,
+      "confirmed": true
+    },
+    {
+      "highlightId": "879f9861-9f21-492b-9850-0189ccb05081",
+      "viewpointId": "2592eec0-f678-4dab-ad2c-40a242dd85f7",
+      "similarityScore": 0.88,
+      "confirmed": true
+    },
+    {
+      "highlightId": "879f9861-9f21-492b-9850-0189ccb05081",
+      "viewpointId": "779c5dac-8cc0-484b-9e28-88c94f09fba4",
+      "similarityScore": 0.88,
+      "confirmed": true
+    }
+  ],
+  "relations": [
+    {
+      "sourceId": "57dc58a7-4da9-45ab-a511-c751bcfe15cd",
+      "targetId": "d9e88245-09a6-447f-8352-71c6fa521695",
+      "weight": 0.33
+    },
+    {
+      "sourceId": "57dc58a7-4da9-45ab-a511-c751bcfe15cd",
+      "targetId": "a76d422c-5406-4368-96a6-3aac2a4dcf0b",
+      "weight": 0.33
+    },
+    {
+      "sourceId": "57dc58a7-4da9-45ab-a511-c751bcfe15cd",
+      "targetId": "2592eec0-f678-4dab-ad2c-40a242dd85f7",
+      "weight": 0.5
+    },
+    {
+      "sourceId": "57dc58a7-4da9-45ab-a511-c751bcfe15cd",
+      "targetId": "779c5dac-8cc0-484b-9e28-88c94f09fba4",
+      "weight": 0.33
+    },
+    {
+      "sourceId": "d9e88245-09a6-447f-8352-71c6fa521695",
+      "targetId": "57dc58a7-4da9-45ab-a511-c751bcfe15cd",
+      "weight": 0.33
+    },
+    {
+      "sourceId": "d9e88245-09a6-447f-8352-71c6fa521695",
+      "targetId": "a76d422c-5406-4368-96a6-3aac2a4dcf0b",
+      "weight": 0.5
+    },
+    {
+      "sourceId": "d9e88245-09a6-447f-8352-71c6fa521695",
+      "targetId": "2592eec0-f678-4dab-ad2c-40a242dd85f7",
+      "weight": 0.33
+    },
+    {
+      "sourceId": "d9e88245-09a6-447f-8352-71c6fa521695",
+      "targetId": "779c5dac-8cc0-484b-9e28-88c94f09fba4",
+      "weight": 0.5
+    },
+    {
+      "sourceId": "a76d422c-5406-4368-96a6-3aac2a4dcf0b",
+      "targetId": "57dc58a7-4da9-45ab-a511-c751bcfe15cd",
+      "weight": 0.33
+    },
+    {
+      "sourceId": "a76d422c-5406-4368-96a6-3aac2a4dcf0b",
+      "targetId": "d9e88245-09a6-447f-8352-71c6fa521695",
+      "weight": 0.5
+    },
+    {
+      "sourceId": "a76d422c-5406-4368-96a6-3aac2a4dcf0b",
+      "targetId": "2592eec0-f678-4dab-ad2c-40a242dd85f7",
+      "weight": 0.33
+    },
+    {
+      "sourceId": "a76d422c-5406-4368-96a6-3aac2a4dcf0b",
+      "targetId": "779c5dac-8cc0-484b-9e28-88c94f09fba4",
+      "weight": 0.5
+    },
+    {
+      "sourceId": "2592eec0-f678-4dab-ad2c-40a242dd85f7",
+      "targetId": "57dc58a7-4da9-45ab-a511-c751bcfe15cd",
+      "weight": 0.5
+    },
+    {
+      "sourceId": "2592eec0-f678-4dab-ad2c-40a242dd85f7",
+      "targetId": "d9e88245-09a6-447f-8352-71c6fa521695",
+      "weight": 0.33
+    },
+    {
+      "sourceId": "2592eec0-f678-4dab-ad2c-40a242dd85f7",
+      "targetId": "a76d422c-5406-4368-96a6-3aac2a4dcf0b",
+      "weight": 0.33
+    },
+    {
+      "sourceId": "2592eec0-f678-4dab-ad2c-40a242dd85f7",
+      "targetId": "779c5dac-8cc0-484b-9e28-88c94f09fba4",
+      "weight": 0.33
+    },
+    {
+      "sourceId": "779c5dac-8cc0-484b-9e28-88c94f09fba4",
+      "targetId": "57dc58a7-4da9-45ab-a511-c751bcfe15cd",
+      "weight": 0.33
+    },
+    {
+      "sourceId": "779c5dac-8cc0-484b-9e28-88c94f09fba4",
+      "targetId": "d9e88245-09a6-447f-8352-71c6fa521695",
+      "weight": 0.5
+    },
+    {
+      "sourceId": "779c5dac-8cc0-484b-9e28-88c94f09fba4",
+      "targetId": "a76d422c-5406-4368-96a6-3aac2a4dcf0b",
+      "weight": 0.5
+    },
+    {
+      "sourceId": "779c5dac-8cc0-484b-9e28-88c94f09fba4",
+      "targetId": "2592eec0-f678-4dab-ad2c-40a242dd85f7",
+      "weight": 0.33
+    }
+  ],
+  "modelConfigs": [
+    {
+      "id": "192eacac-58ce-4ae8-93f3-0089760fa29c",
+      "userId": "ad4ae220-c137-40e1-a652-24d9724c55f8",
+      "usage": "explain",
+      "baseUrl": "",
+      "apiKey": "",
+      "modelName": "未配置"
+    }
+  ],
+  "storageConfigs": [
+    {
+      "userId": "ad4ae220-c137-40e1-a652-24d9724c55f8",
+      "useCustom": false,
+      "region": "local"
+    }
+  ],
+  "readerSettings": [
+    {
+      "userId": "ad4ae220-c137-40e1-a652-24d9724c55f8",
+      "fontSize": 16,
+      "lineHeight": 1.75,
+      "fontFamily": "serif",
+      "theme": "night"
+    }
+  ],
+  "publishTargets": [
+    {
+      "id": "0f5836ea-9f03-465e-bc8b-db12bfe17da9",
+      "userId": "ad4ae220-c137-40e1-a652-24d9724c55f8",
+      "name": "团队 Webhook",
+      "type": "webhook",
+      "endpointUrl": "https://example.com/webhook",
+      "authHeader": "",
+      "createdAt": "2026-03-22T13:17:14.406Z"
+    }
+  ],
+  "publishTasks": [
+    {
+      "id": "6e359c22-498e-4d53-b0f6-2cd08d13d8b5",
+      "userId": "ad4ae220-c137-40e1-a652-24d9724c55f8",
+      "name": "每周认知周报",
+      "viewpointIds": [
+        "57dc58a7-4da9-45ab-a511-c751bcfe15cd",
+        "d9e88245-09a6-447f-8352-71c6fa521695"
+      ],
+      "targetId": "0f5836ea-9f03-465e-bc8b-db12bfe17da9",
+      "format": "markdown",
+      "triggerType": "manual",
+      "enabled": true,
+      "createdAt": "2026-03-22T13:17:14.406Z"
+    }
+  ],
+  "publishRecords": [
+    {
+      "id": "dbd06179-4466-4397-9dd9-83afb35fc2ae",
+      "taskId": "6e359c22-498e-4d53-b0f6-2cd08d13d8b5",
+      "triggeredBy": "manual",
+      "status": "SUCCESS",
+      "articleVersion": "seed-v1",
+      "executedAt": "2026-03-22T13:17:14.406Z"
+    }
+  ],
+  "aggregateJobs": [
+    {
+      "id": "2f69e6a0-00df-4517-8d93-e7704009d723",
+      "userId": "ad4ae220-c137-40e1-a652-24d9724c55f8",
+      "status": "DONE",
+      "stage": "done",
+      "processed": 3,
+      "total": 3,
+      "updatedAt": "2026-03-22T13:17:14.471Z"
+    }
+  ]
+}

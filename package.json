@@ -1,0 +1,50 @@
+{
+  "name": "lumina",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start -p ${PORT:-20261}",
+    "lint": "next lint",
+    "seed": "tsx src/server/store/seed-cli.ts",
+    "verify": "tsx scripts/verify.ts"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "clsx": "^2.1.1",
+    "cookie": "^1.0.2",
+    "fast-xml-parser": "^4.5.3",
+    "d3": "^7.9.0",
+    "dayjs": "^1.11.13",
+    "hono": "^4.6.10",
+    "jszip": "^3.10.1",
+    "jose": "^5.9.6",
+    "lucide-react": "^0.468.0",
+    "marked": "^15.0.6",
+    "minio": "^8.0.2",
+    "next": "14.2.30",
+    "pdfkit": "^0.16.0",
+    "pg": "^8.13.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.5.5",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/d3": "^7.4.3",
+    "@types/node": "^22.10.2",
+    "@types/pdfkit": "^0.17.2",
+    "@types/pg": "^8.11.10",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "14.2.30",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

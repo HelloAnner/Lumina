@@ -1,0 +1,130 @@
+services:
+  lumina-app:
+    container_name: lumina-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-20261}:20261"
+    environment:
+      PORT: 20261
+      APP_URL: http://localhost:${PORT:-20261}
+      DATA_DIR: /app/data/app
+      NODE_ENV: production
+      NODE_OPTIONS: --max-old-space-size=1536
+      DATABASE_URL: postgresql://lumina:lumina@lumina-postgres:5432/lumina
+      REDIS_URL: redis://lumina-redis:6379
+      MINIO_ENDPOINT: http://lumina-minio:9000
+      MINIO_ROOT_USER: lumina
+      MINIO_ROOT_PASSWORD: lumina123456
+      JWT_SECRET: lumina-dev-secret
+      DEFAULT_DEMO_EMAIL: demo@lumina.local
+      DEFAULT_DEMO_PASSWORD: lumina123
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      lumina-postgres:
+        condition: service_healthy
+      lumina-redis:
+        condition: service_healthy
+      lumina-minio:
+        condition: service_started
+    restart: unless-stopped
+    cpus: 2.0
+    mem_limit: 2048m
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    networks:
+      - lumina-network
+
+  lumina-postgres:
+    container_name: lumina-postgres
+    image: m.daocloud.io/docker.io/pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: lumina
+      POSTGRES_USER: lumina
+      POSTGRES_PASSWORD: lumina
+      PGDATA: /var/lib/postgresql/data/pgdata
+    command:
+      - postgres
+      - -c
+      - max_connections=300
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+    ports:
+      - "25432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lumina -d lumina"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    cpus: 2.0
+    mem_limit: 2048m
+    networks:
+      - lumina-network
+
+  lumina-redis:
+    container_name: lumina-redis
+    image: m.daocloud.io/docker.io/library/redis:7-alpine
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+    ports:
+      - "26379:6379"
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    cpus: 1.0
+    mem_limit: 512m
+    networks:
+      - lumina-network
+
+  lumina-minio:
+    container_name: lumina-minio
+    image: m.daocloud.io/docker.io/minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: lumina
+      MINIO_ROOT_PASSWORD: lumina123456
+    ports:
+      - "29000:9000"
+      - "29001:9001"
+    volumes:
+      - ./data/minio:/data
+      - ./data/minio-config:/root/.minio
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9000/minio/health/live >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    cpus: 1.0
+    mem_limit: 1024m
+    networks:
+      - lumina-network
+
+networks:
+  lumina-network:
+    name: lumina-network
