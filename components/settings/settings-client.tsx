@@ -170,6 +170,21 @@ export function SettingsClient({
     setToast(response.ok ? "密码修改成功" : "密码修改失败")
   }
 
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" })
+    router.push("/login")
+    router.refresh()
+  }
+
+  async function deleteAccount() {
+    const response = await fetch("/api/account", { method: "DELETE" })
+    if (response.ok) {
+      await logout()
+      return
+    }
+    setToast("账户注销失败")
+  }
+
   return (
     <div className="grid min-h-screen grid-cols-[220px_minmax(0,1fr)] bg-base">
       {toast ? <Toast title={toast} onClose={() => setToast("")} /> : null}
@@ -381,9 +396,12 @@ export function SettingsClient({
                   导出数据
                 </Button>
               </a>
-              <Button variant="destructive">
+              <Button variant="destructive" onClick={deleteAccount}>
                 <Trash2 className="mr-2 h-4 w-4" />
                 注销账户
+              </Button>
+              <Button variant="ghost" onClick={logout}>
+                退出登录
               </Button>
             </div>
           </Card>

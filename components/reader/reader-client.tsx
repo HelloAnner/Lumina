@@ -23,6 +23,72 @@ function splitParagraphs(content: string) {
     .filter(Boolean)
 }
 
+function normalizeSidebarTitle(title: string, fallback: string, index: number) {
+  if (/^cover$/i.test(title)) {
+    return "封面"
+  }
+  if (/^text\d+$/i.test(title)) {
+    return index === 1 ? "扉页" : fallback
+  }
+  return title
+}
+
+function inferSidebarLevel(title: string, fallbackLevel = 0) {
+  if (/^第[一二三四五六七八九十0-9]+部分/.test(title)) {
+    return 0
+  }
+  if (/^第\s*\d+\s*章/.test(title) || /^图\d+/.test(title)) {
+    return 1
+  }
+  if (["目录", "图片来源", "致谢", "注释", "封面", "扉页"].includes(title)) {
+    return 0
+  }
+  return fallbackLevel
+}
+
+type SidebarNode = {
+  id: string
+  title: string
+  sourceIndex: number
+  level: number
+  children: SidebarNode[]
+}
+
+function buildSidebarTree(
+  entries: Array<{
+    id: string
+    title: string
+    sourceIndex: number
+    level?: number
+  }>
+) {
+  const roots: SidebarNode[] = []
+  let currentParent: SidebarNode | null = null
+
+  entries.forEach((entry) => {
+    const level = inferSidebarLevel(entry.title, entry.level ?? 0)
+    const node: SidebarNode = {
+      id: entry.id,
+      title: entry.title,
+      sourceIndex: entry.sourceIndex,
+      level,
+      children: []
+    }
+    if (
+      level === 1 &&
+      currentParent &&
+      !["目录", "封面", "扉页"].includes(currentParent.title)
+    ) {
+      currentParent.children.push(node)
+    } else {
+      roots.push(node)
+      currentParent = node
+    }
+  })
+
+  return roots
+}
+
 export function ReaderClient({
   book,
   highlights,
@@ -34,11 +100,24 @@ export function ReaderClient({
   initialProgress: ReaderProgressRecord
   settings?: ReaderSettings
 }) {
-  const [pageIndex, setPageIndex] = useState(initialProgress.currentSectionIndex || 0)
+  const direction = settings?.navigationMode ?? "horizontal"
+  const isVertical = direction === "vertical"
+  const preferredSectionIndex = useMemo(() => {
+    if (initialProgress.currentSectionIndex > 0) {
+      return initialProgress.currentSectionIndex
+    }
+    const index = book.toc.findIndex((item) =>
+      /^(第\s*\d+\s*章|第一部分|第二部分|第三部分)/.test(item.title)
+    )
+    return index >= 0 ? index : 0
+  }, [book.toc, initialProgress.currentSectionIndex])
+
+  const [pageIndex, setPageIndex] = useState(preferredSectionIndex)
   const [paragraphIndex, setParagraphIndex] = useState(
     initialProgress.currentParagraphIndex || 0
   )
   const [selectedText, setSelectedText] = useState("")
+  const [selectedSectionIndex, setSelectedSectionIndex] = useState(preferredSectionIndex)
   const [selectionRect, setSelectionRect] = useState<{ top: number; left: number } | null>(
     null
   )
@@ -48,106 +127,186 @@ export function ReaderClient({
   const [toast, setToast] = useState("")
   const wheelAccumulatorRef = useRef(0)
   const wheelLockRef = useRef(false)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const sectionRefs = useRef<Record<number, HTMLDivElement | null>>({})
+  const paragraphRefs = useRef<Record<string, HTMLParagraphElement | null>>({})
+  const tickingRef = useRef(false)
+
+  const sidebarEntries = useMemo(() => {
+    return buildSidebarTree(
+      book.toc
+      .map((item, index) => {
+        const contentTitle = book.content[index]?.title ?? `第 ${index + 1} 节`
+        return {
+          ...item,
+          sourceIndex: index,
+          title: normalizeSidebarTitle(item.title, contentTitle, index)
+        }
+      })
+      .filter((item) => {
+        if (item.sourceIndex === pageIndex) {
+          return true
+        }
+        return !["封面", "扉页"].includes(item.title)
+      })
+    )
+  }, [book.content, book.toc, pageIndex])
 
   const currentSection = book.content[pageIndex] ?? book.content[0]
-  const direction = settings?.navigationMode ?? "horizontal"
-  const paragraphs = useMemo(
+  const currentParagraphs = useMemo(
     () => splitParagraphs(currentSection?.content ?? ""),
     [currentSection?.content]
   )
-  const paragraphWindow = direction === "horizontal" ? 4 : 5
-  const safeParagraphIndex = Math.min(paragraphIndex, Math.max(0, paragraphs.length - 1))
+  const paragraphWindow = 4
+  const safeParagraphIndex = Math.min(
+    paragraphIndex,
+    Math.max(0, currentParagraphs.length - 1)
+  )
   const visibleParagraphs = useMemo(
-    () => paragraphs.slice(safeParagraphIndex, safeParagraphIndex + paragraphWindow),
-    [paragraphWindow, paragraphs, safeParagraphIndex]
+    () =>
+      currentParagraphs.slice(safeParagraphIndex, safeParagraphIndex + paragraphWindow),
+    [currentParagraphs, safeParagraphIndex]
   )
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetch(`/api/books/${book.id}/progress`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          progress: (pageIndex + 1) / Math.max(book.content.length, 1),
-          currentSectionIndex: pageIndex,
-          currentParagraphIndex: safeParagraphIndex
+  const persistProgress = useCallback(
+    (sectionIndex: number, paraIndex: number) => {
+      const timer = setTimeout(() => {
+        fetch(`/api/books/${book.id}/progress`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            progress: (sectionIndex + 1) / Math.max(book.content.length, 1),
+            currentSectionIndex: sectionIndex,
+            currentParagraphIndex: paraIndex
+          })
+        }).catch(() => undefined)
+      }, 120)
+      return () => clearTimeout(timer)
+    },
+    [book.content.length, book.id]
+  )
+
+  useEffect(() => persistProgress(pageIndex, safeParagraphIndex), [
+    pageIndex,
+    persistProgress,
+    safeParagraphIndex
+  ])
+
+  const goSection = useCallback(
+    (nextIndex: number) => {
+      const safeIndex = Math.min(book.content.length - 1, Math.max(0, nextIndex))
+      setPageIndex(safeIndex)
+      setParagraphIndex(0)
+      if (isVertical) {
+        sectionRefs.current[safeIndex]?.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
         })
-      }).catch(() => undefined)
-    }, 160)
-    return () => clearTimeout(timer)
-  }, [book.content.length, book.id, pageIndex, safeParagraphIndex])
-
-  useEffect(() => {
-    setParagraphIndex((current) => Math.min(current, Math.max(0, paragraphs.length - 1)))
-  }, [paragraphs.length])
-
-  const goSection = useCallback((nextIndex: number) => {
-    setPageIndex(Math.min(book.content.length - 1, Math.max(0, nextIndex)))
-    setParagraphIndex(0)
-  }, [book.content.length])
-
-  const stepParagraph = useCallback((step: number) => {
-    setParagraphIndex((current) => {
-      const next = current + step
-      if (next < 0) {
-        if (pageIndex > 0) {
-          const previousIndex = pageIndex - 1
-          setPageIndex(previousIndex)
-          const previousCount = splitParagraphs(book.content[previousIndex]?.content ?? "").length
-          return Math.max(0, previousCount - paragraphWindow)
-        }
-        return 0
       }
-      if (next >= paragraphs.length) {
-        if (pageIndex < book.content.length - 1) {
-          setPageIndex(pageIndex + 1)
+    },
+    [book.content.length, isVertical]
+  )
+
+  const stepParagraph = useCallback(
+    (step: number) => {
+      setParagraphIndex((current) => {
+        const next = current + step
+        if (next < 0) {
+          if (pageIndex > 0) {
+            goSection(pageIndex - 1)
+            const previousParagraphs = splitParagraphs(
+              book.content[pageIndex - 1]?.content ?? ""
+            )
+            return Math.max(0, previousParagraphs.length - paragraphWindow)
+          }
           return 0
         }
-        return Math.max(0, paragraphs.length - 1)
+        if (next >= currentParagraphs.length) {
+          if (pageIndex < book.content.length - 1) {
+            goSection(pageIndex + 1)
+            return 0
+          }
+          return Math.max(0, currentParagraphs.length - 1)
+        }
+        return next
+      })
+    },
+    [book.content, currentParagraphs.length, goSection, pageIndex]
+  )
+
+  const updateVerticalProgress = useCallback(() => {
+    const container = scrollContainerRef.current
+    if (!container) {
+      return
+    }
+    const containerTop = container.getBoundingClientRect().top
+    let activeSection = pageIndex
+    Object.entries(sectionRefs.current).forEach(([key, element]) => {
+      if (!element) {
+        return
       }
-      return next
+      const rect = element.getBoundingClientRect()
+      if (rect.top - containerTop <= 140) {
+        activeSection = Number(key)
+      }
     })
-  }, [book.content, pageIndex, paragraphWindow, paragraphs.length])
+
+    let activeParagraph = 0
+    const paragraphs = splitParagraphs(book.content[activeSection]?.content ?? "")
+    for (let index = 0; index < paragraphs.length; index += 1) {
+      const paragraph = paragraphRefs.current[`${activeSection}-${index}`]
+      if (!paragraph) {
+        continue
+      }
+      const rect = paragraph.getBoundingClientRect()
+      if (rect.top - containerTop <= 180) {
+        activeParagraph = index
+      }
+    }
+
+    setPageIndex(activeSection)
+    setParagraphIndex(activeParagraph)
+  }, [book.content, pageIndex])
+
+  useEffect(() => {
+    if (!isVertical || !scrollContainerRef.current) {
+      return
+    }
+    sectionRefs.current[preferredSectionIndex]?.scrollIntoView({
+      block: "start"
+    })
+  }, [isVertical, preferredSectionIndex])
 
   useEffect(() => {
     function handleKeydown(event: KeyboardEvent) {
-      if (direction === "horizontal") {
-        if (event.key === "ArrowRight" || event.key === " ") {
-          goSection(pageIndex + 1)
-        }
-        if (event.key === "ArrowLeft") {
-          goSection(pageIndex - 1)
-        }
-      } else {
-        if (event.key === "ArrowDown" || event.key === " ") {
-          stepParagraph(1)
-        }
-        if (event.key === "ArrowUp") {
-          stepParagraph(-1)
-        }
+      if (isVertical) {
+        return
+      }
+      if (event.key === "ArrowRight" || event.key === " ") {
+        goSection(pageIndex + 1)
+      }
+      if (event.key === "ArrowLeft") {
+        goSection(pageIndex - 1)
       }
     }
     window.addEventListener("keydown", handleKeydown)
     return () => window.removeEventListener("keydown", handleKeydown)
-  }, [direction, goSection, pageIndex, stepParagraph])
+  }, [goSection, isVertical, pageIndex])
 
   function handleWheel(event: React.WheelEvent<HTMLDivElement>) {
+    if (isVertical) {
+      return
+    }
     event.preventDefault()
     if (wheelLockRef.current) {
       return
     }
     const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX
     wheelAccumulatorRef.current += delta
-    const threshold = 70
-    if (Math.abs(wheelAccumulatorRef.current) < threshold) {
+    if (Math.abs(wheelAccumulatorRef.current) < 70) {
       return
     }
-    const step = wheelAccumulatorRef.current > 0 ? 1 : -1
-    if (direction === "horizontal") {
-      goSection(pageIndex + step)
-    } else {
-      stepParagraph(step)
-    }
+    goSection(pageIndex + (wheelAccumulatorRef.current > 0 ? 1 : -1))
     wheelAccumulatorRef.current = 0
     wheelLockRef.current = true
     window.setTimeout(() => {
@@ -155,13 +314,18 @@ export function ReaderClient({
     }, 180)
   }
 
-  const groupedHighlights = useMemo(
-    () =>
-      panelItems.filter(
-        (item) => item.pageIndex === currentSection?.pageIndex || !item.pageIndex
-      ),
-    [currentSection?.pageIndex, panelItems]
-  )
+  function handleScroll() {
+    if (tickingRef.current) {
+      return
+    }
+    tickingRef.current = true
+    window.requestAnimationFrame(() => {
+      updateVerticalProgress()
+      tickingRef.current = false
+    })
+  }
+
+  const groupedHighlights = useMemo(() => panelItems, [panelItems])
 
   async function createHighlight(color: keyof typeof COLORS, note?: string) {
     if (!selectedText) {
@@ -173,7 +337,7 @@ export function ReaderClient({
       body: JSON.stringify({
         bookId: book.id,
         format: book.format,
-        pageIndex: currentSection.pageIndex,
+        pageIndex: book.content[selectedSectionIndex]?.pageIndex ?? currentSection.pageIndex,
         content: selectedText,
         note,
         color
@@ -200,11 +364,46 @@ export function ReaderClient({
       return
     }
     const rect = selection.getRangeAt(0).getBoundingClientRect()
+    const anchor =
+      selection.anchorNode instanceof Element
+        ? selection.anchorNode
+        : selection.anchorNode?.parentElement
+    const owner = anchor?.closest("[data-section-index]")
+    const sectionIndex = Number(owner?.getAttribute("data-section-index") ?? pageIndex)
+    setSelectedSectionIndex(sectionIndex)
     setSelectedText(text)
     setSelectionRect({
       top: rect.top + window.scrollY - 54,
       left: rect.left + window.scrollX + rect.width / 2 - 54
     })
+  }
+
+  function renderSidebarNode(node: SidebarNode, depth = 0): React.ReactNode {
+    const active = node.sourceIndex === pageIndex
+    return (
+      <div key={`${node.id}-${node.sourceIndex}`}>
+        <button
+          className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm ${
+            active
+              ? "bg-elevated text-foreground ring-1 ring-primary/25"
+              : "text-secondary hover:bg-overlay hover:text-foreground"
+          }`}
+          style={{ paddingLeft: `${12 + depth * 20}px` }}
+          onClick={() => goSection(node.sourceIndex)}
+        >
+          <span className={`truncate ${depth > 0 ? "text-[13px]" : ""}`}>
+            {depth > 0 ? "· " : ""}
+            {node.title}
+          </span>
+          <span className="ml-2 text-xs">{node.sourceIndex + 1}</span>
+        </button>
+        {node.children.length > 0 ? (
+          <div className="ml-4 mt-1 space-y-1 border-l border-border/70 pl-2">
+            {node.children.map((child) => renderSidebarNode(child, depth + 1))}
+          </div>
+        ) : null}
+      </div>
+    )
   }
 
   return (
@@ -230,26 +429,12 @@ export function ReaderClient({
             目录
           </div>
           <div className="space-y-1 p-2">
-            {book.toc.map((item, index) => (
-              <button
-                key={item.id}
-                className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm ${
-                  index === pageIndex
-                    ? "bg-elevated text-foreground ring-1 ring-primary/25"
-                    : "text-secondary hover:bg-overlay hover:text-foreground"
-                }`}
-                style={{ paddingLeft: `${12 + (item.level ?? 0) * 12}px` }}
-                onClick={() => goSection(index)}
-              >
-                <span className="truncate">{item.title}</span>
-                <span className="ml-2 text-xs">{index + 1}</span>
-              </button>
-            ))}
+            {sidebarEntries.map((node) => renderSidebarNode(node))}
           </div>
         </aside>
 
         <main
-          className="relative flex h-full items-center justify-center overflow-hidden bg-[#0D0D0F]"
+          className="relative h-full overflow-hidden bg-[#0D0D0F]"
           onWheel={handleWheel}
         >
           {selectionRect ? (
@@ -274,43 +459,82 @@ export function ReaderClient({
             </div>
           ) : null}
 
-          <div className="h-full w-full max-w-5xl px-12 py-10">
-            <div className="mx-auto flex h-full max-w-3xl flex-col justify-center">
-              <div className="rounded-[32px] border border-white/6 bg-[#111113] px-16 py-16 shadow-[0_30px_80px_rgba(0,0,0,0.32)]">
-                <h1 className="mb-10 text-[30px] font-semibold leading-tight tracking-tight text-foreground">
-                  {currentSection?.title ?? book.title}
-                </h1>
-                <div
-                  className="space-y-8 text-[20px] leading-[2.2] tracking-[0.01em] text-[#F5F5F5] selection:bg-amber-300/40"
-                  onMouseUp={handleMouseUp}
-                >
-                  {visibleParagraphs.map((paragraph, index) => (
-                    <p
-                      key={`${currentSection.id}-${safeParagraphIndex + index}`}
-                      className={
-                        index === 0
-                          ? "relative before:absolute before:-left-6 before:top-3 before:h-2 before:w-2 before:rounded-full before:bg-primary/70"
-                          : ""
-                      }
+          {isVertical ? (
+            <div
+              ref={scrollContainerRef}
+              className="h-full overflow-y-auto scroll-smooth px-12 py-10"
+              onScroll={handleScroll}
+            >
+              <div className="mx-auto max-w-3xl space-y-8">
+                {book.content.map((section, sectionIndex) => {
+                  const paragraphs = splitParagraphs(section.content)
+                  return (
+                    <div
+                      key={section.id}
+                      ref={(element) => {
+                        sectionRefs.current[sectionIndex] = element
+                      }}
+                      data-section-index={sectionIndex}
+                      className="rounded-[28px] border border-white/6 bg-[#111113] px-14 py-14 shadow-[0_24px_60px_rgba(0,0,0,0.28)]"
                     >
-                      {paragraph}
-                    </p>
-                  ))}
-                </div>
-                <div className="mt-10 flex items-center justify-between text-xs text-secondary">
-                  <span>
-                    当前定位：第 {pageIndex + 1} 章 · 段落{" "}
-                    {Math.min(safeParagraphIndex + 1, Math.max(1, paragraphs.length))}
-                  </span>
-                  <span>
-                    {direction === "horizontal"
-                      ? "触控板/滚轮上下滑动即可翻章"
-                      : "触控板/滚轮上下滑动即可推进段落"}
-                  </span>
+                      <h2 className="mb-8 text-[28px] font-semibold tracking-tight text-foreground">
+                        {section.title}
+                      </h2>
+                      <div className="space-y-8 text-[20px] leading-[2.15] tracking-[0.01em] text-[#F5F5F5] selection:bg-amber-300/40">
+                        {paragraphs.map((paragraph, paragraphIdx) => (
+                          <p
+                            key={`${section.id}-${paragraphIdx}`}
+                            ref={(element) => {
+                              paragraphRefs.current[`${sectionIndex}-${paragraphIdx}`] = element
+                            }}
+                            className={paragraphIdx === 0 ? "pl-4" : "indent-8"}
+                            onMouseUp={handleMouseUp}
+                          >
+                            {paragraph}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="h-full w-full max-w-5xl px-12 py-10">
+              <div className="mx-auto flex h-full max-w-3xl flex-col justify-center">
+                <div className="rounded-[32px] border border-white/6 bg-[#111113] px-16 py-16 shadow-[0_30px_80px_rgba(0,0,0,0.32)]">
+                  <h1 className="mb-10 text-[30px] font-semibold leading-tight tracking-tight text-foreground">
+                    {currentSection?.title ?? book.title}
+                  </h1>
+                  <div
+                    className="space-y-9 text-[20px] leading-[2.28] tracking-[0.01em] text-[#F5F5F5] selection:bg-amber-300/40"
+                    onMouseUp={handleMouseUp}
+                    data-section-index={pageIndex}
+                  >
+                    {visibleParagraphs.map((paragraph, index) => (
+                      <p
+                        key={`${currentSection.id}-${safeParagraphIndex + index}`}
+                        className={
+                          index === 0
+                            ? "relative pl-4 before:absolute before:left-0 before:top-3 before:h-2 before:w-2 before:rounded-full before:bg-primary/70"
+                            : "indent-8"
+                        }
+                      >
+                        {paragraph}
+                      </p>
+                    ))}
+                  </div>
+                  <div className="mt-10 flex items-center justify-between text-xs text-secondary">
+                    <span>
+                      当前定位：第 {pageIndex + 1} 章 · 段落{" "}
+                      {Math.min(safeParagraphIndex + 1, Math.max(1, currentParagraphs.length))}
+                    </span>
+                    <span>左右模式下，触控板/滚轮上下滑动即可翻章</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </main>
 
         <aside className="border-l border-border bg-surface">
@@ -320,13 +544,21 @@ export function ReaderClient({
           </div>
           <div className="h-[calc(100%-48px)] space-y-3 overflow-y-auto p-4">
             {groupedHighlights.map((item) => (
-              <Card key={item.id} className="space-y-3 p-4">
+              <Card
+                key={item.id}
+                className={`space-y-3 p-4 ${
+                  item.pageIndex === currentSection?.pageIndex
+                    ? "border-primary/20"
+                    : "border-border"
+                }`}
+              >
                 <div
                   className="rounded-md px-3 py-2 text-sm leading-6 text-foreground"
                   style={{ backgroundColor: COLORS[item.color] }}
                 >
                   {item.content}
                 </div>
+                <div className="text-[11px] text-muted">第 {item.pageIndex ?? 0} 节</div>
                 {item.note ? (
                   <div className="text-sm leading-6 text-secondary">{item.note}</div>
                 ) : null}

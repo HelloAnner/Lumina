@@ -46,14 +46,30 @@ function inferTitleFromContent(content: string, fallback: string) {
   if (text.startsWith("Contents 目录") || text.includes("Contents 目录")) {
     return "目录"
   }
+  const titleMatch =
+    text.match(/^([^［\[\]著译]{1,24})\s*——/) ||
+    text.match(/^([^［\[\]著译]{1,24})\s+\[/) ||
+    text.match(/^([^［\[\]著译]{1,24})\s+著/)
+  if (titleMatch?.[1]) {
+    return titleMatch[1].trim()
+  }
   const firstSentence = text
     .split(/(?<=[。！？.!?])/)
     .map((item) => item.trim())
     .find(Boolean)
-  if (firstSentence && firstSentence.length <= 28) {
+  if (firstSentence && firstSentence.length <= 40) {
     return firstSentence
   }
   return fallback
+}
+
+function extractChapterTitlesFromContents(content: string) {
+  const compact = sanitizeText(content, "")
+  const chapters = Array.from(
+    compact.matchAll(/第\s*\d+\s*章\s*[^第图片致谢注释]+/g)
+  ).map((item) => item[0].trim())
+  const appendix = ["图片来源", "致谢", "注释"].filter((item) => compact.includes(item))
+  return [...chapters, ...appendix]
 }
 
 function rowToBook(row: any): Book {
@@ -79,6 +95,26 @@ function rowToBook(row: any): Book {
           : title
     }
   })
+
+  const contentsIndex = normalizedContent.findIndex(
+    (item: Book["content"][number]) =>
+      item.title === "目录" || item.content.includes("Contents 目录")
+  )
+  if (contentsIndex >= 0) {
+    const inferred = extractChapterTitlesFromContents(normalizedContent[contentsIndex].content)
+    let cursor = 0
+    for (let index = contentsIndex + 1; index < normalizedToc.length; index += 1) {
+      const currentTitle = normalizedToc[index]?.title ?? ""
+      if (isGenericTitle(currentTitle)) {
+        const nextTitle = inferred[cursor]
+        if (nextTitle) {
+          normalizedToc[index].title = nextTitle
+          normalizedContent[index].title = nextTitle
+          cursor += 1
+        }
+      }
+    }
+  }
 
   return {
     id: row.id,
