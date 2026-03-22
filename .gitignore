@@ -24,3 +24,4 @@ coverage
 storage/runtime
 data/
 **/*.png
+e2e/output/

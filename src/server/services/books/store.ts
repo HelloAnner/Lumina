@@ -34,7 +34,52 @@ function sanitizeText(value: unknown, fallback = "") {
   return fallback
 }
 
+function isGenericTitle(value: string) {
+  return /^(text\d+|cover\d*|chapter\d+)$/i.test(value)
+}
+
+function inferTitleFromContent(content: string, fallback: string) {
+  const text = sanitizeText(content, fallback)
+  if (!text) {
+    return fallback
+  }
+  if (text.startsWith("Contents 目录") || text.includes("Contents 目录")) {
+    return "目录"
+  }
+  const firstSentence = text
+    .split(/(?<=[。！？.!?])/)
+    .map((item) => item.trim())
+    .find(Boolean)
+  if (firstSentence && firstSentence.length <= 28) {
+    return firstSentence
+  }
+  return fallback
+}
+
 function rowToBook(row: any): Book {
+  const content = Array.isArray(row.content) ? row.content : []
+  const normalizedContent = content.map((item: any) => {
+    const title = sanitizeText(item?.title, "未命名章节")
+    return {
+      ...item,
+      title: isGenericTitle(title)
+        ? inferTitleFromContent(item?.content ?? "", title)
+        : title
+    }
+  })
+  const toc = Array.isArray(row.toc) ? row.toc : []
+  const normalizedToc = toc.map((item: any, index: number) => {
+    const title = sanitizeText(item?.title, "未命名章节")
+    const contentTitle = normalizedContent[index]?.title
+    return {
+      ...item,
+      title:
+        isGenericTitle(title) && contentTitle
+          ? contentTitle
+          : title
+    }
+  })
+
   return {
     id: row.id,
     userId: row.user_id,
@@ -49,8 +94,8 @@ function rowToBook(row: any): Book {
     tags: Array.isArray(row.tags) ? row.tags : [],
     status: row.status,
     synopsis: row.synopsis ?? "",
-    toc: Array.isArray(row.toc) ? row.toc : [],
-    content: Array.isArray(row.content) ? row.content : [],
+    toc: normalizedToc,
+    content: normalizedContent,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString()
   }
 }

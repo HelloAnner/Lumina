@@ -148,6 +148,32 @@ function createSynopsis(title: string, sections: ReaderSection[]) {
   return `${title} 已完成基础解析，可继续在阅读器中查看与划线。`
 }
 
+function extractTitlesFromContentsSection(content: string) {
+  const compact = content.replace(/\s+/g, " ").trim()
+  const chapterMatches = Array.from(
+    compact.matchAll(/第\s*\d+\s*章\s*[^第图片致谢注释]+/g)
+  )
+    .map((item) => item[0].trim())
+    .filter(Boolean)
+
+  const appendixTitles = ["图片来源", "致谢", "注释"].filter((item) =>
+    compact.includes(item)
+  )
+
+  return [...chapterMatches, ...appendixTitles]
+}
+
+function deriveFallbackTitle(content: string, href: string, index: number) {
+  const firstSentence = content
+    .split(/(?<=[。！？.!?])/)
+    .map((item) => item.trim())
+    .find(Boolean)
+  if (firstSentence && firstSentence.length <= 28) {
+    return firstSentence
+  }
+  return path.basename(href, path.extname(href)) || `Chapter ${index + 1}`
+}
+
 export function parseEpubMetadataFromEntries(entries: ParsedEntries): HardParsedBookMetadata {
   const container = xmlParser.parse(entries.containerXml)
   const opf = xmlParser.parse(entries.opfXml)
@@ -175,6 +201,7 @@ export function parseEpubMetadataFromEntries(entries: ParsedEntries): HardParsed
   const sections: ReaderSection[] = []
   const toc: { id: string; title: string; href?: string; pageIndex?: number; level?: number }[] = []
   const navMap = buildNavMap(entries)
+  const genericIndexes: number[] = []
 
   spineItems.forEach((spineItem: Record<string, string>, index: number) => {
     const manifestItem = manifestMap.get(spineItem.idref)
@@ -185,8 +212,13 @@ export function parseEpubMetadataFromEntries(entries: ParsedEntries): HardParsed
     const html = entries.sections[fullHref] ?? entries.sections[manifestItem.href] ?? ""
     const navInfo =
       navMap.get(manifestItem.href) ?? navMap.get(fullHref) ?? navMap.get(path.posix.basename(manifestItem.href))
-    const sectionTitle = navInfo?.title || deriveSectionTitle(html, manifestItem.href, index)
     const content = stripHtml(html)
+    const derivedTitle = deriveSectionTitle(html, manifestItem.href, index)
+    const sectionTitle =
+      navInfo?.title ||
+      (/^(text\d+|cover\d*|chapter\d+)$/i.test(derivedTitle)
+        ? deriveFallbackTitle(content, manifestItem.href, index)
+        : derivedTitle)
     sections.push({
       id: crypto.randomUUID(),
       title: sectionTitle,
@@ -201,7 +233,35 @@ export function parseEpubMetadataFromEntries(entries: ParsedEntries): HardParsed
       pageIndex: index + 1,
       level: navInfo?.level ?? 0
     })
+    if (/^(text\d+|cover\d*|chapter\d+)$/i.test(derivedTitle)) {
+      genericIndexes.push(index)
+    }
   })
+
+  const contentsSection = sections.find((item) => item.title === "目录" || item.content.includes("Contents 目录"))
+  const inferredTitles = contentsSection ? extractTitlesFromContentsSection(contentsSection.content) : []
+  if (inferredTitles.length > 0) {
+    let inferredIndex = 0
+    genericIndexes.forEach((sectionIndex) => {
+      const section = sections[sectionIndex]
+      const tocItem = toc[sectionIndex]
+      if (!section || !tocItem) {
+        return
+      }
+      const currentTitle = section.title
+      if (currentTitle === "目录") {
+        return
+      }
+      if (/^(Cover|text\d+|chapter\d+)$/i.test(currentTitle)) {
+        const nextTitle = inferredTitles[inferredIndex]
+        if (nextTitle) {
+          section.title = nextTitle
+          tocItem.title = nextTitle
+          inferredIndex += 1
+        }
+      }
+    })
+  }
 
   return {
     title,
