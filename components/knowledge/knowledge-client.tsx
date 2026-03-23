@@ -22,6 +22,12 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  applyInlineMarkdown,
+  applyLinePrefixMarkdown,
+  buildKnowledgeEditorStats,
+  mapScrollTopByRatio
+} from "@/components/knowledge/knowledge-editor-utils"
+import {
   buildViewpointTree,
   collectViewpointSubtreeIds,
   moveViewpointNode,
@@ -85,6 +91,7 @@ export function KnowledgeClient({
   const selected = viewpoints.find((item) => item.id === selectedId)
   const tree = useMemo(() => buildViewpointTree(viewpoints), [viewpoints])
   const previewHtml = useMemo(() => marked.parse(article), [article])
+  const editorStats = useMemo(() => buildKnowledgeEditorStats(article), [article])
 
   const createResizeHandler = useCallback(
     (initialWidth: number, onResize: (width: number) => void, reverse = false) => {
@@ -327,35 +334,32 @@ export function KnowledgeClient({
     if (!preview) {
       return
     }
-    const maxEditorScroll = Math.max(1, scrollHeight - clientHeight)
-    const ratio = scrollTop / maxEditorScroll
-    const maxPreviewScroll = Math.max(0, preview.scrollHeight - preview.clientHeight)
     syncingScrollRef.current = true
-    preview.scrollTop = maxPreviewScroll * ratio
+    preview.scrollTop = mapScrollTopByRatio({
+      sourceScrollTop: scrollTop,
+      sourceScrollHeight: scrollHeight,
+      sourceClientHeight: clientHeight,
+      targetScrollHeight: preview.scrollHeight,
+      targetClientHeight: preview.clientHeight
+    })
     window.requestAnimationFrame(() => {
       syncingScrollRef.current = false
     })
   }
 
-  function insertMarkdown(
-    builder: (selectedText: string) => { text: string; cursorOffset?: number }
+  function updateEditorSelection(
+    nextText: string,
+    nextSelectionStart: number,
+    nextSelectionEnd: number
   ) {
     const textarea = editorRef.current
     if (!textarea) {
       return
     }
-    const selectionStart = textarea.selectionStart
-    const selectionEnd = textarea.selectionEnd
-    const selectedText = article.slice(selectionStart, selectionEnd)
-    const next = builder(selectedText)
-    const nextArticle =
-      article.slice(0, selectionStart) + next.text + article.slice(selectionEnd)
-    setArticle(nextArticle)
+    setArticle(nextText)
     window.requestAnimationFrame(() => {
-      const cursorPosition =
-        selectionStart + (typeof next.cursorOffset === "number" ? next.cursorOffset : next.text.length)
       textarea.focus()
-      textarea.setSelectionRange(cursorPosition, cursorPosition)
+      textarea.setSelectionRange(nextSelectionStart, nextSelectionEnd)
     })
   }
 
@@ -363,67 +367,130 @@ export function KnowledgeClient({
     {
       label: "H1",
       icon: Heading1,
-      action: () =>
-        insertMarkdown((selectedText) => ({
-          text: `# ${selectedText || "一级标题"}`,
-          cursorOffset: selectedText ? undefined : 2
-        }))
+      action: () => {
+        const textarea = editorRef.current
+        if (!textarea) {
+          return
+        }
+        const result = applyLinePrefixMarkdown(
+          article,
+          textarea.selectionStart,
+          textarea.selectionEnd,
+          "# ",
+          "一级标题"
+        )
+        updateEditorSelection(result.text, result.selectionStart, result.selectionEnd)
+      }
     },
     {
       label: "H2",
       icon: Heading2,
-      action: () =>
-        insertMarkdown((selectedText) => ({
-          text: `## ${selectedText || "二级标题"}`,
-          cursorOffset: selectedText ? undefined : 3
-        }))
+      action: () => {
+        const textarea = editorRef.current
+        if (!textarea) {
+          return
+        }
+        const result = applyLinePrefixMarkdown(
+          article,
+          textarea.selectionStart,
+          textarea.selectionEnd,
+          "## ",
+          "二级标题"
+        )
+        updateEditorSelection(result.text, result.selectionStart, result.selectionEnd)
+      }
     },
     {
       label: "加粗",
       icon: Bold,
-      action: () =>
-        insertMarkdown((selectedText) => ({
-          text: `**${selectedText || "重点内容"}**`,
-          cursorOffset: selectedText ? undefined : 2
-        }))
+      action: () => {
+        const textarea = editorRef.current
+        if (!textarea) {
+          return
+        }
+        const result = applyInlineMarkdown(
+          article,
+          textarea.selectionStart,
+          textarea.selectionEnd,
+          "**",
+          "**",
+          "重点内容"
+        )
+        updateEditorSelection(result.text, result.selectionStart, result.selectionEnd)
+      }
     },
     {
       label: "引用",
       icon: Quote,
-      action: () =>
-        insertMarkdown((selectedText) => ({
-          text: `> ${selectedText || "引用内容"}`,
-          cursorOffset: selectedText ? undefined : 2
-        }))
+      action: () => {
+        const textarea = editorRef.current
+        if (!textarea) {
+          return
+        }
+        const result = applyLinePrefixMarkdown(
+          article,
+          textarea.selectionStart,
+          textarea.selectionEnd,
+          "> ",
+          "引用内容"
+        )
+        updateEditorSelection(result.text, result.selectionStart, result.selectionEnd)
+      }
     },
     {
       label: "列表",
       icon: List,
-      action: () =>
-        insertMarkdown((selectedText) => ({
-          text: `- ${selectedText || "列表项"}`,
-          cursorOffset: selectedText ? undefined : 2
-        }))
+      action: () => {
+        const textarea = editorRef.current
+        if (!textarea) {
+          return
+        }
+        const result = applyLinePrefixMarkdown(
+          article,
+          textarea.selectionStart,
+          textarea.selectionEnd,
+          "- ",
+          "列表项"
+        )
+        updateEditorSelection(result.text, result.selectionStart, result.selectionEnd)
+      }
     },
     {
       label: "有序",
       icon: ListOrdered,
-      action: () =>
-        insertMarkdown((selectedText) => ({
-          text: `1. ${selectedText || "列表项"}`,
-          cursorOffset: selectedText ? undefined : 3
-        }))
+      action: () => {
+        const textarea = editorRef.current
+        if (!textarea) {
+          return
+        }
+        const result = applyLinePrefixMarkdown(
+          article,
+          textarea.selectionStart,
+          textarea.selectionEnd,
+          "1. ",
+          "列表项"
+        )
+        updateEditorSelection(result.text, result.selectionStart, result.selectionEnd)
+      }
     },
     {
       label: "代码",
       icon: Code2,
-      action: () =>
-        insertMarkdown((selectedText) => ({
-          text: selectedText
-            ? `\`\`\`\n${selectedText}\n\`\`\``
-            : "```\n代码片段\n```",
-          cursorOffset: selectedText ? undefined : 4
-        }))
+      action: () => {
+        const textarea = editorRef.current
+        if (!textarea) {
+          return
+        }
+        const result = applyInlineMarkdown(
+          article,
+          textarea.selectionStart,
+          textarea.selectionEnd,
+          "```\n",
+          "\n```",
+          "代码片段"
+        )
+        updateEditorSelection(result.text, result.selectionStart, result.selectionEnd)
+      }
     }
   ] as const
 
@@ -466,7 +533,7 @@ export function KnowledgeClient({
     return (
       <div
         className={cn(
-          "mx-2 h-2 rounded-full border border-transparent transition",
+          "mx-2 h-0.5 rounded-full border border-transparent transition",
           draggingId ? "opacity-100" : "opacity-0",
           active ? "border-primary/80 bg-primary/20" : "hover:border-primary/40",
           className
@@ -500,7 +567,7 @@ export function KnowledgeClient({
         <button
           draggable
           className={cn(
-            "group flex w-full items-center gap-1.5 rounded-lg px-3 py-2 text-left text-sm transition-all duration-200",
+            "group flex w-full items-center gap-1.5 rounded-lg px-3 py-1 text-left text-sm transition-all duration-200",
             active && "bg-elevated text-foreground",
             focused && !active && "bg-elevated/50",
             insideActive && "bg-primary/5 text-foreground",
@@ -602,7 +669,7 @@ export function KnowledgeClient({
         <div className="space-y-0.5 px-2 py-3">
           <button
             className={cn(
-              "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-secondary transition-all duration-200 hover:bg-overlay/70 hover:text-foreground",
+              "flex w-full items-center gap-2 rounded-lg px-3 py-1 text-left text-sm text-secondary transition-all duration-200 hover:bg-overlay/70 hover:text-foreground",
               focusedParentId === null && "bg-elevated text-foreground"
             )}
             onClick={(event) => {
@@ -669,6 +736,12 @@ export function KnowledgeClient({
                   )
                 })}
               </div>
+              <div className="mt-4 flex flex-wrap gap-3 text-[11px] text-muted">
+                <span>行数 {editorStats.lines}</span>
+                <span>字数 {editorStats.characters}</span>
+                <span>词数 {editorStats.words}</span>
+                <span>{selected ? "自动保存已开启" : "未选择观点"}</span>
+              </div>
             </div>
             <div className="min-h-0 flex-1 p-6">
               <Textarea
@@ -699,6 +772,26 @@ export function KnowledgeClient({
             <div
               ref={previewScrollRef}
               className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
+              onScroll={(event) => {
+                if (syncingScrollRef.current) {
+                  return
+                }
+                const textarea = editorRef.current
+                if (!textarea) {
+                  return
+                }
+                syncingScrollRef.current = true
+                textarea.scrollTop = mapScrollTopByRatio({
+                  sourceScrollTop: event.currentTarget.scrollTop,
+                  sourceScrollHeight: event.currentTarget.scrollHeight,
+                  sourceClientHeight: event.currentTarget.clientHeight,
+                  targetScrollHeight: textarea.scrollHeight,
+                  targetClientHeight: textarea.clientHeight
+                })
+                window.requestAnimationFrame(() => {
+                  syncingScrollRef.current = false
+                })
+              }}
             >
               <Card className="min-h-full rounded-2xl border-border/60 bg-[#101114] p-8 shadow-[0_24px_60px_rgba(0,0,0,0.22)]">
                 {article.trim() ? (
