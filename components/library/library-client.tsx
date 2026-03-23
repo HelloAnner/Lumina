@@ -1,5 +1,5 @@
 "use client"
-
+import Image from "next/image"
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronRight, Plus, Search, Trash2, Upload } from "lucide-react"
@@ -11,7 +11,26 @@ import { Progress } from "@/components/ui/progress"
 import type { Book } from "@/src/server/store/types"
 import { formatPercent } from "@/src/lib/utils"
 
-function BookCover({ title }: { title: string }) {
+type LibraryBook = Book & {
+  coverUrl?: string
+}
+
+function BookCover({ title, coverUrl }: { title: string; coverUrl?: string }) {
+  if (coverUrl) {
+    return (
+      <div className="relative h-[178px] w-[118px] overflow-hidden rounded-[14px] border border-white/10 bg-[#111827] shadow-[0_16px_40px_rgba(0,0,0,0.35)]">
+        <Image
+          src={coverUrl}
+          alt={`${title} 封面`}
+          width={118}
+          height={178}
+          className="h-full w-full object-cover"
+          unoptimized
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-[178px] w-[118px] items-end justify-start rounded-[14px] border border-white/10 bg-gradient-to-br from-primary/60 via-[#33204f] to-[#0f172a] p-3 text-left shadow-[0_16px_40px_rgba(0,0,0,0.35)]">
       <div className="line-clamp-3 text-sm font-semibold leading-5 text-white">
@@ -21,7 +40,7 @@ function BookCover({ title }: { title: string }) {
   )
 }
 
-export function LibraryClient({ initialBooks }: { initialBooks: Book[] }) {
+export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] }) {
   const router = useRouter()
   const [books, setBooks] = useState(initialBooks)
   const [query, setQuery] = useState("")
@@ -107,7 +126,7 @@ export function LibraryClient({ initialBooks }: { initialBooks: Book[] }) {
                 onClick={() => router.push(`/reader/${book.id}`)}
               >
                 <div className="transition duration-200 group-hover:-translate-y-1">
-                  <BookCover title={book.title} />
+                  <BookCover title={book.title} coverUrl={book.coverUrl} />
                 </div>
               </button>
               <CardContent className="space-y-2 px-2 pb-0 pt-4">

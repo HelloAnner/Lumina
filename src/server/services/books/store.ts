@@ -1,9 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { repository } from "@/src/server/repositories"
-import {
-  decodeHtmlEntities,
-  normalizeStoredSectionContent
-} from "@/src/lib/book-content"
+import { normalizeStoredSectionContent } from "@/src/lib/book-content"
+import { decodeHtmlEntities } from "@/src/lib/html-entities"
 import { ensureBookSchema, getBookPool } from "@/src/server/services/books/postgres"
 import type { Book } from "@/src/server/store/types"
 

@@ -1,10 +1,8 @@
 import path from "node:path"
 import JSZip from "jszip"
 import { XMLParser } from "fast-xml-parser"
-import {
-  decodeHtmlEntities,
-  extractReadableTextFromHtml
-} from "@/src/lib/book-content"
+import { extractReadableTextFromHtml } from "@/src/lib/book-content"
+import { decodeHtmlEntities } from "@/src/lib/html-entities"
 import type { BookFormat, ReaderSection } from "@/src/server/store/types"
 
 interface ParsedEntries {

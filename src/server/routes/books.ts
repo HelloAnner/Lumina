@@ -20,7 +20,9 @@ import {
   saveReaderProgress
 } from "@/src/server/services/books/progress"
 import {
-  getBookObjectUrl,
+  formatMinioPath,
+  getStoredObjectUrl,
+  parseMinioPath,
   removeBookObject,
   uploadBookObject,
   uploadCoverImage
@@ -90,7 +92,7 @@ app.post("/upload", async (c) => {
     contentType: file.type || "application/octet-stream"
   })
 
-  const filePath = `minio://${uploaded.bucket}/${uploaded.objectName}`
+  const filePath = formatMinioPath(uploaded.bucket, uploaded.objectName)
 
   let coverPath = ""
   let coverImageBase64 = hardParsed.coverImageBase64
@@ -107,7 +109,7 @@ app.post("/upload", async (c) => {
         bookId,
         imageBase64: coverImageBase64
       })
-      coverPath = `minio://${coverUploaded.bucket}/${coverUploaded.objectName}`
+      coverPath = formatMinioPath(coverUploaded.bucket, coverUploaded.objectName)
     } catch {
       console.error("Failed to upload cover image")
     }
@@ -152,10 +154,11 @@ app.get("/:id/access-url", async (c) => {
   if (!book) {
     return c.json({ error: "书籍不存在" }, 404)
   }
-  const match = book.filePath.match(/^minio:\/\/([^/]+)\/(.+)$/)
-  const fileUrl = match ? await getBookObjectUrl(match[1], match[2]) : ""
+  const fileUrl = await getStoredObjectUrl(book.filePath)
+  const coverUrl = await getStoredObjectUrl(book.coverPath)
   return c.json({
     fileUrl,
+    coverUrl,
     format: book.format,
     totalPages: book.totalPages,
     toc: book.toc,
@@ -182,11 +185,13 @@ app.put("/:id", async (c) => {
 
 app.delete("/:id", async (c) => {
   const book = await getBookFromStore(c.get("userId"), c.req.param("id"))
-  if (book?.filePath?.startsWith("minio://")) {
-    const match = book.filePath.match(/^minio:\/\/([^/]+)\/(.+)$/)
-    if (match) {
-      await removeBookObject(match[1], match[2])
-    }
+  const fileObject = parseMinioPath(book?.filePath)
+  if (fileObject) {
+    await removeBookObject(fileObject.bucket, fileObject.objectName)
+  }
+  const coverObject = parseMinioPath(book?.coverPath)
+  if (coverObject) {
+    await removeBookObject(coverObject.bucket, coverObject.objectName)
   }
   await deleteBookFromStore(c.get("userId"), c.req.param("id"))
   return c.json({ ok: true })

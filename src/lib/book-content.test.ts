@@ -7,8 +7,8 @@
  */
 import test from "node:test"
 import assert from "node:assert/strict"
+import { decodeHtmlEntities } from "@/src/lib/html-entities"
 import {
-  decodeHtmlEntities,
   extractReadableTextFromHtml,
   normalizeStoredSectionContent
 } from "@/src/lib/book-content"

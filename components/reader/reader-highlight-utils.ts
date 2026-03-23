@@ -5,12 +5,13 @@
  * @since 0.1.0
  * Created on 2026/3/23
  */
-import { decodeHtmlEntities } from "@/src/lib/book-content"
+import { decodeHtmlEntities } from "@/src/lib/html-entities"
 import type { HighlightColor } from "@/src/server/store/types"
 
 export interface SectionLike {
   pageIndex: number
   content: string
+  href?: string
 }
 
 export interface ParagraphLayout {
@@ -109,13 +110,17 @@ export function resolveBookHighlightAnchor(
   highlight: {
     content: string
     pageIndex?: number
+    chapterHref?: string
     paraOffsetStart?: number
     paraOffsetEnd?: number
   }
 ): HighlightAnchor | null {
-  const sectionIndex = sections.findIndex(
-    (section) => section.pageIndex === highlight.pageIndex
-  )
+  const sectionIndex = sections.findIndex((section) => {
+    if (highlight.chapterHref && section.href === highlight.chapterHref) {
+      return true
+    }
+    return section.pageIndex === highlight.pageIndex
+  })
   if (sectionIndex < 0) {
     return null
   }

@@ -1,6 +1,7 @@
 import { Client } from "minio"
 
-const DEFAULT_BUCKET = "lumina-books"
+const DEFAULT_BOOK_BUCKET = "lumina-books"
+const DEFAULT_COVER_BUCKET = "lumina-covers"
 const clientRegistry = new Map<string, Client>()
 const ensuredBuckets = new Set<string>()
 
@@ -32,6 +33,40 @@ function getClient(runtimeConfig?: StorageRuntimeConfig) {
   return clientRegistry.get(key)!
 }
 
+export function buildBookObjectName(userId: string, bookId: string, fileName: string) {
+  return `books/${userId}/${bookId}/${fileName}`
+}
+
+export function buildCoverObjectName(userId: string, bookId: string) {
+  return `${userId}/${bookId}.jpg`
+}
+
+export function formatMinioPath(bucket: string, objectName: string) {
+  return `minio://${bucket}/${objectName}`
+}
+
+export function parseMinioPath(value?: string) {
+  if (!value) {
+    return null
+  }
+  const matched = value.match(/^minio:\/\/([^/]+)\/(.+)$/)
+  if (!matched) {
+    return null
+  }
+  return {
+    bucket: matched[1],
+    objectName: matched[2]
+  }
+}
+
+function getBookBucket(runtimeConfig?: StorageRuntimeConfig) {
+  return runtimeConfig?.bucket || process.env.MINIO_BUCKET || DEFAULT_BOOK_BUCKET
+}
+
+function getCoverBucket(runtimeConfig?: StorageRuntimeConfig) {
+  return process.env.MINIO_COVER_BUCKET || DEFAULT_COVER_BUCKET
+}
+
 async function ensureBucket(bucket: string, runtimeConfig?: StorageRuntimeConfig) {
   const bucketKey = `${bucket}:${JSON.stringify(getMinioConfig(runtimeConfig))}`
   if (ensuredBuckets.has(bucketKey)) {
@@ -53,9 +88,9 @@ export async function uploadBookObject(params: {
   contentType: string
   runtimeConfig?: StorageRuntimeConfig
 }) {
-  const bucket = params.runtimeConfig?.bucket || process.env.MINIO_BUCKET || DEFAULT_BUCKET
+  const bucket = getBookBucket(params.runtimeConfig)
   await ensureBucket(bucket, params.runtimeConfig)
-  const objectName = `books/${params.userId}/${params.bookId}/${params.fileName}`
+  const objectName = buildBookObjectName(params.userId, params.bookId, params.fileName)
   await getClient(params.runtimeConfig).putObject(bucket, objectName, params.buffer, params.buffer.length, {
     "Content-Type": params.contentType
   })
@@ -91,23 +126,31 @@ export async function getBookObjectUrl(
   return getClient(runtimeConfig).presignedGetObject(bucket, objectName, 60 * 15)
 }
 
+export async function getStoredObjectUrl(
+  storedPath?: string,
+  runtimeConfig?: StorageRuntimeConfig
+) {
+  const parsed = parseMinioPath(storedPath)
+  if (!parsed) {
+    return ""
+  }
+  return getBookObjectUrl(parsed.bucket, parsed.objectName, runtimeConfig)
+}
+
 export async function uploadCoverImage(params: {
   userId: string
   bookId: string
   imageBase64: string
   runtimeConfig?: StorageRuntimeConfig
 }) {
-  const bucket = params.runtimeConfig?.bucket || process.env.MINIO_BUCKET || DEFAULT_BUCKET
+  const bucket = getCoverBucket(params.runtimeConfig)
   await ensureBucket(bucket, params.runtimeConfig)
 
-  const base64Data = params.imageBase64.replace(/^data:image\/\w+;base64,/, "")
+  const base64Data = params.imageBase64.replace(/^data:image\/[\w.+-]+;base64,/, "")
   const buffer = Buffer.from(base64Data, "base64")
-
-  const extMatch = params.imageBase64.match(/^data:image\/(\w+);base64,/)
-  const ext = extMatch ? extMatch[1] : "jpg"
-  const contentType = `image/${ext === "jpg" ? "jpeg" : ext}`
-
-  const objectName = `covers/${params.userId}/${params.bookId}.${ext}`
+  const contentType =
+    params.imageBase64.match(/^data:(image\/[\w.+-]+);base64,/)?.[1] || "image/jpeg"
+  const objectName = buildCoverObjectName(params.userId, params.bookId)
   await getClient(params.runtimeConfig).putObject(bucket, objectName, buffer, buffer.length, {
     "Content-Type": contentType
   })

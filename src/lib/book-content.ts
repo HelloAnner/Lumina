@@ -5,20 +5,67 @@
  * @since 0.1.0
  * Created on 2026/3/23
  */
-const NAMED_ENTITIES: Record<string, string> = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: `"`,
-  apos: "'",
-  nbsp: " "
-}
+import { parseFragment, type DefaultTreeAdapterTypes } from "parse5"
+import { decodeHtmlEntities } from "@/src/lib/html-entities"
 
-const BLOCK_TAG_PATTERN =
-  /<\/?(address|article|aside|blockquote|body|caption|div|dl|dt|dd|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|html|main|nav|p|pre|section|table|tbody|thead|tfoot|tr)[^>]*>/gi
+const SKIP_TAGS = new Set(["script", "style", "noscript"])
+const BLOCK_TAGS = new Set([
+  "address",
+  "article",
+  "aside",
+  "blockquote",
+  "caption",
+  "dd",
+  "div",
+  "dl",
+  "dt",
+  "figcaption",
+  "figure",
+  "footer",
+  "form",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "header",
+  "li",
+  "main",
+  "nav",
+  "p",
+  "pre",
+  "section",
+  "td",
+  "th"
+])
 
 function collapseInlineSpaces(value: string) {
   return value.replace(/[ \t\f\v]+/g, " ").trim()
+}
+
+function normalizeTextNode(value: string, preserveWhitespace: boolean) {
+  const decoded = decodeHtmlEntities(value).replace(/\u00a0/g, " ")
+  if (preserveWhitespace) {
+    return decoded.replace(/\r\n?/g, "\n")
+  }
+  return decoded.replace(/\s+/g, " ")
+}
+
+function isElement(
+  node: DefaultTreeAdapterTypes.ChildNode
+): node is DefaultTreeAdapterTypes.Element {
+  return "tagName" in node
+}
+
+function isTextNode(
+  node: DefaultTreeAdapterTypes.ChildNode
+): node is DefaultTreeAdapterTypes.TextNode {
+  return node.nodeName === "#text"
+}
+
+function getTagName(node: DefaultTreeAdapterTypes.ChildNode) {
+  return isElement(node) ? node.tagName.toLowerCase() : ""
 }
 
 function splitDenseParagraph(paragraph: string) {
@@ -37,7 +84,6 @@ function splitDenseParagraph(paragraph: string) {
   const chunks: string[] = []
   let buffer = ""
   let sentenceCount = 0
-
   sentences.forEach((sentence) => {
     buffer += sentence
     sentenceCount += 1
@@ -47,25 +93,121 @@ function splitDenseParagraph(paragraph: string) {
       sentenceCount = 0
     }
   })
-
   if (buffer) {
     chunks.push(buffer)
   }
-
   return chunks.length > 1 ? chunks : [compact]
 }
 
-export function decodeHtmlEntities(value: string) {
-  return value.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (full, entity: string) => {
-    if (entity.startsWith("#x") || entity.startsWith("#X")) {
-      const code = Number.parseInt(entity.slice(2), 16)
-      return Number.isFinite(code) ? String.fromCodePoint(code) : full
+function normalizeBlock(block: string) {
+  const normalized = block
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => collapseInlineSpaces(line))
+    .filter(Boolean)
+
+  if (normalized.length === 0) {
+    return []
+  }
+  if (normalized.length > 1) {
+    return [normalized.join("\n")]
+  }
+  return splitDenseParagraph(normalized[0])
+}
+
+function collectInlineText(
+  node: DefaultTreeAdapterTypes.ChildNode,
+  preserveWhitespace = false
+): string {
+  if (isTextNode(node)) {
+    return normalizeTextNode(node.value, preserveWhitespace)
+  }
+  if (!isElement(node)) {
+    return ""
+  }
+
+  const tagName = node.tagName.toLowerCase()
+  if (SKIP_TAGS.has(tagName)) {
+    return ""
+  }
+  if (tagName === "br") {
+    return "\n"
+  }
+  if (tagName === "img") {
+    const alt = node.attrs.find((item) => item.name === "alt")?.value ?? ""
+    return alt ? ` ${decodeHtmlEntities(alt)} ` : ""
+  }
+
+  const nextPreserve = preserveWhitespace || tagName === "pre"
+  return node.childNodes.map((child) => collectInlineText(child, nextPreserve)).join("")
+}
+
+function flushInlineBuffer(buffer: string[], blocks: string[]) {
+  const merged = collapseInlineSpaces(buffer.join(" "))
+  if (!merged) {
+    buffer.length = 0
+    return
+  }
+  normalizeBlock(merged).forEach((item) => blocks.push(item))
+  buffer.length = 0
+}
+
+function walkNodes(
+  nodes: DefaultTreeAdapterTypes.ChildNode[],
+  blocks: string[],
+  inlineBuffer: string[]
+) {
+  nodes.forEach((node) => {
+    if (isTextNode(node)) {
+      const text = normalizeTextNode(node.value, false)
+      if (text.trim()) {
+        inlineBuffer.push(text)
+      }
+      return
     }
-    if (entity.startsWith("#")) {
-      const code = Number.parseInt(entity.slice(1), 10)
-      return Number.isFinite(code) ? String.fromCodePoint(code) : full
+
+    if (!isElement(node)) {
+      return
     }
-    return NAMED_ENTITIES[entity] ?? full
+
+    const tagName = node.tagName.toLowerCase()
+    if (SKIP_TAGS.has(tagName)) {
+      return
+    }
+
+    if (tagName === "br") {
+      inlineBuffer.push("\n")
+      return
+    }
+
+    if (tagName === "ul" || tagName === "ol") {
+      flushInlineBuffer(inlineBuffer, blocks)
+      const listItems = node.childNodes
+        .filter(isElement)
+        .filter((child) => child.tagName.toLowerCase() === "li")
+        .map((child, index) => {
+          const marker = tagName === "ol" ? `${index + 1}. ` : ""
+          const text = collectInlineText(child).replace(/\n+/g, " ").trim()
+          return text ? `${marker}${text}` : ""
+        })
+        .filter(Boolean)
+      if (listItems.length > 0) {
+        blocks.push(listItems.join("\n"))
+      }
+      return
+    }
+
+    if (BLOCK_TAGS.has(tagName)) {
+      flushInlineBuffer(inlineBuffer, blocks)
+      const text = collectInlineText(node, tagName === "pre")
+      normalizeBlock(text).forEach((item) => blocks.push(item))
+      return
+    }
+
+    const text = collectInlineText(node)
+    if (text.trim()) {
+      inlineBuffer.push(text)
+    }
   })
 }
 
@@ -76,34 +218,16 @@ export function normalizeStoredSectionContent(content: string) {
 
   const blocks = normalized
     .split(/\n{2,}/)
-    .flatMap((block) => {
-      const lines = block
-        .split("\n")
-        .map((line) => collapseInlineSpaces(line))
-        .filter(Boolean)
-
-      if (lines.length === 0) {
-        return []
-      }
-      if (lines.length > 1) {
-        return [lines.join("\n")]
-      }
-      return splitDenseParagraph(lines[0])
-    })
+    .flatMap((block) => normalizeBlock(block))
 
   return blocks.join("\n\n").trim()
 }
 
 export function extractReadableTextFromHtml(html: string) {
-  const withBreaks = html
-    .replace(/<script[\s\S]*?<\/script>/gi, "\n")
-    .replace(/<style[\s\S]*?<\/style>/gi, "\n")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/?(ul|ol)[^>]*>/gi, "\n")
-    .replace(/<\/li>/gi, "\n")
-    .replace(/<li[^>]*>/gi, "")
-    .replace(BLOCK_TAG_PATTERN, "\n\n")
-
-  const withoutTags = withBreaks.replace(/<[^>]+>/g, " ")
-  return normalizeStoredSectionContent(withoutTags)
+  const fragment = parseFragment(html)
+  const blocks: string[] = []
+  const inlineBuffer: string[] = []
+  walkNodes(fragment.childNodes, blocks, inlineBuffer)
+  flushInlineBuffer(inlineBuffer, blocks)
+  return blocks.join("\n\n").trim()
 }

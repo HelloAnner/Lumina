@@ -108,12 +108,12 @@ export const repository = {
       (item) => item.userId === userId && item.id === bookId
     )
   },
-  createBook(book: Omit<Book, "id" | "createdAt">) {
+  createBook(book: Omit<Book, "createdAt"> & { createdAt?: string }) {
     return mutateDatabase((database) => {
       const entry: Book = {
         ...book,
-        id: randomUUID(),
-        createdAt: now()
+        id: book.id || randomUUID(),
+        createdAt: book.createdAt ?? now()
       }
       database.books.push(entry)
       return entry

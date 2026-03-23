@@ -59,6 +59,34 @@ test("resolveBookHighlightAnchor 在缺少偏移量时回退到正文检索", ()
   })
 })
 
+test("resolveBookHighlightAnchor 支持按 chapterHref 回退定位", () => {
+  const anchor = resolveBookHighlightAnchor(
+    [
+      {
+        pageIndex: 1,
+        href: "chapter-1",
+        content: "前言。"
+      },
+      {
+        pageIndex: 2,
+        href: "chapter-2",
+        content: "这里是第二章正文。\n\n运营方法在这里展开。"
+      }
+    ],
+    {
+      content: "运营方法在这里展开。",
+      chapterHref: "chapter-2"
+    }
+  )
+
+  assert.deepEqual(anchor, {
+    sectionIndex: 1,
+    paragraphIndex: 1,
+    start: 11,
+    end: 21
+  })
+})
+
 test("buildParagraphSegments 会把命中的正文切成高亮片段", () => {
   const [, secondParagraph] = buildParagraphLayouts("这是第一段。\n\n这里出现目标句子。")
   const segments = buildParagraphSegments(secondParagraph.text, secondParagraph.start, [
