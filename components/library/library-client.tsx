@@ -30,7 +30,7 @@ type LibraryBook = Book & {
 function BookCover({ title, coverUrl }: { title: string; coverUrl?: string }) {
   if (coverUrl) {
     return (
-      <div className="relative h-[178px] w-[118px] overflow-hidden rounded-[14px] border border-white/10 bg-[#111827] shadow-[0_16px_40px_rgba(0,0,0,0.35)]">
+      <div className="relative h-[178px] w-[118px] overflow-hidden rounded-[14px] border border-border bg-elevated shadow-lg">
         <Image
           src={coverUrl}
           alt={`${title} 封面`}
@@ -44,7 +44,7 @@ function BookCover({ title, coverUrl }: { title: string; coverUrl?: string }) {
   }
 
   return (
-    <div className="flex h-[178px] w-[118px] items-end justify-start rounded-[14px] border border-white/10 bg-gradient-to-br from-primary/60 via-[#33204f] to-[#0f172a] p-3 text-left shadow-[0_16px_40px_rgba(0,0,0,0.35)]">
+    <div className="flex h-[178px] w-[118px] items-end justify-start rounded-[14px] border border-border bg-gradient-to-br from-primary/60 via-primary/30 to-primary/10 p-3 text-left shadow-lg">
       <div className="line-clamp-3 text-sm font-semibold leading-5 text-white">
         {title}
       </div>

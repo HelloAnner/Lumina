@@ -26,7 +26,7 @@ export interface HardParsedBookMetadata {
   sections: ReaderSection[]
   totalPages: number
   synopsis: string
-  toc: { id: string; title: string; href?: string; pageIndex?: number }[]
+  toc: { id: string; title: string; href?: string; pageIndex?: number; level?: number }[]
   isbn?: string
   uuid?: string
   coverImageBase64?: string

@@ -25,7 +25,7 @@ export function Sidebar() {
   const router = useRouter()
 
   return (
-    <aside className="flex h-screen w-[220px] flex-col border-r border-[#2d2d3d] bg-surface">
+    <aside className="flex h-screen w-[220px] flex-col border-r border-border bg-surface">
       <Link
         href="/library"
         className="group flex h-16 items-center gap-3 px-5 transition-colors hover:bg-elevated/60"
@@ -59,7 +59,7 @@ export function Sidebar() {
           )
         })}
       </nav>
-      <div className="border-t border-[#2d2d3d]/60 px-5 py-4">
+      <div className="border-t border-border/60 px-5 py-4">
         <div className="flex items-center gap-2 text-xs text-muted">
           <div className="h-1.5 w-1.5 rounded-full bg-emerald-500/80 shadow-[0_0_4px_rgba(16,185,129,0.4)]" />
           单镜像部署

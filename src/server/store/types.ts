@@ -58,6 +58,13 @@ export interface ReaderSection {
   blocks?: ReaderSectionBlock[]
 }
 
+export interface PdfHighlightRect {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
 export type ReaderSectionBlock =
   | {
       type: "paragraph"
@@ -77,6 +84,7 @@ export interface Highlight {
   bookId: string
   format: BookFormat
   pageIndex?: number
+  pdfRects?: PdfHighlightRect[]
   paraOffsetStart?: number
   paraOffsetEnd?: number
   cfiRange?: string

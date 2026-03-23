@@ -6,8 +6,10 @@ import type { AppEnv } from "@/src/server/lib/hono"
 import { repository } from "@/src/server/repositories"
 import {
   deriveBookMetadata,
+  type HardParsedBookMetadata,
   extractEpubMetadata
 } from "@/src/server/services/books/metadata"
+import { extractPdfMetadata } from "@/src/server/services/books/pdf-metadata"
 import {
   createBookInStore,
   deleteBookFromStore,
@@ -29,6 +31,26 @@ import {
 } from "@/src/server/services/books/minio"
 
 const app = new Hono<AppEnv>()
+
+function buildFallbackPdfMetadata(fileName: string): HardParsedBookMetadata {
+  return {
+    title: fileName.replace(/\.pdf$/i, ""),
+    author: "未知作者",
+    format: "PDF" as const,
+    tags: ["PDF"],
+    sections: [
+      {
+        id: randomUUID(),
+        title: "导入文档",
+        pageIndex: 1,
+        content: "当前 PDF 已存储成功，但暂未提取到可用正文。"
+      }
+    ],
+    totalPages: 1,
+    synopsis: "当前 PDF 已存储成功，但暂未提取到可用正文。",
+    toc: [{ id: randomUUID(), title: "导入文档", pageIndex: 1 }]
+  }
+}
 
 app.get("/", async (c) => {
   const search = c.req.query("search")
@@ -53,23 +75,7 @@ app.post("/upload", async (c) => {
   const hardParsed =
     format === "EPUB"
       ? await extractEpubMetadata(buffer, file.name)
-      : {
-          title: file.name.replace(/\.(pdf|epub)$/i, ""),
-          author: "未知作者",
-          format: "PDF" as const,
-          tags: ["PDF"],
-          sections: [
-            {
-              id: randomUUID(),
-              title: "导入文档",
-              pageIndex: 1,
-              content: "当前 PDF 上传已完成存储，后续可继续替换为真实 PDF 文本解析结果。"
-            }
-          ],
-          totalPages: 1,
-          synopsis: "当前 PDF 上传已完成存储，后续可继续替换为真实 PDF 文本解析结果。",
-          toc: [{ id: randomUUID(), title: "导入文档", pageIndex: 1 }]
-        }
+      : await extractPdfMetadata(buffer, file.name).catch(() => buildFallbackPdfMetadata(file.name))
 
   const metadata = await deriveBookMetadata({
     fileName: file.name,

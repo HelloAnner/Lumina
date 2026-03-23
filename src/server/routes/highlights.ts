@@ -4,6 +4,12 @@ import type { AppEnv } from "@/src/server/lib/hono"
 import { repository } from "@/src/server/repositories"
 
 const app = new Hono<AppEnv>()
+const pdfRectSchema = z.object({
+  left: z.number().min(0),
+  top: z.number().min(0),
+  width: z.number().positive(),
+  height: z.number().positive()
+})
 
 app.post("/", async (c) => {
   const payload = z
@@ -11,6 +17,7 @@ app.post("/", async (c) => {
       bookId: z.string(),
       format: z.enum(["PDF", "EPUB"]),
       pageIndex: z.number().optional(),
+      pdfRects: z.array(pdfRectSchema).optional(),
       paraOffsetStart: z.number().optional(),
       paraOffsetEnd: z.number().optional(),
       cfiRange: z.string().optional(),

@@ -15,10 +15,10 @@ export function Toast({
 }) {
   const toneClass =
     tone === "warning"
-      ? "border-amber-500/40 bg-amber-500/15 shadow-[0_4px_20px_rgba(245,158,11,0.15)]"
+      ? "border-amber-500/40 bg-amber-500/15 shadow-lg"
       : tone === "success"
-        ? "border-emerald-500/40 bg-emerald-500/15 shadow-[0_4px_20px_rgba(16,185,129,0.15)]"
-        : "border-[#2d2d3d] bg-surface shadow-[0_4px_20px_rgba(0,0,0,0.4)]"
+        ? "border-emerald-500/40 bg-emerald-500/15 shadow-lg"
+        : "border-border bg-surface shadow-lg"
 
   return (
     <div className={`fixed right-6 top-6 z-50 w-[360px] rounded-xl border p-4 shadow-panel ${toneClass}`}>
