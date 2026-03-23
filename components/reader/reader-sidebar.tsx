@@ -8,8 +8,10 @@
 "use client"
 
 import type React from "react"
-import { memo } from "react"
+import { memo, useEffect, useRef } from "react"
 import { ListTree } from "lucide-react"
+import { cn } from "@/src/lib/utils"
+import { computeCenteredScrollTop } from "@/components/reader/reader-panel-scroll-utils"
 import type { SidebarNode } from "@/components/reader/reader-types"
 
 const SidebarTreeNode = memo(function SidebarTreeNode({
@@ -32,22 +34,23 @@ const SidebarTreeNode = memo(function SidebarTreeNode({
         ref={(element) => {
           itemRefs.current[node.sourceIndex] = element
         }}
-        className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm ${
+        className={cn(
+          "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-all duration-200",
           active
-            ? "bg-elevated text-foreground ring-1 ring-primary/25"
-            : "text-secondary hover:bg-overlay hover:text-foreground"
-        }`}
-        style={{ paddingLeft: `${12 + depth * 20}px` }}
+            ? "bg-elevated text-foreground"
+            : "text-secondary hover:bg-overlay/70 hover:text-foreground"
+        )}
+        style={{ paddingLeft: `${12 + depth * 18}px` }}
         onClick={() => onNavigate(node.sourceIndex)}
       >
-        <span className={`truncate ${depth > 0 ? "text-[13px]" : ""}`}>
+        <span className={cn("truncate", depth > 0 && "text-[13px]")}>
           {depth > 0 ? "· " : ""}
           {node.title}
         </span>
-        <span className="ml-2 text-xs">{node.sourceIndex + 1}</span>
+        <span className="ml-2 text-xs text-muted">{node.sourceIndex + 1}</span>
       </button>
       {node.children.length > 0 ? (
-        <div className="ml-4 mt-1 space-y-1 border-l border-border/70 pl-2">
+        <div className="ml-4 mt-0.5 space-y-0.5 border-l border-border/50 pl-2">
           {node.children.map((child) => (
             <SidebarTreeNode
               key={`${child.id}-${child.sourceIndex}`}
@@ -79,17 +82,40 @@ export function ReaderSidebar({
   onResizeStart: (event: React.MouseEvent) => void
   itemRefs: React.MutableRefObject<Record<number, HTMLButtonElement | null>>
 }) {
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    const activeItem = itemRefs.current[activeIndex]
+    if (!container || !activeItem) {
+      return
+    }
+    const nextTop = computeCenteredScrollTop({
+      containerHeight: container.clientHeight,
+      contentHeight: container.scrollHeight,
+      itemTop: activeItem.offsetTop,
+      itemHeight: activeItem.offsetHeight
+    })
+    container.scrollTo({
+      top: nextTop,
+      behavior: "auto"
+    })
+  }, [activeIndex, itemRefs])
+
   return (
     <aside
-      className="relative border-r border-border bg-reader-sidebar"
+      className="relative border-r border-border/60 bg-reader-sidebar"
       style={{ width }}
     >
-      <div className="flex h-12 items-center gap-2 border-b border-border px-4 text-sm font-medium">
-        <ListTree className="h-4 w-4 text-primary" />
+      <div className="flex h-12 items-center gap-2 border-b border-border/60 px-4 text-sm font-medium">
+        <ListTree className="h-4 w-4 text-muted" />
         目录
       </div>
-      <div className="h-[calc(100%-48px)] overflow-y-auto p-2">
-        <div className="space-y-1">
+      <div
+        ref={scrollContainerRef}
+        className="h-[calc(100%-48px)] overflow-y-auto p-2"
+      >
+        <div className="space-y-0.5">
           {nodes.map((node) => (
             <SidebarTreeNode
               key={`${node.id}-${node.sourceIndex}`}
@@ -103,7 +129,7 @@ export function ReaderSidebar({
         </div>
       </div>
       <div
-        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-primary/30"
+        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-secondary/30"
         onMouseDown={onResizeStart}
       />
     </aside>

@@ -5,7 +5,7 @@ import {
 } from "@/src/server/services/books/metadata"
 
 async function main() {
-  const hardParsed = parseEpubMetadataFromEntries({
+  const hardParsed = await parseEpubMetadataFromEntries({
     containerXml:
       '<?xml version="1.0"?><container><rootfiles><rootfile full-path="OEBPS/content.opf" /></rootfiles></container>',
     opfXml: `<?xml version="1.0" encoding="utf-8"?>

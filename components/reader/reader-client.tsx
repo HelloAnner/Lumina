@@ -28,15 +28,17 @@ export function ReaderClient(props: ReaderClientProps) {
         <Toast title={reader.toast} tone="success" onClose={() => reader.setToast("")} />
       ) : null}
 
-      <div className="flex h-[52px] items-center justify-between border-b border-border bg-surface px-5">
-        <div className="flex items-center gap-4 text-sm text-secondary">
-          <Link className="flex items-center gap-2 hover:text-foreground" href="/library">
+      <div className="flex h-14 items-center justify-between border-b border-border/60 bg-surface px-5">
+        <div className="flex items-center gap-4 text-sm">
+          <Link className="flex items-center gap-2 text-muted transition-colors hover:text-foreground" href="/library">
             <ArrowLeft className="h-4 w-4" />
             书库
           </Link>
-          <span>{reader.book.title}</span>
+          <span className="h-4 w-px bg-border/60" />
+          <span className="font-medium text-foreground">{reader.book.title}</span>
         </div>
-        <div className="text-xs text-secondary">
+        <div className="flex items-center gap-2 text-xs text-muted">
+          <span className="h-1.5 w-1.5 rounded-full bg-secondary/60" />
           {reader.pageIndex + 1} / {reader.book.content.length}
         </div>
       </div>

@@ -57,19 +57,19 @@ export function GraphClient({
       .data(links)
       .enter()
       .append("line")
-      .attr("stroke", "#52525B")
-      .attr("stroke-opacity", 0.5)
-      .attr("stroke-width", (item) => 1 + item.weight * 6)
+      .attr("stroke", "var(--color-border)")
+      .attr("stroke-opacity", 0.6)
+      .attr("stroke-width", (item) => 0.5 + item.weight * 3)
 
     const node = layer
       .selectAll("circle")
       .data(preparedNodes)
       .enter()
       .append("circle")
-      .attr("r", (item) => Math.min(12 + item.highlightCount * 3, 40))
-      .attr("fill", "#8B5CF6")
-      .attr("stroke", "#FAFAFA")
-      .attr("stroke-width", 1.5)
+      .attr("r", (item) => Math.min(8 + item.highlightCount * 2.5, 32))
+      .attr("fill", "var(--color-secondary)")
+      .attr("stroke", "var(--color-surface)")
+      .attr("stroke-width", 2)
 
     const label = layer
       .selectAll("text")
@@ -77,8 +77,9 @@ export function GraphClient({
       .enter()
       .append("text")
       .text((item) => item.title)
-      .attr("fill", "#FAFAFA")
-      .attr("font-size", 12)
+      .attr("fill", "var(--color-foreground)")
+      .attr("font-size", 11)
+      .attr("font-weight", 500)
 
     simulation.on("tick", () => {
       link
@@ -108,12 +109,12 @@ export function GraphClient({
     <div className="min-h-screen bg-base px-8 py-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">知识图谱</h1>
-          <p className="mt-2 text-sm text-secondary">节点大小 = 划线数量，边宽 = 关联强度</p>
+          <h1 className="text-lg font-semibold tracking-tight">知识图谱</h1>
+          <p className="mt-1 text-sm text-muted">节点大小 = 划线数量，边宽 = 关联强度</p>
         </div>
         <Button variant="secondary">重置布局</Button>
       </div>
-      <div className="overflow-hidden rounded-md border border-border bg-surface p-4">
+      <div className="overflow-hidden rounded-xl border border-border/60 bg-surface shadow-sm">
         <svg ref={ref} className="h-[640px] w-full" />
       </div>
     </div>

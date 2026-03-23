@@ -21,6 +21,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Toast } from "@/components/ui/toast"
 import { useTheme, type AppTheme } from "@/components/theme-provider"
+import { cn } from "@/src/lib/utils"
 import type {
   ModelBinding,
   ModelCategory,
@@ -204,23 +205,30 @@ export function SettingsClient({
   return (
     <div className="grid min-h-screen grid-cols-[220px_minmax(0,1fr)] bg-base">
       {toast ? <Toast title={toast} onClose={() => setToast("")} /> : null}
-      <aside className="border-r border-border bg-surface p-4">
-        <div className="mb-6 text-lg font-semibold">设置</div>
-        <div className="space-y-2">
+      <aside className="border-r border-border/60 bg-surface p-4">
+        <div className="mb-6 text-lg font-semibold tracking-tight">设置</div>
+        <div className="space-y-1">
           {sections.map((section) => {
             const Icon = section.icon
             return (
               <button
                 key={section.key}
-                className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition ${
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-200",
                   activeSection === section.key
                     ? "bg-elevated text-foreground"
-                    : "text-secondary hover:bg-overlay hover:text-foreground"
-                }`}
+                    : "text-secondary hover:bg-overlay/70 hover:text-foreground"
+                )}
                 onClick={() => setActiveSection(section.key)}
               >
-                <Icon className="h-4 w-4" />
-                {section.label}
+                <Icon className={cn(
+                  "h-4 w-4 transition-colors",
+                  activeSection === section.key ? "text-foreground" : "text-muted"
+                )} />
+                <span className="font-medium">{section.label}</span>
+                {activeSection === section.key && (
+                  <div className="ml-auto h-1.5 w-1.5 rounded-full bg-secondary" />
+                )}
               </button>
             )
           })}
@@ -260,78 +268,92 @@ export function SettingsClient({
         ) : null}
 
         {activeSection === "model" ? (
-          <div className="space-y-6">
-            <h1 className="text-2xl font-semibold">模型配置</h1>
+          <div className="max-w-2xl space-y-6">
+            <div>
+              <h1 className="text-lg font-semibold tracking-tight">模型配置</h1>
+              <p className="mt-1 text-sm text-muted">配置 AI 模型连接信息</p>
+            </div>
             <div className="flex gap-2">
               {categoryTabs.map((tab) => (
                 <Button
                   key={tab.key}
-                  variant={activeCategory === tab.key ? "primary" : "secondary"}
+                  variant={activeCategory === tab.key ? "secondary" : "ghost"}
                   onClick={() => setActiveCategory(tab.key)}
                 >
                   {tab.label}
                 </Button>
               ))}
             </div>
-            <Card className="max-w-4xl space-y-4 p-6">
-              <Input
-                placeholder="显示名称"
-                value={modelForm.name}
-                onChange={(event) =>
-                  setModelForm((current) => ({ ...current, name: event.target.value }))
-                }
-              />
-              <Input
-                placeholder="Base URL"
-                value={modelForm.baseUrl}
-                onChange={(event) =>
-                  setModelForm((current) => ({ ...current, baseUrl: event.target.value }))
-                }
-              />
-              <Input
-                placeholder="Model Name"
-                value={modelForm.modelName}
-                onChange={(event) =>
-                  setModelForm((current) => ({ ...current, modelName: event.target.value }))
-                }
-              />
-              <Input
-                placeholder="API Key"
-                value={modelForm.apiKey}
-                onChange={(event) =>
-                  setModelForm((current) => ({ ...current, apiKey: event.target.value }))
-                }
-              />
-              <div className="flex gap-2">
-                <Button onClick={addModel}>添加</Button>
-                <Button variant="secondary" onClick={testModel}>
-                  测试联通
-                </Button>
+            <Card className="border-border/60 p-6">
+              <div className="space-y-4">
+                <Input
+                  placeholder="显示名称"
+                  value={modelForm.name}
+                  onChange={(event) =>
+                    setModelForm((current) => ({ ...current, name: event.target.value }))
+                  }
+                />
+                <Input
+                  placeholder="Base URL"
+                  value={modelForm.baseUrl}
+                  onChange={(event) =>
+                    setModelForm((current) => ({ ...current, baseUrl: event.target.value }))
+                  }
+                />
+                <Input
+                  placeholder="Model Name"
+                  value={modelForm.modelName}
+                  onChange={(event) =>
+                    setModelForm((current) => ({ ...current, modelName: event.target.value }))
+                  }
+                />
+                <Input
+                  placeholder="API Key"
+                  type="password"
+                  value={modelForm.apiKey}
+                  onChange={(event) =>
+                    setModelForm((current) => ({ ...current, apiKey: event.target.value }))
+                  }
+                />
+                <div className="flex gap-2 pt-2">
+                  <Button onClick={addModel}>添加模型</Button>
+                  <Button variant="secondary" onClick={testModel}>
+                    测试联通
+                  </Button>
+                </div>
               </div>
             </Card>
-            <Card className="max-w-4xl space-y-4 p-6">
-              <div className="text-sm font-medium">模型列表</div>
-              <div className="space-y-3">
-                {filteredModels.map((model) => (
-                  <div
-                    key={model.id}
-                    className="flex items-center justify-between rounded-md border border-border px-4 py-3"
-                  >
-                    <div>
-                      <div className="text-sm font-medium">{model.name}</div>
-                      <div className="mt-1 text-xs text-secondary">
-                        {model.modelName} · {model.baseUrl}
-                      </div>
-                    </div>
-                    <Button variant="ghost" onClick={() => deleteModel(model.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+
+            <Card className="border-border/60 p-6">
+              <div className="mb-4 text-sm font-medium">模型列表</div>
+              <div className="space-y-2">
+                {filteredModels.length === 0 ? (
+                  <div className="rounded-lg border border-border/60 border-dashed p-6 text-center text-sm text-muted">
+                    暂无模型配置
                   </div>
-                ))}
+                ) : (
+                  filteredModels.map((model) => (
+                    <div
+                      key={model.id}
+                      className="flex items-center justify-between rounded-lg border border-border/60 bg-elevated/30 px-4 py-3"
+                    >
+                      <div>
+                        <div className="text-sm font-medium">{model.name}</div>
+                        <div className="mt-0.5 text-xs text-muted">
+                          {model.modelName} · {model.baseUrl}
+                        </div>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => deleteModel(model.id)} className="h-8 w-8 p-0">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))
+                )}
               </div>
             </Card>
-            <Card className="max-w-4xl space-y-4 p-6">
-              <div className="text-sm font-medium">功能配置区</div>
+
+            <Card className="border-border/60 p-6">
+              <div className="mb-4 text-sm font-medium">功能配置</div>
               <div className="space-y-4">
                 {features.map((feature) => {
                   const options = modelConfigs.filter(
@@ -339,10 +361,10 @@ export function SettingsClient({
                   )
                   const current = modelBindings.find((item) => item.feature === feature.key)
                   return (
-                    <div key={feature.key} className="grid grid-cols-[160px_minmax(0,1fr)] items-center gap-4">
-                      <div className="text-sm text-secondary">{feature.label}</div>
+                    <div key={feature.key} className="grid grid-cols-[140px_minmax(0,1fr)] items-center gap-4">
+                      <div className="text-sm text-muted">{feature.label}</div>
                       <select
-                        className="h-10 rounded-md border border-border bg-elevated px-3 text-sm text-foreground outline-none"
+                        className="h-10 rounded-lg border border-border/60 bg-elevated px-3 text-sm text-foreground outline-none transition-colors focus:border-secondary/50"
                         value={current?.modelId ?? ""}
                         onChange={(event) => saveBinding(feature.key, event.target.value)}
                       >
@@ -362,96 +384,140 @@ export function SettingsClient({
         ) : null}
 
         {activeSection === "storage" ? (
-          <Card className="max-w-4xl space-y-3 p-6">
-            <h1 className="text-2xl font-semibold">存储配置</h1>
-            <p className="text-sm text-secondary">
-              当前只允许使用平台默认存储，不再支持自定义配置。
-            </p>
-          </Card>
+          <div className="max-w-xl space-y-6">
+            <div>
+              <h1 className="text-lg font-semibold tracking-tight">存储配置</h1>
+              <p className="mt-1 text-sm text-muted">管理文件存储设置</p>
+            </div>
+            <Card className="border-border/60 p-6">
+              <div className="flex items-center gap-3 text-sm text-muted">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-elevated">
+                  <Cloud className="h-4 w-4" />
+                </div>
+                <span>当前只允许使用平台默认存储，不再支持自定义配置。</span>
+              </div>
+            </Card>
+          </div>
         ) : null}
 
         {activeSection === "sync" ? (
-          <Card className="max-w-4xl space-y-4 p-6">
-            <h1 className="text-2xl font-semibold">同步配置</h1>
-            <div className="flex gap-2">
-              {(["manual", "daily", "weekly"] as const).map((item) => (
-                <Button
-                  key={item}
-                  variant={schedule === item ? "primary" : "secondary"}
-                  onClick={() => setSchedule(item)}
-                >
-                  {item}
-                </Button>
-              ))}
+          <div className="max-w-xl space-y-6">
+            <div>
+              <h1 className="text-lg font-semibold tracking-tight">同步配置</h1>
+              <p className="mt-1 text-sm text-muted">设置数据同步频率</p>
             </div>
-            <Button onClick={saveSchedule}>保存同步配置</Button>
-          </Card>
+            <Card className="border-border/60 p-6">
+              <div className="mb-4 text-sm font-medium">同步频率</div>
+              <div className="flex gap-2">
+                {(["manual", "daily", "weekly"] as const).map((item) => (
+                  <Button
+                    key={item}
+                    variant={schedule === item ? "secondary" : "ghost"}
+                    onClick={() => setSchedule(item)}
+                  >
+                    {item === "manual" ? "手动" : item === "daily" ? "每日" : "每周"}
+                  </Button>
+                ))}
+              </div>
+              <div className="mt-6 pt-4 border-t border-border/60">
+                <Button onClick={saveSchedule}>保存配置</Button>
+              </div>
+            </Card>
+          </div>
         ) : null}
 
         {activeSection === "reader" ? (
-          <Card className="max-w-4xl space-y-4 p-6">
-            <h1 className="text-2xl font-semibold">阅读设置</h1>
-            <div className="flex gap-2">
-              <Button
-                variant={readerForm.navigationMode === "horizontal" ? "primary" : "secondary"}
-                onClick={() =>
-                  setReaderForm((current) => ({ ...current, navigationMode: "horizontal" }))
-                }
-              >
-                左右
-              </Button>
-              <Button
-                variant={readerForm.navigationMode === "vertical" ? "primary" : "secondary"}
-                onClick={() =>
-                  setReaderForm((current) => ({ ...current, navigationMode: "vertical" }))
-                }
-              >
-                上下
-              </Button>
+          <div className="max-w-xl space-y-6">
+            <div>
+              <h1 className="text-lg font-semibold tracking-tight">阅读设置</h1>
+              <p className="mt-1 text-sm text-muted">自定义阅读器行为</p>
             </div>
-            <Button onClick={saveReaderSettings}>保存阅读设置</Button>
-          </Card>
+            <Card className="border-border/60 p-6">
+              <div className="mb-4 text-sm font-medium">翻页模式</div>
+              <div className="flex gap-2">
+                <Button
+                  variant={readerForm.navigationMode === "horizontal" ? "secondary" : "ghost"}
+                  onClick={() =>
+                    setReaderForm((current) => ({ ...current, navigationMode: "horizontal" }))
+                  }
+                >
+                  左右翻页
+                </Button>
+                <Button
+                  variant={readerForm.navigationMode === "vertical" ? "secondary" : "ghost"}
+                  onClick={() =>
+                    setReaderForm((current) => ({ ...current, navigationMode: "vertical" }))
+                  }
+                >
+                  上下滚动
+                </Button>
+              </div>
+              <div className="mt-6 pt-4 border-t border-border/60">
+                <Button onClick={saveReaderSettings}>保存设置</Button>
+              </div>
+            </Card>
+          </div>
         ) : null}
 
         {activeSection === "account" ? (
-          <Card className="max-w-4xl space-y-4 p-6">
-            <h1 className="text-2xl font-semibold">账户配置</h1>
-            <Input value={name} onChange={(event) => setName(event.target.value)} />
-            <Button onClick={saveProfile}>保存账户信息</Button>
-            <div className="grid gap-4 md:grid-cols-2">
-              <Input
-                placeholder="当前密码"
-                type="password"
-                value={currentPassword}
-                onChange={(event) => setCurrentPassword(event.target.value)}
-              />
-              <Input
-                placeholder="新密码"
-                type="password"
-                value={nextPassword}
-                onChange={(event) => setNextPassword(event.target.value)}
-              />
+          <div className="max-w-xl space-y-6">
+            <div>
+              <h1 className="text-lg font-semibold tracking-tight">账户配置</h1>
+              <p className="mt-1 text-sm text-muted">管理账户信息和安全</p>
             </div>
-            <div className="flex gap-2">
-              <Button onClick={changePassword}>
-                <KeyRound className="mr-2 h-4 w-4" />
-                修改密码
-              </Button>
-              <a href="/api/account/export">
-                <Button variant="secondary">
-                  <Download className="mr-2 h-4 w-4" />
-                  导出数据
+            <Card className="border-border/60 p-6 space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium">显示名称</label>
+                <Input value={name} onChange={(event) => setName(event.target.value)} />
+              </div>
+              <div className="pt-2">
+                <Button onClick={saveProfile}>保存信息</Button>
+              </div>
+            </Card>
+
+            <Card className="border-border/60 p-6 space-y-4">
+              <div className="mb-2 text-sm font-medium">修改密码</div>
+              <div className="grid gap-3">
+                <Input
+                  placeholder="当前密码"
+                  type="password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                />
+                <Input
+                  placeholder="新密码"
+                  type="password"
+                  value={nextPassword}
+                  onChange={(event) => setNextPassword(event.target.value)}
+                />
+              </div>
+              <div className="pt-2">
+                <Button onClick={changePassword}>
+                  <KeyRound className="mr-2 h-4 w-4" />
+                  修改密码
                 </Button>
-              </a>
-              <Button variant="destructive" onClick={deleteAccount}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                注销账户
-              </Button>
-              <Button variant="ghost" onClick={logout}>
-                退出登录
-              </Button>
-            </div>
-          </Card>
+              </div>
+            </Card>
+
+            <Card className="border-border/60 p-6">
+              <div className="mb-4 text-sm font-medium">账户操作</div>
+              <div className="flex flex-wrap gap-2">
+                <a href="/api/account/export">
+                  <Button variant="secondary">
+                    <Download className="mr-2 h-4 w-4" />
+                    导出数据
+                  </Button>
+                </a>
+                <Button variant="ghost" onClick={logout}>
+                  退出登录
+                </Button>
+                <Button variant="destructive" onClick={deleteAccount}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  注销账户
+                </Button>
+              </div>
+            </Card>
+          </div>
         ) : null}
       </div>
     </div>

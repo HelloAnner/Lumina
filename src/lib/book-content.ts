@@ -7,6 +7,7 @@
  */
 import { parseFragment, type DefaultTreeAdapterTypes } from "parse5"
 import { decodeHtmlEntities } from "@/src/lib/html-entities"
+import type { ReaderSectionBlock } from "@/src/server/store/types"
 
 const SKIP_TAGS = new Set(["script", "style", "noscript"])
 const BLOCK_TAGS = new Set([
@@ -142,6 +143,17 @@ function collectInlineText(
   return node.childNodes.map((child) => collectInlineText(child, nextPreserve)).join("")
 }
 
+function parsePositiveNumber(value?: string) {
+  if (!value) {
+    return undefined
+  }
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return undefined
+  }
+  return parsed
+}
+
 function flushInlineBuffer(buffer: string[], blocks: string[]) {
   const merged = collapseInlineSpaces(buffer.join(" "))
   if (!merged) {
@@ -149,6 +161,24 @@ function flushInlineBuffer(buffer: string[], blocks: string[]) {
     return
   }
   normalizeBlock(merged).forEach((item) => blocks.push(item))
+  buffer.length = 0
+}
+
+function flushStructuredInlineBuffer(
+  buffer: string[],
+  blocks: ReaderSectionBlock[]
+) {
+  const merged = collapseInlineSpaces(buffer.join(" "))
+  if (!merged) {
+    buffer.length = 0
+    return
+  }
+  normalizeBlock(merged).forEach((item) => {
+    blocks.push({
+      type: "paragraph",
+      text: item
+    })
+  })
   buffer.length = 0
 }
 
@@ -211,6 +241,85 @@ function walkNodes(
   })
 }
 
+function walkStructuredNodes(
+  nodes: DefaultTreeAdapterTypes.ChildNode[],
+  blocks: ReaderSectionBlock[],
+  inlineBuffer: string[]
+) {
+  nodes.forEach((node) => {
+    if (isTextNode(node)) {
+      const text = normalizeTextNode(node.value, false)
+      if (text.trim()) {
+        inlineBuffer.push(text)
+      }
+      return
+    }
+
+    if (!isElement(node)) {
+      return
+    }
+
+    const tagName = node.tagName.toLowerCase()
+    if (SKIP_TAGS.has(tagName)) {
+      return
+    }
+
+    if (tagName === "br") {
+      inlineBuffer.push("\n")
+      return
+    }
+
+    if (tagName === "img") {
+      const src = node.attrs.find((item) => item.name === "src")?.value?.trim()
+      if (!src) {
+        return
+      }
+      flushStructuredInlineBuffer(inlineBuffer, blocks)
+      const alt = node.attrs.find((item) => item.name === "alt")?.value?.trim()
+      const width = parsePositiveNumber(node.attrs.find((item) => item.name === "width")?.value)
+      const height = parsePositiveNumber(node.attrs.find((item) => item.name === "height")?.value)
+      blocks.push({
+        type: "image",
+        src,
+        alt: alt ? decodeHtmlEntities(alt) : undefined,
+        ...(typeof width === "number" ? { width } : {}),
+        ...(typeof height === "number" ? { height } : {})
+      })
+      return
+    }
+
+    if (tagName === "ul" || tagName === "ol") {
+      flushStructuredInlineBuffer(inlineBuffer, blocks)
+      const listItems = node.childNodes
+        .filter(isElement)
+        .filter((child) => child.tagName.toLowerCase() === "li")
+        .map((child, index) => {
+          const marker = tagName === "ol" ? `${index + 1}. ` : ""
+          const text = collectInlineText(child).replace(/\n+/g, " ").trim()
+          return text ? `${marker}${text}` : ""
+        })
+        .filter(Boolean)
+      listItems.forEach((item) => {
+        blocks.push({
+          type: "paragraph",
+          text: item
+        })
+      })
+      return
+    }
+
+    if (BLOCK_TAGS.has(tagName)) {
+      flushStructuredInlineBuffer(inlineBuffer, blocks)
+      const nestedBuffer: string[] = []
+      walkStructuredNodes(node.childNodes, blocks, nestedBuffer)
+      flushStructuredInlineBuffer(nestedBuffer, blocks)
+      return
+    }
+
+    walkStructuredNodes(node.childNodes, blocks, inlineBuffer)
+  })
+}
+
 export function normalizeStoredSectionContent(content: string) {
   const normalized = decodeHtmlEntities(content)
     .replace(/\u00a0/g, " ")
@@ -230,4 +339,21 @@ export function extractReadableTextFromHtml(html: string) {
   walkNodes(fragment.childNodes, blocks, inlineBuffer)
   flushInlineBuffer(inlineBuffer, blocks)
   return blocks.join("\n\n").trim()
+}
+
+export function extractStructuredContentFromHtml(html: string) {
+  const fragment = parseFragment(html)
+  const blocks: ReaderSectionBlock[] = []
+  const inlineBuffer: string[] = []
+  walkStructuredNodes(fragment.childNodes, blocks, inlineBuffer)
+  flushStructuredInlineBuffer(inlineBuffer, blocks)
+
+  return {
+    content: blocks
+      .filter((item): item is Extract<ReaderSectionBlock, { type: "paragraph" }> => item.type === "paragraph")
+      .map((item) => item.text)
+      .join("\n\n")
+      .trim(),
+    blocks
+  }
 }

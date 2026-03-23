@@ -10,6 +10,7 @@ import assert from "node:assert/strict"
 import { decodeHtmlEntities } from "@/src/lib/html-entities"
 import {
   extractReadableTextFromHtml,
+  extractStructuredContentFromHtml,
   normalizeStoredSectionContent
 } from "@/src/lib/book-content"
 
@@ -44,4 +45,38 @@ test("normalizeStoredSectionContent 会对中文长段做兜底分段", () => {
   assert.match(text, /\n\n/)
   assert.ok(text.includes("运营不是聊天。"))
   assert.ok(text.includes("运营需要把动作沉淀成方法。"))
+})
+
+test("extractStructuredContentFromHtml 会保留图片块与前后文本顺序", () => {
+  const result = extractStructuredContentFromHtml(`
+    <p>第一段</p>
+    <figure>
+      <img src="../images/demo.png" alt="示意图" width="640" height="360" />
+      <figcaption>图 1 说明</figcaption>
+    </figure>
+    <p>第二段</p>
+  `)
+
+  assert.equal(result.content, "第一段\n\n图 1 说明\n\n第二段")
+  assert.deepEqual(result.blocks, [
+    {
+      type: "paragraph",
+      text: "第一段"
+    },
+    {
+      type: "image",
+      src: "../images/demo.png",
+      alt: "示意图",
+      width: 640,
+      height: 360
+    },
+    {
+      type: "paragraph",
+      text: "图 1 说明"
+    },
+    {
+      type: "paragraph",
+      text: "第二段"
+    }
+  ])
 })

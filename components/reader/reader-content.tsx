@@ -9,7 +9,66 @@
 
 import type React from "react"
 import { buildParagraphLayouts } from "@/components/reader/reader-highlight-utils"
-import type { Book, ReaderSettings } from "@/src/server/store/types"
+import type {
+  Book,
+  ReaderSectionBlock,
+  ReaderSettings
+} from "@/src/server/store/types"
+
+interface RenderableBlock {
+  key: string
+  type: ReaderSectionBlock["type"]
+  text?: string
+  start?: number
+  paragraphIndex?: number
+  src?: string
+  alt?: string
+  width?: number
+  height?: number
+}
+
+function buildRenderableBlocks(section: Book["content"][number]): RenderableBlock[] {
+  if (!section.blocks?.length) {
+    return buildParagraphLayouts(section.content).map((paragraph) => ({
+      key: `${section.id}-${paragraph.index}`,
+      type: "paragraph" as const,
+      text: paragraph.text,
+      start: paragraph.start,
+      paragraphIndex: paragraph.index
+    }))
+  }
+
+  const paragraphs = buildParagraphLayouts(section.content)
+  let paragraphCursor = 0
+  const renderableBlocks: RenderableBlock[] = []
+  section.blocks.forEach((block, blockIndex) => {
+    if (block.type === "image") {
+      renderableBlocks.push({
+        key: `${section.id}-image-${blockIndex}`,
+        type: "image",
+        src: block.src,
+        alt: block.alt,
+        width: block.width,
+        height: block.height
+      })
+      return
+    }
+
+    const paragraph = paragraphs[paragraphCursor]
+    paragraphCursor += 1
+    if (!paragraph) {
+      return
+    }
+    renderableBlocks.push({
+      key: `${section.id}-${paragraph.index}`,
+      type: "paragraph",
+      text: paragraph.text,
+      start: paragraph.start,
+      paragraphIndex: paragraph.index
+    })
+  })
+  return renderableBlocks
+}
 
 export function ReaderContent({
   book,
@@ -50,6 +109,46 @@ export function ReaderContent({
     sectionIndex: number
   ) => React.ReactNode
 }) {
+  function renderBlock(
+    block: RenderableBlock,
+    sectionIndex: number
+  ) {
+    if (block.type === "image") {
+      return (
+        <div
+          key={block.key}
+          className="my-6 flex justify-center"
+        >
+          <img
+            src={block.src}
+            alt={block.alt ?? "章节插图"}
+            width={block.width}
+            height={block.height}
+            className="max-h-[70vh] max-w-full rounded-lg border border-border/50 bg-surface/40 object-contain"
+            draggable={false}
+          />
+        </div>
+      )
+    }
+
+    return (
+      <p
+        key={block.key}
+        ref={(element) => {
+          if (typeof block.paragraphIndex === "number") {
+            paragraphRefs.current[`${sectionIndex}-${block.paragraphIndex}`] = element
+          }
+        }}
+        className="mb-5"
+        onMouseUp={onParagraphMouseUp}
+        data-section-index={sectionIndex}
+        data-paragraph-start={block.start}
+      >
+        {renderParagraphContent(block.text ?? "", block.start ?? 0, sectionIndex)}
+      </p>
+    )
+  }
+
   if (isVertical) {
     return (
       <div
@@ -59,7 +158,7 @@ export function ReaderContent({
       >
         <div className="mx-auto max-w-2xl space-y-12">
           {book.content.map((section, sectionIndex) => {
-            const paragraphs = buildParagraphLayouts(section.content)
+            const blocks = buildRenderableBlocks(section)
             return (
               <div
                 key={section.id}
@@ -68,6 +167,9 @@ export function ReaderContent({
                 }}
                 data-section-index={sectionIndex}
               >
+                {sectionIndex > 0 ? (
+                  <div className="mb-8 border-t border-border/60" />
+                ) : null}
                 <h2 className="mb-8 text-lg font-medium text-foreground">
                   {section.title}
                 </h2>
@@ -79,24 +181,7 @@ export function ReaderContent({
                     letterSpacing: `${letterSpacing}em`
                   }}
                 >
-                  {paragraphs.map((paragraph) => (
-                    <p
-                      key={`${section.id}-${paragraph.index}`}
-                      ref={(element) => {
-                        paragraphRefs.current[`${sectionIndex}-${paragraph.index}`] = element
-                      }}
-                      className="mb-5"
-                      onMouseUp={onParagraphMouseUp}
-                      data-section-index={sectionIndex}
-                      data-paragraph-start={paragraph.start}
-                    >
-                      {renderParagraphContent(
-                        paragraph.text,
-                        paragraph.start,
-                        sectionIndex
-                      )}
-                    </p>
-                  ))}
+                  {blocks.map((block) => renderBlock(block, sectionIndex))}
                 </div>
               </div>
             )
@@ -121,17 +206,19 @@ export function ReaderContent({
               letterSpacing: `${letterSpacing}em`
             }}
           >
-            {visibleParagraphs.map((paragraph) => (
-              <p
-                key={`${currentSection.id}-${paragraph.index}`}
-                className="mb-5"
-                onMouseUp={onParagraphMouseUp}
-                data-section-index={pageIndex}
-                data-paragraph-start={paragraph.start}
-              >
-                {renderParagraphContent(paragraph.text, paragraph.start, pageIndex)}
-              </p>
-            ))}
+            {currentSection.blocks?.length
+              ? buildRenderableBlocks(currentSection).map((block) => renderBlock(block, pageIndex))
+              : visibleParagraphs.map((paragraph) => (
+                  <p
+                    key={`${currentSection.id}-${paragraph.index}`}
+                    className="mb-5"
+                    onMouseUp={onParagraphMouseUp}
+                    data-section-index={pageIndex}
+                    data-paragraph-start={paragraph.start}
+                  >
+                    {renderParagraphContent(paragraph.text, paragraph.start, pageIndex)}
+                  </p>
+                ))}
           </div>
           <div className="mt-12 flex items-center justify-between text-xs text-secondary">
             <span>

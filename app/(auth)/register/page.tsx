@@ -1,7 +1,8 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
+import { UserPlus } from "lucide-react"
 import { LoginForm } from "@/components/auth/login-form"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { getCurrentSession } from "@/src/server/lib/auth"
 
 export default async function RegisterPage() {
@@ -11,24 +12,33 @@ export default async function RegisterPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-6">
-      <Card className="w-full max-w-md border-border bg-surface/95">
-        <CardHeader className="space-y-3">
-          <div className="text-2xl font-semibold">创建账号</div>
-          <p className="text-sm leading-6 text-secondary">
-            完成注册后即可进入全部模块，当前环境默认启用本地持久化。
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <LoginForm type="register" />
-          <p className="text-sm text-secondary">
-            已有账号？
-            <Link className="ml-2 text-primary" href="/login">
-              返回登录
-            </Link>
-          </p>
-        </CardContent>
-      </Card>
+    <main className="flex min-h-screen items-center justify-center px-6 py-12">
+      <div className="w-full max-w-sm">
+        <div className="mb-8 flex flex-col items-center text-center">
+          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-elevated">
+            <UserPlus className="h-6 w-6 text-primary" />
+          </div>
+          <h1 className="text-xl font-semibold tracking-tight">创建账号</h1>
+          <p className="mt-2 text-sm text-muted">开始您的阅读之旅</p>
+        </div>
+
+        <Card className="border-border/60 bg-surface">
+          <CardContent className="pt-6">
+            <LoginForm type="register" />
+          </CardContent>
+        </Card>
+
+        <p className="mt-6 text-center text-sm text-muted">
+          已有账号？
+          <Link className="ml-1.5 font-medium text-foreground hover:underline" href="/login">
+            返回登录
+          </Link>
+        </p>
+
+        <p className="mt-8 text-center text-xs text-muted/60">
+          完成注册后即可进入全部模块
+        </p>
+      </div>
     </main>
   )
 }

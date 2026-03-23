@@ -8,7 +8,12 @@
 "use client"
 
 import type React from "react"
+import { useEffect, useMemo, useRef } from "react"
 import { Card } from "@/components/ui/card"
+import {
+  computeCenteredScrollTop,
+  pickCurrentHighlightId
+} from "@/components/reader/reader-panel-scroll-utils"
 import type { Highlight } from "@/src/server/store/types"
 import type { ResolvedHighlight } from "@/components/reader/reader-types"
 
@@ -34,6 +39,47 @@ export function ReaderHighlightPanel({
   onOpenHighlight: (item: ResolvedHighlight) => void
   onResizeStart: (event: React.MouseEvent) => void
 }) {
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const itemRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const initializedRef = useRef(false)
+  const currentHighlightId = useMemo(
+    () => pickCurrentHighlightId(items, currentPageIndex),
+    [currentPageIndex, items]
+  )
+
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container || initializedRef.current) {
+      return
+    }
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: "auto"
+    })
+    initializedRef.current = true
+  }, [items.length])
+
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container || !initializedRef.current || !currentHighlightId) {
+      return
+    }
+    const activeItem = itemRefs.current[currentHighlightId]
+    if (!activeItem) {
+      return
+    }
+    const nextTop = computeCenteredScrollTop({
+      containerHeight: container.clientHeight,
+      contentHeight: container.scrollHeight,
+      itemTop: activeItem.offsetTop,
+      itemHeight: activeItem.offsetHeight
+    })
+    container.scrollTo({
+      top: nextTop,
+      behavior: "auto"
+    })
+  }, [currentHighlightId])
+
   return (
     <aside
       className="relative border-l border-border bg-surface"
@@ -47,32 +93,42 @@ export function ReaderHighlightPanel({
         <span>划线与想法</span>
         <span>{items.length}</span>
       </div>
-      <div className="h-[calc(100%-48px)] space-y-3 overflow-y-auto p-4">
+      <div
+        ref={scrollContainerRef}
+        className="h-[calc(100%-48px)] space-y-3 overflow-y-auto p-4"
+      >
         {items.map((item) => {
           const resolved = resolvedHighlights.find((entry) => entry.id === item.id)
+          const active = item.id === currentHighlightId
           return (
-            <Card
+            <div
               key={item.id}
-              className={`cursor-pointer space-y-3 p-4 transition ${
-                item.pageIndex === currentPageIndex ? "border-primary/20" : "border-border"
-              }`}
-              onClick={() => {
-                if (resolved) {
-                  onOpenHighlight(resolved)
-                }
+              ref={(element) => {
+                itemRefs.current[item.id] = element
               }}
             >
-              <div
-                className="rounded-md px-3 py-2 text-sm leading-6 text-foreground"
-                style={{ backgroundColor: COLORS[item.color] }}
+              <Card
+                className={`cursor-pointer space-y-3 p-4 transition ${
+                  active ? "border-primary/30 bg-elevated/70" : "border-border"
+                }`}
+                onClick={() => {
+                  if (resolved) {
+                    onOpenHighlight(resolved)
+                  }
+                }}
               >
-                {item.content}
-              </div>
-              <div className="text-[11px] text-muted">第 {item.pageIndex ?? 0} 节</div>
-              {item.note ? (
-                <div className="text-sm leading-6 text-secondary">{item.note}</div>
-              ) : null}
-            </Card>
+                <div
+                  className="rounded-md px-3 py-2 text-sm leading-6 text-foreground"
+                  style={{ backgroundColor: COLORS[item.color] }}
+                >
+                  {item.content}
+                </div>
+                <div className="text-[11px] text-muted">第 {item.pageIndex ?? 0} 节</div>
+                {item.note ? (
+                  <div className="text-sm leading-6 text-secondary">{item.note}</div>
+                ) : null}
+              </Card>
+            </div>
           )
         })}
       </div>

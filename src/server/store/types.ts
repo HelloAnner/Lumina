@@ -55,7 +55,21 @@ export interface ReaderSection {
   pageIndex: number
   content: string
   href?: string
+  blocks?: ReaderSectionBlock[]
 }
+
+export type ReaderSectionBlock =
+  | {
+      type: "paragraph"
+      text: string
+    }
+  | {
+      type: "image"
+      src: string
+      alt?: string
+      width?: number
+      height?: number
+    }
 
 export interface Highlight {
   id: string

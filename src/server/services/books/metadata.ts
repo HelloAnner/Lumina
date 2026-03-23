@@ -1,7 +1,7 @@
 import path from "node:path"
 import JSZip from "jszip"
 import { XMLParser } from "fast-xml-parser"
-import { extractReadableTextFromHtml } from "@/src/lib/book-content"
+import { extractStructuredContentFromHtml } from "@/src/lib/book-content"
 import { decodeHtmlEntities } from "@/src/lib/html-entities"
 import type { BookFormat, ReaderSection } from "@/src/server/store/types"
 
@@ -12,6 +12,11 @@ interface ParsedEntries {
   navXml?: string
   ncxXml?: string
 }
+
+type EpubAssetResolver = (
+  sectionHref: string,
+  assetPath: string
+) => Promise<string | null>
 
 export interface HardParsedBookMetadata {
   title: string
@@ -74,8 +79,31 @@ function ensureArray<T>(value: T | T[] | undefined): T[] {
   return Array.isArray(value) ? value : [value]
 }
 
-function stripHtml(html: string) {
-  return extractReadableTextFromHtml(html)
+function buildAssetMimeType(assetPath: string) {
+  const ext = path.extname(assetPath).toLowerCase()
+  if (ext === ".png") {
+    return "image/png"
+  }
+  if (ext === ".gif") {
+    return "image/gif"
+  }
+  if (ext === ".webp") {
+    return "image/webp"
+  }
+  if (ext === ".svg") {
+    return "image/svg+xml"
+  }
+  return "image/jpeg"
+}
+
+function resolveEpubAssetEntryPath(
+  opfBasePath: string,
+  sectionHref: string,
+  assetPath: string
+) {
+  return path.posix.normalize(
+    path.posix.join(opfBasePath, path.posix.dirname(sectionHref), assetPath)
+  )
 }
 
 function deriveSectionTitle(html: string, href: string, index: number) {
@@ -199,7 +227,10 @@ function deriveFallbackTitle(content: string, href: string, index: number) {
   return path.basename(href, path.extname(href)) || `Chapter ${index + 1}`
 }
 
-export function parseEpubMetadataFromEntries(entries: ParsedEntries): HardParsedBookMetadata {
+export async function parseEpubMetadataFromEntries(
+  entries: ParsedEntries,
+  resolveAsset?: EpubAssetResolver
+): Promise<HardParsedBookMetadata> {
   const container = xmlParser.parse(entries.containerXml)
   const opf = xmlParser.parse(entries.opfXml)
   const rootfile = ensureArray(container?.container?.rootfiles?.rootfile)[0]
@@ -230,40 +261,69 @@ export function parseEpubMetadataFromEntries(entries: ParsedEntries): HardParsed
   const navMap = buildNavMap(entries)
   const genericIndexes: number[] = []
 
-  spineItems.forEach((spineItem: Record<string, string>, index: number) => {
-    const manifestItem = manifestMap.get(spineItem.idref)
-    if (!manifestItem?.href) {
-      return
-    }
-    const fullHref = path.posix.join(opfBasePath, manifestItem.href)
-    const html = entries.sections[fullHref] ?? entries.sections[manifestItem.href] ?? ""
-    const navInfo =
-      navMap.get(manifestItem.href) ?? navMap.get(fullHref) ?? navMap.get(path.posix.basename(manifestItem.href))
-    const content = stripHtml(html)
-    const derivedTitle = deriveSectionTitle(html, manifestItem.href, index)
-    const sectionTitle =
-      navInfo?.title ||
-      (/^(text\d+|cover\d*|chapter\d+)$/i.test(derivedTitle)
-        ? deriveFallbackTitle(content, manifestItem.href, index)
-        : derivedTitle)
-    sections.push({
-      id: crypto.randomUUID(),
-      title: sectionTitle,
-      pageIndex: index + 1,
-      content: content || `${sectionTitle} 暂无可渲染文本。`,
-      href: manifestItem.href
+  const parsedEntries = await Promise.all(
+    spineItems.map(async (spineItem: Record<string, string>, index: number) => {
+      const manifestItem = manifestMap.get(spineItem.idref)
+      if (!manifestItem?.href) {
+        return null
+      }
+      const fullHref = path.posix.join(opfBasePath, manifestItem.href)
+      const html = entries.sections[fullHref] ?? entries.sections[manifestItem.href] ?? ""
+      const navInfo =
+        navMap.get(manifestItem.href) ??
+        navMap.get(fullHref) ??
+        navMap.get(path.posix.basename(manifestItem.href))
+      const structured = extractStructuredContentFromHtml(html)
+      const blocks = await Promise.all(
+        structured.blocks.map(async (block) => {
+          if (block.type !== "image" || !resolveAsset) {
+            return block
+          }
+          const resolvedSrc = await resolveAsset(manifestItem.href, block.src)
+          return {
+            ...block,
+            src: resolvedSrc ?? block.src
+          }
+        })
+      )
+      const content = structured.content
+      const derivedTitle = deriveSectionTitle(html, manifestItem.href, index)
+      const sectionTitle =
+        navInfo?.title ||
+        (/^(text\d+|cover\d*|chapter\d+)$/i.test(derivedTitle)
+          ? deriveFallbackTitle(content, manifestItem.href, index)
+          : derivedTitle)
+      return {
+        index,
+        derivedTitle,
+        section: {
+          id: crypto.randomUUID(),
+          title: sectionTitle,
+          pageIndex: index + 1,
+          content: content || `${sectionTitle} 暂无可渲染文本。`,
+          href: manifestItem.href,
+          blocks
+        },
+        tocItem: {
+          id: crypto.randomUUID(),
+          title: sectionTitle,
+          href: manifestItem.href,
+          pageIndex: index + 1,
+          level: navInfo?.level ?? 0
+        }
+      }
     })
-    toc.push({
-      id: crypto.randomUUID(),
-      title: sectionTitle,
-      href: manifestItem.href,
-      pageIndex: index + 1,
-      level: navInfo?.level ?? 0
+  )
+
+  parsedEntries
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .forEach((item) => {
+      sections.push(item.section)
+      toc.push(item.tocItem)
+      if (/^(text\d+|cover\d*|chapter\d+)$/i.test(item.derivedTitle)) {
+        genericIndexes.push(item.index)
+      }
     })
-    if (/^(text\d+|cover\d*|chapter\d+)$/i.test(derivedTitle)) {
-      genericIndexes.push(index)
-    }
-  })
 
   const contentsSection = sections.find((item) => item.title === "目录" || item.content.includes("Contents 目录"))
   const inferredTitles = contentsSection ? extractTitlesFromContentsSection(contentsSection.content) : []
@@ -357,6 +417,7 @@ export async function extractEpubMetadata(
   if (!opfXml) {
     throw new Error("无法读取 EPUB OPF 元数据")
   }
+  const opfBasePath = path.posix.dirname(opfPath)
 
   const sectionEntries: Record<string, string> = {}
   let navXml = ""
@@ -406,13 +467,28 @@ export async function extractEpubMetadata(
     }
   }
 
-  const hardParsed = parseEpubMetadataFromEntries({
-    containerXml,
-    opfXml,
-    sections: sectionEntries,
-    navXml,
-    ncxXml
-  })
+  const hardParsed = await parseEpubMetadataFromEntries(
+    {
+      containerXml,
+      opfXml,
+      sections: sectionEntries,
+      navXml,
+      ncxXml
+    },
+    async (sectionHref, assetPath) => {
+      if (!assetPath || /^data:/i.test(assetPath)) {
+        return assetPath
+      }
+      const entryPath = resolveEpubAssetEntryPath(opfBasePath, sectionHref, assetPath)
+      const assetFile = zip.file(entryPath) ?? zip.file(assetPath)
+      if (!assetFile) {
+        return null
+      }
+      const buffer = await assetFile.async("nodebuffer")
+      const mimeType = buildAssetMimeType(entryPath)
+      return `data:${mimeType};base64,${buffer.toString("base64")}`
+    }
+  )
 
   if (coverImageBase64) {
     hardParsed.coverImageBase64 = coverImageBase64

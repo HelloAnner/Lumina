@@ -3,7 +3,7 @@ import { repository } from "@/src/server/repositories"
 import { normalizeStoredSectionContent } from "@/src/lib/book-content"
 import { decodeHtmlEntities } from "@/src/lib/html-entities"
 import { ensureBookSchema, getBookPool } from "@/src/server/services/books/postgres"
-import type { Book } from "@/src/server/store/types"
+import type { Book, ReaderSectionBlock } from "@/src/server/store/types"
 
 function sanitizeText(value: unknown, fallback = "") {
   if (typeof value === "string") {
@@ -74,6 +74,48 @@ function extractChapterTitlesFromContents(content: string) {
   return [...chapters, ...appendix]
 }
 
+function normalizeSectionBlocks(value: unknown) {
+  if (!Array.isArray(value)) {
+    return undefined
+  }
+  const blocks = value
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null
+      }
+      const block = item as Record<string, unknown>
+      if (block.type === "paragraph") {
+        const text = sanitizeText(block.text, "")
+        if (!text) {
+          return null
+        }
+        return {
+          type: "paragraph",
+          text
+        } satisfies ReaderSectionBlock
+      }
+      if (block.type === "image") {
+        const src = sanitizeText(block.src, "")
+        if (!src) {
+          return null
+        }
+        const width = typeof block.width === "number" ? block.width : undefined
+        const height = typeof block.height === "number" ? block.height : undefined
+        return {
+          type: "image",
+          src,
+          alt: sanitizeText(block.alt, "") || undefined,
+          width,
+          height
+        } satisfies ReaderSectionBlock
+      }
+      return null
+    })
+    .filter((item): item is ReaderSectionBlock => Boolean(item))
+
+  return blocks.length > 0 ? blocks : undefined
+}
+
 function rowToBook(row: any): Book {
   const content = Array.isArray(row.content) ? row.content : []
   const normalizedContent = content.map((item: any) => {
@@ -83,6 +125,7 @@ function rowToBook(row: any): Book {
       "当前章节暂无可渲染文本。"
     return {
       ...item,
+      blocks: normalizeSectionBlocks(item?.blocks),
       content: normalizedSectionContent,
       title: isGenericTitle(title)
         ? inferTitleFromContent(normalizedSectionContent, title)

@@ -25,12 +25,13 @@ export function Sidebar() {
 
   return (
     <aside className="flex h-screen w-[220px] flex-col border-r border-border bg-surface">
-      <div className="flex h-14 items-center gap-2 px-4 text-sm font-semibold">
-        <Sparkles className="h-4 w-4 text-primary" />
-        <span>Lumina</span>
+      <div className="flex h-16 items-center gap-3 px-5">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+          <Sparkles className="h-4 w-4 text-primary" />
+        </div>
+        <span className="text-sm font-semibold tracking-tight">Lumina</span>
       </div>
-      <div className="border-t border-border" />
-      <nav className="flex flex-1 flex-col gap-1 px-2 py-3">
+      <nav className="flex flex-1 flex-col gap-0.5 px-3 py-2">
         {items.map((item) => {
           const Icon = item.icon
           const active = pathname.startsWith(item.href)
@@ -39,19 +40,26 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex h-9 items-center gap-3 rounded-md px-3 text-sm text-secondary transition hover:bg-overlay hover:text-foreground",
-                active &&
-                  "bg-elevated text-foreground before:absolute before:left-0 before:h-6 before:w-0.5 before:rounded-full before:bg-primary"
+                "group flex h-10 items-center gap-3 rounded-lg px-3 text-sm transition-all duration-200",
+                active
+                  ? "bg-elevated text-foreground"
+                  : "text-secondary hover:bg-overlay/70 hover:text-foreground"
               )}
             >
-              <Icon className="h-4 w-4" />
-              <span>{item.label}</span>
+              <Icon className={cn("h-4 w-4 transition-colors", active ? "text-primary" : "text-muted group-hover:text-secondary")} />
+              <span className="font-medium">{item.label}</span>
+              {active && (
+                <div className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />
+              )}
             </Link>
           )
         })}
       </nav>
-      <div className="border-t border-border px-4 py-3 text-xs text-muted">
-        单镜像部署 / 演示数据
+      <div className="border-t border-border/60 px-5 py-4">
+        <div className="flex items-center gap-2 text-xs text-muted">
+          <div className="h-1.5 w-1.5 rounded-full bg-emerald-500/80" />
+          单镜像部署
+        </div>
       </div>
     </aside>
   )

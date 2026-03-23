@@ -303,12 +303,6 @@ export function useReaderController({
   ])
 
   useEffect(() => {
-    tocItemRefs.current[pageIndex]?.scrollIntoView({
-      block: "nearest"
-    })
-  }, [pageIndex])
-
-  useEffect(() => {
     if (prefTimer.current) {
       clearTimeout(prefTimer.current)
     }

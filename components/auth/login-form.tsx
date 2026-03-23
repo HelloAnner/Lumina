@@ -46,29 +46,35 @@ export function LoginForm({
     <form className="space-y-4" onSubmit={handleSubmit}>
       {type === "register" ? (
         <div className="space-y-2">
-          <label className="text-sm text-secondary">昵称</label>
-          <Input value={name} onChange={(event) => setName(event.target.value)} />
+          <label className="text-sm font-medium text-foreground">昵称</label>
+          <Input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="输入您的昵称"
+          />
         </div>
       ) : null}
       <div className="space-y-2">
-        <label className="text-sm text-secondary">邮箱</label>
+        <label className="text-sm font-medium text-foreground">邮箱</label>
         <Input
           type="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
+          placeholder="name@example.com"
         />
       </div>
       <div className="space-y-2">
-        <label className="text-sm text-secondary">密码</label>
+        <label className="text-sm font-medium text-foreground">密码</label>
         <Input
           type="password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
+          placeholder="输入您的密码"
         />
       </div>
-      {error ? <div className="text-sm text-red-300">{error}</div> : null}
-      <Button className="w-full" disabled={loading} type="submit">
-        {loading ? "提交中..." : type === "login" ? "登录 Lumina" : "创建账号"}
+      {error ? <div className="text-sm text-red-400">{error}</div> : null}
+      <Button className="w-full mt-2" disabled={loading} type="submit">
+        {loading ? "请稍候..." : type === "login" ? "登录" : "创建账号"}
       </Button>
     </form>
   )

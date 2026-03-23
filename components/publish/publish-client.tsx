@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { cn } from "@/src/lib/utils"
 import type { PublishRecord, PublishTarget, PublishTask, Viewpoint } from "@/src/server/store/types"
 
 export function PublishClient({
@@ -71,16 +72,19 @@ export function PublishClient({
 
   return (
     <div className="grid min-h-screen grid-cols-[320px_minmax(0,1fr)] gap-6 bg-base px-8 py-8">
+      {/* Left Sidebar */}
       <div className="space-y-4">
         <div className="flex gap-2">
-          <Button className="flex-1" onClick={createTarget}>
-            + 新建目标
+          <Button className="flex-1 gap-1.5" onClick={createTarget}>
+            <span className="text-base leading-none">+</span>
+            新建目标
           </Button>
-          <Button className="flex-1" variant="secondary" onClick={createTask}>
-            + 新建任务
+          <Button className="flex-1 gap-1.5" variant="secondary" onClick={createTask}>
+            <span className="text-base leading-none">+</span>
+            新建任务
           </Button>
         </div>
-        <Card className="space-y-3 p-4">
+        <Card className="space-y-3 border-border/60 p-4">
           <Input
             placeholder="目标名称"
             value={targetName}
@@ -97,31 +101,40 @@ export function PublishClient({
             onChange={(event) => setTaskName(event.target.value)}
           />
         </Card>
-        <div className="space-y-3">
+        <div className="space-y-2">
           {tasks.map((task) => (
             <button
               key={task.id}
-              className={`w-full rounded-md border p-4 text-left ${
+              className={cn(
+                "w-full rounded-lg border p-4 text-left transition-all duration-200",
                 activeTask?.id === task.id
-                  ? "border-primary bg-primary/10"
-                  : "border-border bg-surface"
-              }`}
+                  ? "border-secondary/50 bg-elevated"
+                  : "border-border/60 bg-surface hover:border-border hover:bg-elevated/50"
+              )}
               onClick={() => setActiveTask(task)}
             >
-              <div className="text-sm font-medium">{task.name}</div>
-              <div className="mt-2 text-xs text-secondary">
-                {task.triggerType} / {task.format}
+              <div className="flex items-center gap-2">
+                <span className={cn(
+                  "h-2 w-2 rounded-full",
+                  activeTask?.id === task.id ? "bg-secondary" : "bg-muted/50"
+                )} />
+                <span className="text-sm font-medium">{task.name}</span>
+              </div>
+              <div className="mt-2 pl-4 text-xs text-muted">
+                {task.triggerType} · {task.format}
               </div>
             </button>
           ))}
         </div>
       </div>
+
+      {/* Main Content */}
       <div className="space-y-6">
-        <Card className="space-y-4 p-6">
+        <Card className="space-y-4 border-border/60 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-semibold">{activeTask?.name ?? "发布配置"}</h1>
-              <p className="mt-2 text-sm text-secondary">
+              <h1 className="text-lg font-semibold tracking-tight">{activeTask?.name ?? "发布配置"}</h1>
+              <p className="mt-1 text-sm text-muted">
                 选择来源观点、目标平台与触发方式。
               </p>
             </div>
@@ -131,23 +144,39 @@ export function PublishClient({
           </div>
           <Textarea
             readOnly
+            className="bg-elevated/50"
             value={`目标数量：${targets.length}\n观点数量：${viewpoints.length}\n当前任务来源：${activeTask?.viewpointIds.join(", ") ?? "-"}`}
           />
         </Card>
-        <Card className="space-y-4 p-6">
-          <div className="text-sm font-medium">发布历史</div>
-          <div className="space-y-3">
-            {records.map((record) => (
-              <div key={record.id} className="rounded-md border border-border p-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <span>{record.status}</span>
-                  <span className="text-secondary">{record.executedAt}</span>
-                </div>
-                {record.errorMsg ? (
-                  <p className="mt-2 text-red-300">{record.errorMsg}</p>
-                ) : null}
+
+        <Card className="space-y-4 border-border/60 p-6">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <span className="h-1.5 w-1.5 rounded-full bg-secondary/60" />
+            发布历史
+          </div>
+          <div className="space-y-2">
+            {records.length === 0 ? (
+              <div className="rounded-lg border border-border/60 border-dashed p-6 text-center text-sm text-muted">
+                暂无发布记录
               </div>
-            ))}
+            ) : (
+              records.map((record) => (
+                <div key={record.id} className="rounded-lg border border-border/60 bg-elevated/30 p-4 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className={cn(
+                      "font-medium",
+                      record.status === "SUCCESS" ? "text-foreground" : "text-muted"
+                    )}>
+                      {record.status}
+                    </span>
+                    <span className="text-xs text-muted">{record.executedAt}</span>
+                  </div>
+                  {record.errorMsg ? (
+                    <p className="mt-2 text-xs text-red-400">{record.errorMsg}</p>
+                  ) : null}
+                </div>
+              ))
+            )}
           </div>
         </Card>
       </div>
