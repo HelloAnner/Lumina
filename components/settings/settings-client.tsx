@@ -1,14 +1,18 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import React, { useCallback, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   Cloud,
   Cpu,
   Download,
   KeyRound,
+  Monitor,
+  Moon,
+  Palette,
   RefreshCcw,
   ShieldCheck,
+  Sun,
   Trash2,
   User2
 } from "lucide-react"
@@ -16,6 +20,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Toast } from "@/components/ui/toast"
+import { useTheme, type AppTheme } from "@/components/theme-provider"
 import type {
   ModelBinding,
   ModelCategory,
@@ -24,9 +29,10 @@ import type {
   User
 } from "@/src/server/store/types"
 
-type SectionKey = "model" | "storage" | "sync" | "reader" | "account"
+type SectionKey = "appearance" | "model" | "storage" | "sync" | "reader" | "account"
 
 const sections = [
+  { key: "appearance", label: "外观设置", icon: Palette },
   { key: "model", label: "模型配置", icon: Cpu },
   { key: "storage", label: "存储配置", icon: Cloud },
   { key: "sync", label: "同步配置", icon: RefreshCcw },
@@ -60,7 +66,8 @@ export function SettingsClient({
   readerSettings?: ReaderSettings
 }) {
   const router = useRouter()
-  const [activeSection, setActiveSection] = useState<SectionKey>("model")
+  const { theme: appTheme, setTheme: setAppTheme } = useTheme()
+  const [activeSection, setActiveSection] = useState<SectionKey>("appearance")
   const [activeCategory, setActiveCategory] = useState<ModelCategory>("language")
   const [toast, setToast] = useState("")
   const [modelForm, setModelForm] = useState({
@@ -81,6 +88,21 @@ export function SettingsClient({
   const [currentPassword, setCurrentPassword] = useState("")
   const [nextPassword, setNextPassword] = useState("")
 
+  // 抽取通用的 toast 和 refresh 逻辑
+  const showToast = useCallback((message: string) => {
+    setToast(message)
+  }, [])
+
+  const refreshAndShow = useCallback(async (message: string, response: Response) => {
+    if (response.ok) {
+      showToast(message)
+      router.refresh()
+    } else {
+      const data = await response.json()
+      showToast(data.error || `${message}失败`)
+    }
+  }, [router, showToast])
+
   const filteredModels = useMemo(
     () => modelConfigs.filter((item) => item.category === activeCategory),
     [activeCategory, modelConfigs]
@@ -95,11 +117,10 @@ export function SettingsClient({
         category: activeCategory
       })
     })
-    setToast(response.ok ? "模型已添加" : "模型添加失败")
     if (response.ok) {
       setModelForm({ name: "", baseUrl: "", apiKey: "", modelName: "" })
     }
-    router.refresh()
+    await refreshAndShow("模型已添加", response)
   }
 
   async function testModel() {
@@ -112,13 +133,12 @@ export function SettingsClient({
       })
     })
     const data = await response.json()
-    setToast(response.ok ? "真实连通性测试成功" : data.error || "测试失败")
+    showToast(response.ok ? "真实连通性测试成功" : data.error || "测试失败")
   }
 
   async function deleteModel(modelId: string) {
     const response = await fetch(`/api/settings/models/${modelId}`, { method: "DELETE" })
-    setToast(response.ok ? "模型已删除" : "模型删除失败")
-    router.refresh()
+    await refreshAndShow("模型已删除", response)
   }
 
   async function saveBinding(feature: ModelBinding["feature"], modelId: string) {
@@ -127,8 +147,7 @@ export function SettingsClient({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ feature, modelId })
     })
-    setToast(response.ok ? "功能配置已保存" : "功能配置保存失败")
-    router.refresh()
+    await refreshAndShow("功能配置已保存", response)
   }
 
   async function saveSchedule() {
@@ -137,8 +156,7 @@ export function SettingsClient({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ aggregateSchedule: schedule })
     })
-    setToast(response.ok ? "同步配置已保存" : "同步配置保存失败")
-    router.refresh()
+    await refreshAndShow("同步配置已保存", response)
   }
 
   async function saveReaderSettings() {
@@ -147,8 +165,7 @@ export function SettingsClient({
       headers: { "content-type": "application/json" },
       body: JSON.stringify(readerForm)
     })
-    setToast(response.ok ? "阅读设置已保存" : "阅读设置保存失败")
-    router.refresh()
+    await refreshAndShow("阅读设置已保存", response)
   }
 
   async function saveProfile() {
@@ -157,8 +174,7 @@ export function SettingsClient({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name })
     })
-    setToast(response.ok ? "账户信息已保存" : "账户信息保存失败")
-    router.refresh()
+    await refreshAndShow("账户信息已保存", response)
   }
 
   async function changePassword() {
@@ -167,7 +183,7 @@ export function SettingsClient({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ currentPassword, nextPassword })
     })
-    setToast(response.ok ? "密码修改成功" : "密码修改失败")
+    showToast(response.ok ? "密码修改成功" : "密码修改失败")
   }
 
   async function logout() {
@@ -188,7 +204,7 @@ export function SettingsClient({
   return (
     <div className="grid min-h-screen grid-cols-[220px_minmax(0,1fr)] bg-base">
       {toast ? <Toast title={toast} onClose={() => setToast("")} /> : null}
-      <aside className="border-r border-border bg-[#0D0D0F] p-4">
+      <aside className="border-r border-border bg-surface p-4">
         <div className="mb-6 text-lg font-semibold">设置</div>
         <div className="space-y-2">
           {sections.map((section) => {
@@ -212,6 +228,37 @@ export function SettingsClient({
       </aside>
 
       <div className="px-12 py-10">
+        {activeSection === "appearance" ? (
+          <div className="max-w-2xl space-y-6">
+            <h1 className="text-2xl font-semibold">外观设置</h1>
+            <Card className="space-y-4 p-6">
+              <div className="text-sm font-medium">主题模式</div>
+              <div className="grid grid-cols-3 gap-3">
+                {(
+                  [
+                    { key: "light", label: "明亮", icon: Sun },
+                    { key: "dark", label: "黑夜", icon: Moon },
+                    { key: "system", label: "跟随系统", icon: Monitor }
+                  ] as { key: AppTheme; label: string; icon: React.ComponentType<{ className?: string }> }[]
+                ).map(({ key, label, icon: Icon }) => (
+                  <button
+                    key={key}
+                    onClick={() => setAppTheme(key)}
+                    className={`flex flex-col items-center gap-2 rounded-md border px-4 py-5 text-sm transition-all ${
+                      appTheme === key
+                        ? "border-primary bg-primary-soft text-foreground"
+                        : "border-border bg-elevated text-secondary hover:border-primary/50 hover:text-foreground"
+                    }`}
+                  >
+                    <Icon className="h-5 w-5" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </Card>
+          </div>
+        ) : null}
+
         {activeSection === "model" ? (
           <div className="space-y-6">
             <h1 className="text-2xl font-semibold">模型配置</h1>

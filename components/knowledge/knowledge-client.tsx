@@ -1,12 +1,12 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
-import { ChevronDown, ChevronRight, FolderPlus, FilePlus, Mail } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { ChevronDown, ChevronRight, FolderPlus, FilePlus, Mail, Eye, Edit3 } from "lucide-react"
 import { marked } from "marked"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Textarea } from "@/components/ui/textarea"
+import { cn } from "@/src/lib/utils"
 import type { Highlight, Viewpoint } from "@/src/server/store/types"
 
 interface TreeNode extends Viewpoint {
@@ -17,6 +17,11 @@ type DraftNode = {
   parentId?: string
   isFolder: boolean
   placement: "root" | "child"
+}
+
+interface CursorPosition {
+  top: number
+  left: number
 }
 
 function buildTree(nodes: Viewpoint[]) {
@@ -63,11 +68,70 @@ export function KnowledgeClient({
   )
   const [draftNode, setDraftNode] = useState<DraftNode | null>(null)
   const [draftTitle, setDraftTitle] = useState("")
-  const saveTimer = useRef<NodeJS.Timeout | null>(null)
-  const prefTimer = useRef<NodeJS.Timeout | null>(null)
+  const [isPreviewMode, setIsPreviewMode] = useState(false)
+  const [cursorPosition, setCursorPosition] = useState<CursorPosition | null>(null)
+  const [currentLine, setCurrentLine] = useState("")
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const previewRef = useRef<HTMLDivElement>(null)
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prefTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 抽取可调整大小面板的拖拽逻辑
+  const createResizeHandler = useCallback(
+    (initialWidth: number, onResize: (width: number) => void) => {
+      return (event: React.MouseEvent) => {
+        const startX = event.clientX
+        const initial = initialWidth
+        const move = (moveEvent: MouseEvent) =>
+          onResize(Math.min(420, Math.max(180, initial + moveEvent.clientX - startX)))
+        const up = () => {
+          window.removeEventListener("mousemove", move)
+          window.removeEventListener("mouseup", up)
+        }
+        window.addEventListener("mousemove", move)
+        window.addEventListener("mouseup", up)
+      }
+    },
+    []
+  )
+
+  // 追踪光标位置并提取当前行
+  const updateCursorPosition = useCallback(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    const { selectionStart, value } = textarea
+    // 提取当前行
+    const beforeCursor = value.slice(0, selectionStart)
+    const lines = beforeCursor.split("\n")
+    const currentLineText = lines[lines.length - 1] || ""
+    setCurrentLine(currentLineText)
+
+    // 使用更精确的方法获取光标位置
+    const textLines = value.slice(0, selectionStart).split("\n")
+    const lineHeight = 28 // 约等于 text-sm leading-7
+    const charWidth = 8.4 // 约等于 monospace 字体的字符宽度
+
+    const top = textLines.length * lineHeight + 16 // 16px padding
+    const left = currentLineText.length * charWidth + 16
+
+    setCursorPosition({ top, left })
+  }, [])
+
+  // 防抖更新光标位置
+  const debouncedUpdateCursor = useCallback(() => {
+    requestAnimationFrame(() => {
+      updateCursorPosition()
+    })
+  }, [updateCursorPosition])
+
   const selected = viewpoints.find((item) => item.id === selectedId)
   const tree = useMemo(() => buildTree(viewpoints), [viewpoints])
   const previewHtml = useMemo(() => marked.parse(article), [article])
+  const inlinePreviewHtml = useMemo(() => {
+    if (!currentLine.trim()) return ""
+    return marked.parse(currentLine)
+  }, [currentLine])
 
   useEffect(() => {
     if (!selected) {
@@ -138,6 +202,14 @@ export function KnowledgeClient({
       }
     }
     setDraftNode(null)
+    setDraftTitle("")
+  }
+
+  function openRootDraft(isFolder: boolean) {
+    setDraftNode({
+      isFolder,
+      placement: "root"
+    })
     setDraftTitle("")
   }
 
@@ -225,14 +297,14 @@ export function KnowledgeClient({
 
   return (
     <div className="flex min-h-screen bg-base">
-      <aside className="relative border-r border-border bg-[#0D0D0F]" style={{ width: treeWidth }}>
+      <aside className="relative border-r border-border bg-reader-sidebar" style={{ width: treeWidth }}>
         <div className="flex h-14 items-center justify-between px-4">
           <span className="text-sm font-medium">观点树</span>
           <div className="flex gap-2">
-            <Button variant="ghost" onClick={() => openDraft(selectedId, true)}>
+            <Button variant="ghost" onClick={() => openRootDraft(true)} title="新建顶层分组">
               <FolderPlus className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" onClick={() => openDraft(selectedId, false)}>
+            <Button variant="ghost" onClick={() => openRootDraft(false)} title="新建顶层观点">
               <FilePlus className="h-4 w-4" />
             </Button>
           </div>
@@ -243,18 +315,7 @@ export function KnowledgeClient({
         </div>
         <div
           className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-primary/30"
-          onMouseDown={(event) => {
-            const startX = event.clientX
-            const initial = treeWidth
-            const move = (moveEvent: MouseEvent) =>
-              setTreeWidth(Math.min(420, Math.max(180, initial + moveEvent.clientX - startX)))
-            const up = () => {
-              window.removeEventListener("mousemove", move)
-              window.removeEventListener("mouseup", up)
-            }
-            window.addEventListener("mousemove", move)
-            window.addEventListener("mouseup", up)
-          }}
+          onMouseDown={createResizeHandler(treeWidth, setTreeWidth)}
         />
       </aside>
 
@@ -284,52 +345,112 @@ export function KnowledgeClient({
         </div>
         <div
           className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-primary/30"
-          onMouseDown={(event) => {
-            const startX = event.clientX
-            const initial = listWidth
-            const move = (moveEvent: MouseEvent) =>
-              setListWidth(Math.min(420, Math.max(220, initial + moveEvent.clientX - startX)))
-            const up = () => {
-              window.removeEventListener("mousemove", move)
-              window.removeEventListener("mouseup", up)
-            }
-            window.addEventListener("mousemove", move)
-            window.addEventListener("mouseup", up)
-          }}
+          onMouseDown={createResizeHandler(listWidth, setListWidth)}
         />
       </aside>
 
       <main className="min-w-0 flex-1">
         <div className="flex h-14 items-center justify-between border-b border-border px-8">
           <div className="text-lg font-semibold">{selected?.title ?? "知识文章"}</div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setIsPreviewMode(!isPreviewMode)}
+              className={cn(isPreviewMode && "bg-elevated")}
+            >
+              {isPreviewMode ? (
+                <>
+                  <Edit3 className="mr-2 h-4 w-4" />
+                  编辑
+                </>
+              ) : (
+                <>
+                  <Eye className="mr-2 h-4 w-4" />
+                  预览
+                </>
+              )}
+            </Button>
             <Button variant="ghost">
               <Mail className="mr-2 h-4 w-4" />
               发送邮件
             </Button>
           </div>
         </div>
-        <div className="grid h-[calc(100vh-56px)] grid-cols-2 gap-0">
-          <div className="border-r border-border p-6">
-            <div className="mb-3 text-xs uppercase tracking-[0.24em] text-secondary">Markdown</div>
-            <Textarea
-              className="h-[calc(100vh-120px)] resize-none border-transparent bg-transparent px-0 py-0 font-mono text-sm leading-7"
-              value={article}
-              onChange={(event) => setArticle(event.target.value)}
-            />
-          </div>
-          <div className="overflow-y-auto p-6">
-            <div className="mb-3 text-xs uppercase tracking-[0.24em] text-secondary">Preview</div>
-            <div
-              className="prose-lumina max-w-none"
-              dangerouslySetInnerHTML={{ __html: previewHtml }}
-            />
-            <div className="mt-8 flex flex-wrap gap-2">
-              {selected?.relatedBookIds.map((item) => (
-                <Badge key={item}>{item.slice(0, 8)}</Badge>
-              ))}
+        <div className="relative h-[calc(100vh-56px)] overflow-hidden">
+          {isPreviewMode ? (
+            <div className="h-full overflow-y-auto p-6">
+              <div
+                className="prose-lumina max-w-none"
+                dangerouslySetInnerHTML={{ __html: previewHtml }}
+              />
+              <div className="mt-8 flex flex-wrap gap-2">
+                {selected?.relatedBookIds.map((item) => (
+                  <Badge key={item}>{item.slice(0, 8)}</Badge>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="relative h-full p-6">
+              <div className="absolute inset-0 overflow-y-auto">
+                <div className="relative min-h-full font-mono text-sm leading-7">
+                  {/* 即时行内预览层 */}
+                  <div
+                    ref={previewRef}
+                    className="pointer-events-none absolute text-transparent"
+                    aria-hidden="true"
+                  >
+                    <span>{article.slice(0, 0)}</span>
+                    {/* 占位符保持行高 */}
+                  </div>
+
+                  {/* 编辑区域 */}
+                  <textarea
+                    ref={textareaRef}
+                    className="absolute inset-0 h-full w-full resize-none border-none bg-transparent px-0 py-0 font-mono text-sm leading-7 text-transparent caret-foreground"
+                    value={article}
+                    onChange={(event) => setArticle(event.target.value)}
+                    onSelect={debouncedUpdateCursor}
+                    onKeyUp={debouncedUpdateCursor}
+                    onClick={debouncedUpdateCursor}
+                    spellCheck={false}
+                  />
+
+                  {/* 渲染层（显示背景 Markdown 效果） */}
+                  <div
+                    className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap font-mono text-sm leading-7 text-muted/30"
+                    aria-hidden="true"
+                  >
+                    {article.split("\n").map((line, idx) => (
+                      <div
+                        key={idx}
+                        className="min-h-[28px]"
+                        dangerouslySetInnerHTML={{
+                          __html: marked.parse(line || " ") as string
+                        }}
+                      />
+                    ))}
+                  </div>
+
+                  {/* 即时行预览浮动层 - 在光标位置显示当前行的 Markdown 渲染 */}
+                  {cursorPosition && currentLine.trim() && (
+                    <div
+                      className="pointer-events-none absolute z-10 rounded-md border border-border/50 bg-elevated/95 p-2 shadow-lg backdrop-blur-sm"
+                      style={{
+                        top: `${cursorPosition.top + 24}px`,
+                        left: `${cursorPosition.left}px`,
+                        maxWidth: "400px"
+                      }}
+                    >
+                      <div
+                        className="prose-lumina prose-lumina-sm max-w-none text-sm"
+                        dangerouslySetInnerHTML={{ __html: inlinePreviewHtml }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>

@@ -7,6 +7,7 @@ FROM m.daocloud.io/docker.io/library/node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN mkdir -p /app/public /app/storage
 RUN npm run build
 
 FROM m.daocloud.io/docker.io/library/node:20-alpine AS runner
@@ -19,7 +20,6 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/src ./src
-COPY --from=builder /app/storage ./storage
-RUN mkdir -p /app/data/app
+RUN mkdir -p /app/storage /app/data/app
 EXPOSE 20261
 CMD ["node", "server.js"]

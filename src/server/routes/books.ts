@@ -22,7 +22,8 @@ import {
 import {
   getBookObjectUrl,
   removeBookObject,
-  uploadBookObject
+  uploadBookObject,
+  uploadCoverImage
 } from "@/src/server/services/books/minio"
 
 const app = new Hono<AppEnv>()
@@ -90,6 +91,28 @@ app.post("/upload", async (c) => {
   })
 
   const filePath = `minio://${uploaded.bucket}/${uploaded.objectName}`
+
+  let coverPath = ""
+  let coverImageBase64 = hardParsed.coverImageBase64
+
+  if (!coverImageBase64 && hardParsed.isbn) {
+    const { fetchCoverFromOpenLibrary } = await import("@/src/server/services/books/metadata")
+    coverImageBase64 = await fetchCoverFromOpenLibrary(hardParsed.isbn)
+  }
+
+  if (coverImageBase64) {
+    try {
+      const coverUploaded = await uploadCoverImage({
+        userId: c.get("userId"),
+        bookId,
+        imageBase64: coverImageBase64
+      })
+      coverPath = `minio://${coverUploaded.bucket}/${coverUploaded.objectName}`
+    } catch {
+      console.error("Failed to upload cover image")
+    }
+  }
+
   const book = await createBookInStore({
     id: bookId,
     userId: c.get("userId"),
@@ -97,7 +120,7 @@ app.post("/upload", async (c) => {
     author: metadata.author,
     format,
     filePath,
-    coverPath: "",
+    coverPath,
     totalPages: metadata.totalPages,
     readProgress: 0,
     lastReadAt: new Date().toISOString(),

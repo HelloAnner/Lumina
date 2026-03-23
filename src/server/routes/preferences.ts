@@ -16,7 +16,9 @@ app.put("/ui", async (c) => {
   const payload = z
     .object({
       knowledgeTreeWidth: z.number().min(180).max(420).optional(),
-      knowledgeListWidth: z.number().min(220).max(420).optional()
+      knowledgeListWidth: z.number().min(220).max(420).optional(),
+      readerTocWidth: z.number().min(200).max(420).optional(),
+      readerHighlightsWidth: z.number().min(260).max(480).optional()
     })
     .parse(await c.req.json())
   return c.json({ item: await saveUiPreferences(c.get("userId"), payload) })

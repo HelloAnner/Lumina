@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto"
 import { repository } from "@/src/server/repositories"
+import {
+  decodeHtmlEntities,
+  normalizeStoredSectionContent
+} from "@/src/lib/book-content"
 import { ensureBookSchema, getBookPool } from "@/src/server/services/books/postgres"
 import type { Book } from "@/src/server/store/types"
 
@@ -18,10 +22,10 @@ function sanitizeText(value: unknown, fallback = "") {
           )
         }
       } catch {
-        return trimmed
+        return decodeHtmlEntities(trimmed)
       }
     }
-    return trimmed
+    return decodeHtmlEntities(trimmed)
   }
   if (value && typeof value === "object") {
     return sanitizeText(
@@ -76,10 +80,14 @@ function rowToBook(row: any): Book {
   const content = Array.isArray(row.content) ? row.content : []
   const normalizedContent = content.map((item: any) => {
     const title = sanitizeText(item?.title, "未命名章节")
+    const normalizedSectionContent =
+      normalizeStoredSectionContent(sanitizeText(item?.content, "")) ||
+      "当前章节暂无可渲染文本。"
     return {
       ...item,
+      content: normalizedSectionContent,
       title: isGenericTitle(title)
-        ? inferTitleFromContent(item?.content ?? "", title)
+        ? inferTitleFromContent(normalizedSectionContent, title)
         : title
     }
   })

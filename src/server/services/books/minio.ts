@@ -90,3 +90,30 @@ export async function getBookObjectUrl(
   }
   return getClient(runtimeConfig).presignedGetObject(bucket, objectName, 60 * 15)
 }
+
+export async function uploadCoverImage(params: {
+  userId: string
+  bookId: string
+  imageBase64: string
+  runtimeConfig?: StorageRuntimeConfig
+}) {
+  const bucket = params.runtimeConfig?.bucket || process.env.MINIO_BUCKET || DEFAULT_BUCKET
+  await ensureBucket(bucket, params.runtimeConfig)
+
+  const base64Data = params.imageBase64.replace(/^data:image\/\w+;base64,/, "")
+  const buffer = Buffer.from(base64Data, "base64")
+
+  const extMatch = params.imageBase64.match(/^data:image\/(\w+);base64,/)
+  const ext = extMatch ? extMatch[1] : "jpg"
+  const contentType = `image/${ext === "jpg" ? "jpeg" : ext}`
+
+  const objectName = `covers/${params.userId}/${params.bookId}.${ext}`
+  await getClient(params.runtimeConfig).putObject(bucket, objectName, buffer, buffer.length, {
+    "Content-Type": contentType
+  })
+
+  return {
+    bucket,
+    objectName
+  }
+}

@@ -1,6 +1,10 @@
 import path from "node:path"
 import JSZip from "jszip"
 import { XMLParser } from "fast-xml-parser"
+import {
+  decodeHtmlEntities,
+  extractReadableTextFromHtml
+} from "@/src/lib/book-content"
 import type { BookFormat, ReaderSection } from "@/src/server/store/types"
 
 interface ParsedEntries {
@@ -20,6 +24,9 @@ export interface HardParsedBookMetadata {
   totalPages: number
   synopsis: string
   toc: { id: string; title: string; href?: string; pageIndex?: number }[]
+  isbn?: string
+  uuid?: string
+  coverImageBase64?: string
 }
 
 interface DeriveBookMetadataInput {
@@ -70,19 +77,13 @@ function ensureArray<T>(value: T | T[] | undefined): T[] {
 }
 
 function stripHtml(html: string) {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
+  return extractReadableTextFromHtml(html)
 }
 
 function deriveSectionTitle(html: string, href: string, index: number) {
   const matched = html.match(/<h1[^>]*>(.*?)<\/h1>/i) ?? html.match(/<title[^>]*>(.*?)<\/title>/i)
   if (matched?.[1]) {
-    return stripHtml(matched[1])
+    return decodeHtmlEntities(matched[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())
   }
   const fileName = path.basename(href, path.extname(href))
   return fileName || `Chapter ${index + 1}`
@@ -163,6 +164,32 @@ function extractTitlesFromContentsSection(content: string) {
   return [...chapterMatches, ...appendixTitles]
 }
 
+function extractIdentifiers(metadata: any): { isbn?: string; uuid?: string } {
+  const identifiers = ensureArray(metadata?.identifier ?? metadata?.["dc:identifier"])
+  let isbn: string | undefined
+  let uuid: string | undefined
+
+  for (const id of identifiers) {
+    const value = normalizeTextValue(id)
+    if (!value) continue
+
+    const idObj = typeof id === "object" ? id : {}
+    const scheme = (idObj?.scheme ?? idObj?.["opf:scheme"] ?? "").toLowerCase()
+
+    if (scheme === "isbn" || /\b\d{10,13}\b/.test(value.replace(/-/g, ""))) {
+      isbn = value.replace(/-/g, "")
+    } else if (scheme === "uuid" || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+      uuid = value
+    } else if (!isbn && /\b\d{10,13}\b/.test(value)) {
+      isbn = value.replace(/-/g, "")
+    } else if (!uuid && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+      uuid = value
+    }
+  }
+
+  return { isbn, uuid }
+}
+
 function deriveFallbackTitle(content: string, href: string, index: number) {
   const firstSentence = content
     .split(/(?<=[。！？.!?])/)
@@ -197,6 +224,8 @@ export function parseEpubMetadataFromEntries(entries: ParsedEntries): HardParsed
     .map((item) => normalizeTextValue(item))
     .filter(Boolean)
     .slice(0, 6)
+
+  const { isbn, uuid } = extractIdentifiers(metadata)
 
   const sections: ReaderSection[] = []
   const toc: { id: string; title: string; href?: string; pageIndex?: number; level?: number }[] = []
@@ -271,7 +300,9 @@ export function parseEpubMetadataFromEntries(entries: ParsedEntries): HardParsed
     sections,
     totalPages: Math.max(sections.length, 1),
     synopsis: createSynopsis(title, sections),
-    toc
+    toc,
+    isbn,
+    uuid
   }
 }
 
@@ -353,6 +384,30 @@ export async function extractEpubMetadata(
       })
   )
 
+  const opf = xmlParser.parse(opfXml)
+  const manifestItems = ensureArray(opf?.package?.manifest?.item)
+  const manifestMap = new Map(
+    manifestItems.map((item: Record<string, string>) => [item.id, item])
+  )
+
+  const coverItem = manifestItems.find(
+    (item: Record<string, string>) =>
+      item.properties?.includes("cover-image") ||
+      /cover/i.test(item.id)
+  )
+  let coverImageBase64: string | undefined
+  if (coverItem?.href) {
+    const opfDir = path.posix.dirname(opfPath)
+    const coverPath = path.posix.join(opfDir, coverItem.href)
+    const coverFile = zip.file(coverPath)
+    if (coverFile) {
+      const coverBuffer = await coverFile.async("nodebuffer")
+      const ext = path.extname(coverItem.href).toLowerCase()
+      const mimeType = ext === ".png" ? "image/png" : ext === ".gif" ? "image/gif" : "image/jpeg"
+      coverImageBase64 = `data:${mimeType};base64,${coverBuffer.toString("base64")}`
+    }
+  }
+
   const hardParsed = parseEpubMetadataFromEntries({
     containerXml,
     opfXml,
@@ -360,6 +415,10 @@ export async function extractEpubMetadata(
     navXml,
     ncxXml
   })
+
+  if (coverImageBase64) {
+    hardParsed.coverImageBase64 = coverImageBase64
+  }
 
   if (hardParsed.sections.length === 0) {
     hardParsed.sections.push({
@@ -453,5 +512,32 @@ export async function deriveBookMetadata(input: DeriveBookMetadataInput) {
       parseMode: "hard" as const,
       toastMessage: "模型解析失败，已回退为硬解析"
     }
+  }
+}
+
+/**
+ * 通过 Open Library API 获取封面图片
+ * @param isbn ISBN 号
+ * @returns base64 编码的图片数据或 undefined
+ */
+export async function fetchCoverFromOpenLibrary(isbn: string): Promise<string | undefined> {
+  if (!isbn || isbn.length < 10) {
+    return undefined
+  }
+
+  try {
+    const cleanIsbn = isbn.replace(/-/g, "")
+    const url = `https://covers.openlibrary.org/b/isbn/${cleanIsbn}-L.jpg`
+
+    const response = await fetch(url, { method: "GET" })
+    if (!response.ok || !response.headers.get("content-type")?.startsWith("image/")) {
+      return undefined
+    }
+
+    const buffer = await response.arrayBuffer()
+    const contentType = response.headers.get("content-type") || "image/jpeg"
+    return `data:${contentType};base64,${Buffer.from(buffer).toString("base64")}`
+  } catch {
+    return undefined
   }
 }

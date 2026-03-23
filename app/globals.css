@@ -2,8 +2,40 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 暗色主题（默认） */
 :root {
   color-scheme: dark;
+  --color-base: #0A0A0B;
+  --color-surface: #111113;
+  --color-elevated: #1A1A1E;
+  --color-overlay: #222226;
+  --color-border: #27272A;
+  --color-border-subtle: #18181B;
+  --color-foreground: #FAFAFA;
+  --color-secondary: #A1A1AA;
+  --color-muted: #71717A;
+  --color-prose-body: #d4d4d8;
+  --color-reader-sidebar: #0D0D0F;
+  --color-reader-card: #111113;
+  --color-reader-text: #F5F5F5;
+}
+
+/* 亮色主题 */
+.light {
+  color-scheme: light;
+  --color-base: #FFFFFF;
+  --color-surface: #F4F4F6;
+  --color-elevated: #EBEBEF;
+  --color-overlay: #E2E2E8;
+  --color-border: #D4D4D8;
+  --color-border-subtle: #E8E8EC;
+  --color-foreground: #09090B;
+  --color-secondary: #52525B;
+  --color-muted: #71717A;
+  --color-prose-body: #3f3f46;
+  --color-reader-sidebar: #F4F4F6;
+  --color-reader-card: #FFFFFF;
+  --color-reader-text: #18181B;
 }
 
 * {
@@ -14,8 +46,8 @@ html,
 body {
   margin: 0;
   min-height: 100%;
-  background: #0a0a0b;
-  color: #fafafa;
+  background: var(--color-base);
+  color: var(--color-foreground);
   font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
@@ -41,18 +73,55 @@ select {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: var(--color-border);
   border-radius: 999px;
 }
 
 .prose-lumina h1,
 .prose-lumina h2,
 .prose-lumina h3 {
-  color: #fafafa;
+  color: var(--color-foreground);
   font-weight: 600;
 }
 
 .prose-lumina p {
-  color: #d4d4d8;
+  color: var(--color-prose-body);
   line-height: 1.75;
+}
+
+/* 行内预览样式 */
+.prose-lumina-sm h1,
+.prose-lumina-sm h2,
+.prose-lumina-sm h3 {
+  color: var(--color-foreground);
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.prose-lumina-sm p {
+  color: var(--color-prose-body);
+  line-height: 1.5;
+  font-size: 0.875rem;
+}
+
+.prose-lumina-sm code {
+  background: var(--color-overlay);
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.8rem;
+}
+
+.prose-lumina-sm pre {
+  background: var(--color-overlay);
+  padding: 0.5rem;
+  border-radius: 0.375rem;
+  overflow-x: auto;
+  font-size: 0.8rem;
+}
+
+.prose-lumina-sm ul,
+.prose-lumina-sm ol {
+  padding-left: 1.25rem;
+  color: var(--color-prose-body);
+  font-size: 0.875rem;
 }
