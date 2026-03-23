@@ -84,9 +84,76 @@ select {
   font-weight: 600;
 }
 
+.prose-lumina h1 {
+  margin: 0 0 1.25rem;
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+.prose-lumina h2 {
+  margin: 2rem 0 1rem;
+  font-size: 1.35rem;
+  line-height: 1.3;
+}
+
+.prose-lumina h3 {
+  margin: 1.5rem 0 0.75rem;
+  font-size: 1.05rem;
+}
+
 .prose-lumina p {
   color: var(--color-prose-body);
   line-height: 1.75;
+  margin: 0 0 1rem;
+}
+
+.prose-lumina ul,
+.prose-lumina ol {
+  margin: 0 0 1rem;
+  padding-left: 1.5rem;
+  color: var(--color-prose-body);
+}
+
+.prose-lumina li {
+  margin: 0.35rem 0;
+}
+
+.prose-lumina blockquote {
+  margin: 1.25rem 0;
+  border-left: 3px solid rgba(139, 92, 246, 0.6);
+  background: rgba(139, 92, 246, 0.08);
+  padding: 0.9rem 1rem;
+  color: var(--color-prose-body);
+  border-radius: 0 0.75rem 0.75rem 0;
+}
+
+.prose-lumina hr {
+  margin: 1.75rem 0;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.prose-lumina code {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.35rem;
+  font-size: 0.9em;
+  color: #f5d08f;
+}
+
+.prose-lumina pre {
+  margin: 1rem 0;
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0b0c0e;
+  padding: 1rem 1.1rem;
+  border-radius: 1rem;
+}
+
+.prose-lumina pre code {
+  background: transparent;
+  padding: 0;
+  color: #d4d4d8;
 }
 
 /* 行内预览样式 */

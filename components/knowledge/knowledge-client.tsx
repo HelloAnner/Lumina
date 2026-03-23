@@ -2,20 +2,28 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
+  Bold,
+  Code2,
   ChevronDown,
   ChevronRight,
   FilePlus,
+  GripVertical,
+  Heading1,
+  Heading2,
+  List,
+  ListOrdered,
   Mail,
-  Eye,
-  Edit3,
-  GripVertical
+  Quote,
+  Trash2,
+  X
 } from "lucide-react"
 import { marked } from "marked"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { Textarea } from "@/components/ui/textarea"
 import {
   buildViewpointTree,
+  collectViewpointSubtreeIds,
   moveViewpointNode,
   serializeViewpointOrder,
   type ViewpointDropTarget,
@@ -29,11 +37,13 @@ type DraftNode = {
   placement: "root" | "child"
 }
 
-interface CursorPosition {
-  top: number
-  left: number
-}
-
+/**
+ * 知识库页面客户端容器
+ *
+ * @author Anner
+ * @since 0.1.0
+ * Created on 2026/3/23
+ */
 export function KnowledgeClient({
   initialViewpoints,
   initialSelected,
@@ -52,7 +62,7 @@ export function KnowledgeClient({
   const [selectedId, setSelectedId] = useState(initialSelected?.id ?? initialViewpoints[0]?.id)
   const [article, setArticle] = useState(initialSelected?.articleContent ?? "")
   const [treeWidth, setTreeWidth] = useState(initialWidths.knowledgeTreeWidth)
-  const [listWidth, setListWidth] = useState(initialWidths.knowledgeListWidth)
+  const [relationWidth, setRelationWidth] = useState(initialWidths.knowledgeListWidth)
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(initialViewpoints.map((item) => [item.id, true]))
   )
@@ -61,24 +71,31 @@ export function KnowledgeClient({
   )
   const [draftNode, setDraftNode] = useState<DraftNode | null>(null)
   const [draftTitle, setDraftTitle] = useState("")
-  const [isPreviewMode, setIsPreviewMode] = useState(false)
-  const [cursorPosition, setCursorPosition] = useState<CursorPosition | null>(null)
-  const [currentLine, setCurrentLine] = useState("")
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<ViewpointDropTarget | null>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const previewRef = useRef<HTMLDivElement>(null)
+  const [pendingNotes, setPendingNotes] = useState(unconfirmed)
+  const [loadingPendingNotes, setLoadingPendingNotes] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const editorRef = useRef<HTMLTextAreaElement>(null)
+  const previewScrollRef = useRef<HTMLDivElement>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prefTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const syncingScrollRef = useRef(false)
 
-  // 抽取可调整大小面板的拖拽逻辑
+  const selected = viewpoints.find((item) => item.id === selectedId)
+  const tree = useMemo(() => buildViewpointTree(viewpoints), [viewpoints])
+  const previewHtml = useMemo(() => marked.parse(article), [article])
+
   const createResizeHandler = useCallback(
-    (initialWidth: number, onResize: (width: number) => void) => {
+    (initialWidth: number, onResize: (width: number) => void, reverse = false) => {
       return (event: React.MouseEvent) => {
+        event.preventDefault()
         const startX = event.clientX
-        const initial = initialWidth
-        const move = (moveEvent: MouseEvent) =>
-          onResize(Math.min(420, Math.max(180, initial + moveEvent.clientX - startX)))
+        const move = (moveEvent: MouseEvent) => {
+          const delta = moveEvent.clientX - startX
+          const nextWidth = reverse ? initialWidth - delta : initialWidth + delta
+          onResize(Math.min(420, Math.max(180, nextWidth)))
+        }
         const up = () => {
           window.removeEventListener("mousemove", move)
           window.removeEventListener("mouseup", up)
@@ -89,44 +106,6 @@ export function KnowledgeClient({
     },
     []
   )
-
-  // 追踪光标位置并提取当前行
-  const updateCursorPosition = useCallback(() => {
-    const textarea = textareaRef.current
-    if (!textarea) return
-
-    const { selectionStart, value } = textarea
-    // 提取当前行
-    const beforeCursor = value.slice(0, selectionStart)
-    const lines = beforeCursor.split("\n")
-    const currentLineText = lines[lines.length - 1] || ""
-    setCurrentLine(currentLineText)
-
-    // 使用更精确的方法获取光标位置
-    const textLines = value.slice(0, selectionStart).split("\n")
-    const lineHeight = 28 // 约等于 text-sm leading-7
-    const charWidth = 8.4 // 约等于 monospace 字体的字符宽度
-
-    const top = textLines.length * lineHeight + 16 // 16px padding
-    const left = currentLineText.length * charWidth + 16
-
-    setCursorPosition({ top, left })
-  }, [])
-
-  // 防抖更新光标位置
-  const debouncedUpdateCursor = useCallback(() => {
-    requestAnimationFrame(() => {
-      updateCursorPosition()
-    })
-  }, [updateCursorPosition])
-
-  const selected = viewpoints.find((item) => item.id === selectedId)
-  const tree = useMemo(() => buildViewpointTree(viewpoints), [viewpoints])
-  const previewHtml = useMemo(() => marked.parse(article), [article])
-  const inlinePreviewHtml = useMemo(() => {
-    if (!currentLine.trim()) return ""
-    return marked.parse(currentLine)
-  }, [currentLine])
 
   const persistViewpointOrder = useCallback(async (items: Viewpoint[]) => {
     const updates = serializeViewpointOrder(items)
@@ -178,6 +157,35 @@ export function KnowledgeClient({
   )
 
   useEffect(() => {
+    if (!selectedId) {
+      setPendingNotes([])
+      return
+    }
+    let cancelled = false
+    setLoadingPendingNotes(true)
+    fetch(`/api/viewpoints/${selectedId}/highlights`)
+      .then((response) => response.json())
+      .then((data) => {
+        if (!cancelled) {
+          setPendingNotes(data.items ?? [])
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPendingNotes([])
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingPendingNotes(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedId])
+
+  useEffect(() => {
     if (!selected) {
       return
     }
@@ -190,7 +198,7 @@ export function KnowledgeClient({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ articleContent: article })
       })
-    }, 900)
+    }, 500)
     return () => {
       if (saveTimer.current) {
         clearTimeout(saveTimer.current)
@@ -208,7 +216,7 @@ export function KnowledgeClient({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           knowledgeTreeWidth: Math.round(treeWidth),
-          knowledgeListWidth: Math.round(listWidth)
+          knowledgeListWidth: Math.round(relationWidth)
         })
       })
     }, 180)
@@ -217,7 +225,7 @@ export function KnowledgeClient({
         clearTimeout(prefTimer.current)
       }
     }
-  }, [treeWidth, listWidth])
+  }, [relationWidth, treeWidth])
 
   async function submitDraft() {
     if (!draftNode || !draftTitle.trim()) {
@@ -258,6 +266,166 @@ export function KnowledgeClient({
       setExpanded((current) => ({ ...current, [parentId]: true }))
     }
   }
+
+  async function deleteViewpoint(viewpointId: string) {
+    const subtreeIds = collectViewpointSubtreeIds(viewpoints, viewpointId)
+    if (!subtreeIds.length) {
+      return
+    }
+    const childCount = Math.max(0, subtreeIds.length - 1)
+    const confirmed = window.confirm(
+      childCount > 0
+        ? `确认删除该观点及其 ${childCount} 个子观点吗？`
+        : "确认删除该观点吗？"
+    )
+    if (!confirmed) {
+      return
+    }
+
+    const nextViewpoints = viewpoints.filter((item) => !subtreeIds.includes(item.id))
+    const nextSelected = nextViewpoints[0]
+    const shouldResetSelection =
+      (selectedId && subtreeIds.includes(selectedId)) ||
+      (focusedParentId && subtreeIds.includes(focusedParentId))
+
+    setDeletingId(viewpointId)
+    setViewpoints(nextViewpoints)
+    if (selectedId && subtreeIds.includes(selectedId)) {
+      setSelectedId(nextSelected?.id)
+      setArticle(nextSelected?.articleContent ?? "")
+    }
+    if (shouldResetSelection) {
+      setFocusedParentId(nextSelected?.id ?? null)
+    }
+    if (draftNode?.parentId && subtreeIds.includes(draftNode.parentId)) {
+      setDraftNode(null)
+      setDraftTitle("")
+    }
+
+    try {
+      await Promise.all(
+        [...subtreeIds]
+          .reverse()
+          .map((id) =>
+            fetch(`/api/viewpoints/${id}`, {
+              method: "DELETE"
+            })
+          )
+      )
+    } catch {
+      setViewpoints(viewpoints)
+      setSelectedId(selectedId)
+      setFocusedParentId(focusedParentId)
+      setArticle(selected?.articleContent ?? article)
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  function syncPreviewScroll(scrollTop: number, scrollHeight: number, clientHeight: number) {
+    const preview = previewScrollRef.current
+    if (!preview) {
+      return
+    }
+    const maxEditorScroll = Math.max(1, scrollHeight - clientHeight)
+    const ratio = scrollTop / maxEditorScroll
+    const maxPreviewScroll = Math.max(0, preview.scrollHeight - preview.clientHeight)
+    syncingScrollRef.current = true
+    preview.scrollTop = maxPreviewScroll * ratio
+    window.requestAnimationFrame(() => {
+      syncingScrollRef.current = false
+    })
+  }
+
+  function insertMarkdown(
+    builder: (selectedText: string) => { text: string; cursorOffset?: number }
+  ) {
+    const textarea = editorRef.current
+    if (!textarea) {
+      return
+    }
+    const selectionStart = textarea.selectionStart
+    const selectionEnd = textarea.selectionEnd
+    const selectedText = article.slice(selectionStart, selectionEnd)
+    const next = builder(selectedText)
+    const nextArticle =
+      article.slice(0, selectionStart) + next.text + article.slice(selectionEnd)
+    setArticle(nextArticle)
+    window.requestAnimationFrame(() => {
+      const cursorPosition =
+        selectionStart + (typeof next.cursorOffset === "number" ? next.cursorOffset : next.text.length)
+      textarea.focus()
+      textarea.setSelectionRange(cursorPosition, cursorPosition)
+    })
+  }
+
+  const toolbarItems = [
+    {
+      label: "H1",
+      icon: Heading1,
+      action: () =>
+        insertMarkdown((selectedText) => ({
+          text: `# ${selectedText || "一级标题"}`,
+          cursorOffset: selectedText ? undefined : 2
+        }))
+    },
+    {
+      label: "H2",
+      icon: Heading2,
+      action: () =>
+        insertMarkdown((selectedText) => ({
+          text: `## ${selectedText || "二级标题"}`,
+          cursorOffset: selectedText ? undefined : 3
+        }))
+    },
+    {
+      label: "加粗",
+      icon: Bold,
+      action: () =>
+        insertMarkdown((selectedText) => ({
+          text: `**${selectedText || "重点内容"}**`,
+          cursorOffset: selectedText ? undefined : 2
+        }))
+    },
+    {
+      label: "引用",
+      icon: Quote,
+      action: () =>
+        insertMarkdown((selectedText) => ({
+          text: `> ${selectedText || "引用内容"}`,
+          cursorOffset: selectedText ? undefined : 2
+        }))
+    },
+    {
+      label: "列表",
+      icon: List,
+      action: () =>
+        insertMarkdown((selectedText) => ({
+          text: `- ${selectedText || "列表项"}`,
+          cursorOffset: selectedText ? undefined : 2
+        }))
+    },
+    {
+      label: "有序",
+      icon: ListOrdered,
+      action: () =>
+        insertMarkdown((selectedText) => ({
+          text: `1. ${selectedText || "列表项"}`,
+          cursorOffset: selectedText ? undefined : 3
+        }))
+    },
+    {
+      label: "代码",
+      icon: Code2,
+      action: () =>
+        insertMarkdown((selectedText) => ({
+          text: selectedText
+            ? `\`\`\`\n${selectedText}\n\`\`\``
+            : "```\n代码片段\n```",
+          cursorOffset: selectedText ? undefined : 4
+        }))
+    }
+  ] as const
 
   function renderDraft(depth: number) {
     if (!draftNode) {
@@ -325,6 +493,7 @@ export function KnowledgeClient({
     const hasChildren = node.children.length > 0
     const showDraftHere = draftNode?.parentId === node.id && draftNode.placement === "child"
     const insideActive = dropTarget?.type === "inside" && dropTarget.targetId === node.id
+
     return (
       <div key={node.id}>
         {renderDropZone(depth, { type: "before", targetId: node.id })}
@@ -368,7 +537,7 @@ export function KnowledgeClient({
             })
           }}
         >
-          <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+          <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted opacity-0 transition-opacity group-hover:opacity-100" />
           {hasChildren ? (
             <span
               className="inline-flex h-5 w-5 items-center justify-center rounded hover:bg-overlay"
@@ -387,14 +556,27 @@ export function KnowledgeClient({
             <span className="inline-block h-5 w-5" />
           )}
           <span className="truncate font-medium">{node.title}</span>
-          {node.highlightCount > 0 && (
-            <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-elevated text-muted">
-              {node.highlightCount}
-            </span>
-          )}
+          <span className="ml-auto rounded-full bg-elevated px-1.5 py-0.5 text-[10px] text-muted">
+            {node.highlightCount}
+          </span>
+          <span
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted opacity-0 transition hover:bg-destructive/10 hover:text-red-300 group-hover:opacity-100"
+            onClick={(event) => {
+              event.stopPropagation()
+              void deleteViewpoint(node.id)
+            }}
+          >
+            {deletingId === node.id ? (
+              <X className="h-3.5 w-3.5 animate-pulse" />
+            ) : (
+              <Trash2 className="h-3.5 w-3.5" />
+            )}
+          </span>
         </button>
         {showDraftHere ? renderDraft(depth + 1) : null}
-        {hasChildren && isExpanded ? node.children.map((child) => renderNode(child, depth + 1)) : null}
+        {hasChildren && isExpanded
+          ? node.children.map((child) => renderNode(child, depth + 1))
+          : null}
         {renderDropZone(depth, { type: "after", targetId: node.id })}
       </div>
     )
@@ -406,7 +588,7 @@ export function KnowledgeClient({
         className="relative border-r border-border/60 bg-reader-sidebar"
         style={{ width: treeWidth }}
       >
-        <div className="flex h-14 items-center justify-between px-4 border-b border-border/60">
+        <div className="flex h-14 items-center justify-between border-b border-border/60 px-4">
           <span className="text-sm font-semibold tracking-tight">观点树</span>
           <Button
             variant="ghost"
@@ -429,7 +611,7 @@ export function KnowledgeClient({
               setDraftNode(null)
             }}
           >
-            <span className="h-4 w-4 flex items-center justify-center text-muted">#</span>
+            <span className="flex h-4 w-4 items-center justify-center text-muted">#</span>
             根目录
           </button>
           {draftNode?.placement === "root" ? renderDraft(0) : null}
@@ -447,147 +629,129 @@ export function KnowledgeClient({
         />
       </aside>
 
-      <aside className="relative border-r border-border/60 bg-surface" style={{ width: listWidth }}>
-        <div className="border-b border-border/60 px-4 py-4">
-          <div className="text-sm font-medium text-foreground">{selected?.title ?? "未选择观点"}</div>
-          <div className="mt-1 text-xs text-muted">Markdown 即时渲染</div>
-        </div>
-        <div className="p-4">
-          <Card className="p-4 border-border/60">
-            <div className="flex items-center gap-2 text-xs text-muted mb-3">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500/60" />
-              待确认弱关联
-            </div>
-            <div className="space-y-2">
-              {unconfirmed.length === 0 ? (
-                <div className="text-xs text-muted py-2">暂无待确认划线</div>
-              ) : (
-                unconfirmed.map((item) => (
-                  <div key={item.id} className="rounded-lg border border-border/60 bg-elevated/50 p-3 transition-colors hover:border-border">
-                    <p className="text-sm text-foreground leading-relaxed">{item.content}</p>
-                    <div className="mt-2 text-[11px] text-muted">
-                      相似度 {(item.similarityScore ?? 0).toFixed(2)}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </Card>
-        </div>
-        <div
-          className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-primary/30"
-          onMouseDown={createResizeHandler(listWidth, setListWidth)}
-        />
-      </aside>
-
       <main className="min-w-0 flex-1">
         <div className="flex h-14 items-center justify-between border-b border-border/60 px-8">
           <div className="flex items-center gap-3">
             <span className="text-sm font-semibold text-foreground">
-              {selected?.title ?? "知识文章"}
+              {selected?.title ?? "未选择观点"}
+            </span>
+            <span className="rounded-full border border-border/60 bg-elevated/80 px-2 py-0.5 text-[11px] text-muted">
+              关联笔记 {selected?.highlightCount ?? 0}
             </span>
           </div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              onClick={() => setIsPreviewMode(!isPreviewMode)}
-              className={cn("gap-2", isPreviewMode && "bg-elevated text-foreground")}
-            >
-              {isPreviewMode ? (
-                <>
-                  <Edit3 className="h-4 w-4" />
-                  编辑
-                </>
-              ) : (
-                <>
-                  <Eye className="h-4 w-4" />
-                  预览
-                </>
-              )}
-            </Button>
-            <Button variant="ghost" className="gap-2">
-              <Mail className="h-4 w-4" />
-              发送邮件
-            </Button>
-          </div>
+          <Button variant="ghost" className="gap-2">
+            <Mail className="h-4 w-4" />
+            发送邮件
+          </Button>
         </div>
-        <div className="relative h-[calc(100vh-56px)] overflow-hidden">
-          {isPreviewMode ? (
-            <div className="h-full overflow-y-auto p-6">
-              <div
-                className="prose-lumina max-w-none"
-                dangerouslySetInnerHTML={{ __html: previewHtml }}
-              />
-              <div className="mt-8 flex flex-wrap gap-2">
-                {selected?.relatedBookIds?.map((item) => (
-                  <Badge key={item}>{item.slice(0, 8)}</Badge>
-                ))}
+
+        <div className="grid h-[calc(100vh-56px)] grid-cols-[minmax(340px,1fr)_minmax(340px,1fr)] gap-0">
+          <section className="flex min-h-0 flex-col border-r border-border/60 bg-[#0f1012]">
+            <div className="border-b border-border/60 px-6 py-4">
+              <div className="text-sm font-medium text-foreground">笔记工作区</div>
+              <div className="mt-1 text-xs text-muted">
+                类 Obsidian 的暗色编辑体验，保留后续可视化扩展空间
               </div>
-            </div>
-          ) : (
-            <div className="relative h-full p-6">
-              <div className="absolute inset-0 overflow-y-auto">
-                <div className="relative min-h-full font-mono text-sm leading-7">
-                  {/* 即时行内预览层 */}
-                  <div
-                    ref={previewRef}
-                    className="pointer-events-none absolute text-transparent"
-                    aria-hidden="true"
-                  >
-                    <span>{article.slice(0, 0)}</span>
-                    {/* 占位符保持行高 */}
-                  </div>
-
-                  {/* 编辑区域 */}
-                  <textarea
-                    ref={textareaRef}
-                    className="absolute inset-0 h-full w-full resize-none border-none bg-transparent px-0 py-0 font-mono text-sm leading-7 text-transparent caret-foreground"
-                    value={article}
-                    onChange={(event) => setArticle(event.target.value)}
-                    onSelect={debouncedUpdateCursor}
-                    onKeyUp={debouncedUpdateCursor}
-                    onClick={debouncedUpdateCursor}
-                    spellCheck={false}
-                  />
-
-                  {/* 渲染层（显示背景 Markdown 效果） */}
-                  <div
-                    className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap font-mono text-sm leading-7 text-muted/30"
-                    aria-hidden="true"
-                  >
-                    {article.split("\n").map((line, idx) => (
-                      <div
-                        key={idx}
-                        className="min-h-[28px]"
-                        dangerouslySetInnerHTML={{
-                          __html: marked.parse(line || " ") as string
-                        }}
-                      />
-                    ))}
-                  </div>
-
-                  {/* 即时行预览浮动层 - 在光标位置显示当前行的 Markdown 渲染 */}
-                  {cursorPosition && currentLine.trim() && (
-                    <div
-                      className="pointer-events-none absolute z-10 rounded-md border border-border/50 bg-elevated/95 p-2 shadow-lg backdrop-blur-sm"
-                      style={{
-                        top: `${cursorPosition.top + 24}px`,
-                        left: `${cursorPosition.left}px`,
-                        maxWidth: "400px"
-                      }}
+              <div className="mt-4 flex flex-wrap gap-2">
+                {toolbarItems.map((item) => {
+                  const Icon = item.icon
+                  return (
+                    <Button
+                      key={item.label}
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1.5 border border-border/60 bg-elevated/60 text-xs text-secondary hover:bg-overlay"
+                      onClick={item.action}
                     >
-                      <div
-                        className="prose-lumina prose-lumina-sm max-w-none text-sm"
-                        dangerouslySetInnerHTML={{ __html: inlinePreviewHtml }}
-                      />
-                    </div>
-                  )}
-                </div>
+                      <Icon className="h-3.5 w-3.5" />
+                      {item.label}
+                    </Button>
+                  )
+                })}
               </div>
             </div>
-          )}
+            <div className="min-h-0 flex-1 p-6">
+              <Textarea
+                ref={editorRef}
+                className="h-full min-h-full resize-none rounded-2xl border-border/60 bg-[#131417] px-5 py-5 font-mono text-[14px] leading-7 text-[#e8e8ec] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]"
+                placeholder="开始记录你的观点、结论和论证过程…"
+                value={article}
+                onChange={(event) => setArticle(event.target.value)}
+                onScroll={(event) => {
+                  const target = event.currentTarget
+                  if (syncingScrollRef.current) {
+                    return
+                  }
+                  syncPreviewScroll(target.scrollTop, target.scrollHeight, target.clientHeight)
+                }}
+                spellCheck={false}
+              />
+            </div>
+          </section>
+
+          <section className="flex min-h-0 flex-col bg-base/90">
+            <div className="border-b border-border/60 px-6 py-4">
+              <div className="text-sm font-medium text-foreground">实时预览</div>
+              <div className="mt-1 text-xs text-muted">
+                当前先支持 Markdown 富文本，后续可继续叠加图表与可视化模块
+              </div>
+            </div>
+            <div
+              ref={previewScrollRef}
+              className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
+            >
+              <Card className="min-h-full rounded-2xl border-border/60 bg-[#101114] p-8 shadow-[0_24px_60px_rgba(0,0,0,0.22)]">
+                {article.trim() ? (
+                  <div
+                    className="prose-lumina max-w-none"
+                    dangerouslySetInnerHTML={{ __html: previewHtml }}
+                  />
+                ) : (
+                  <div className="flex h-full min-h-[240px] items-center justify-center text-sm text-muted">
+                    这里会实时显示你的笔记预览效果
+                  </div>
+                )}
+              </Card>
+            </div>
+          </section>
         </div>
       </main>
+
+      <aside
+        className="relative border-l border-border/60 bg-surface"
+        style={{ width: relationWidth }}
+      >
+        <div
+          className="absolute left-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-primary/30"
+          onMouseDown={createResizeHandler(relationWidth, setRelationWidth, true)}
+        />
+        <div className="border-b border-border/60 px-4 py-4">
+          <div className="text-sm font-medium text-foreground">待确认笔记关联</div>
+          <div className="mt-1 text-xs text-muted">
+            {loadingPendingNotes ? "正在加载…" : `共 ${pendingNotes.length} 条`}
+          </div>
+        </div>
+        <div className="space-y-3 overflow-y-auto p-4">
+          {pendingNotes.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border/60 bg-elevated/40 p-4 text-sm text-muted">
+              暂无待确认笔记关联
+            </div>
+          ) : (
+            pendingNotes.map((item) => (
+              <Card
+                key={item.id}
+                className="border-border/60 bg-elevated/40 p-4"
+              >
+                <p className="text-sm leading-relaxed text-foreground">{item.content}</p>
+                <div className="mt-3 flex items-center justify-between text-[11px] text-muted">
+                  <span>相似度 {(item.similarityScore ?? 0).toFixed(2)}</span>
+                  <span>笔记</span>
+                </div>
+              </Card>
+            ))
+          )}
+        </div>
+      </aside>
     </div>
   )
 }

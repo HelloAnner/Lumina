@@ -103,6 +103,22 @@ export function serializeViewpointOrder(viewpoints: Viewpoint[]) {
   }))
 }
 
+export function collectViewpointSubtreeIds(viewpoints: Viewpoint[], targetId: string) {
+  const target = findTreeNode(buildViewpointTree(viewpoints), targetId)
+  if (!target) {
+    return []
+  }
+  const ids: string[] = []
+
+  function walk(node: ViewpointTreeNode) {
+    ids.push(node.id)
+    node.children.forEach((child) => walk(child))
+  }
+
+  walk(target)
+  return ids
+}
+
 function sortTreeNodes(nodes: ViewpointTreeNode[]) {
   nodes.sort((left, right) => left.sortOrder - right.sortOrder)
   nodes.forEach((node) => sortTreeNodes(node.children))

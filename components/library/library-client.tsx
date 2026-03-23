@@ -8,8 +8,11 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
+import {
+  formatLibraryProgressText,
+  normalizeLibraryProgress
+} from "@/components/library/library-progress"
 import type { Book } from "@/src/server/store/types"
-import { formatPercent } from "@/src/lib/utils"
 
 type LibraryBook = Book & {
   coverUrl?: string
@@ -160,10 +163,16 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
                   <div className="text-xs text-muted">{book.author || "未知作者"}</div>
                 </div>
                 <div className="space-y-2">
-                  <Progress value={book.readProgress * 100} />
                   <div className="flex items-center justify-between text-[11px] text-muted">
-                    <span>{formatPercent(book.readProgress)}</span>
-                    <span>{book.lastReadAt ? "刚刚阅读" : "尚未开始"}</span>
+                    <span>阅读进度</span>
+                    <span className="font-medium text-foreground">
+                      {formatLibraryProgressText(book.readProgress)}
+                    </span>
+                  </div>
+                  <Progress value={normalizeLibraryProgress(book.readProgress)} />
+                  <div className="flex items-center justify-between text-[11px] text-muted">
+                    <span>{book.lastReadAt ? "最近打开" : "等待阅读"}</span>
+                    <span>{book.lastReadAt ? "已有阅读记录" : "进度为 0"}</span>
                   </div>
                 </div>
                 <div className="flex flex-wrap justify-center gap-1.5">

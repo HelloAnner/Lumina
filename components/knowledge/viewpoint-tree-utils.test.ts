@@ -10,6 +10,7 @@ import assert from "node:assert/strict"
 import type { Viewpoint } from "@/src/server/store/types"
 import {
   buildViewpointTree,
+  collectViewpointSubtreeIds,
   moveViewpointNode,
   serializeViewpointOrder
 } from "@/components/knowledge/viewpoint-tree-utils"
@@ -132,4 +133,18 @@ test("moveViewpointNode 不允许把节点放到自己的子节点下面", () =>
     { id: "a", parentId: undefined, sortOrder: 1 },
     { id: "b", parentId: "a", sortOrder: 2 }
   ])
+})
+
+test("collectViewpointSubtreeIds 会返回当前观点及全部子观点", () => {
+  const ids = collectViewpointSubtreeIds(
+    [
+      createViewpoint("root", "根", 1),
+      createViewpoint("child-1", "子 1", 2, "root"),
+      createViewpoint("child-2", "子 2", 3, "child-1"),
+      createViewpoint("sibling", "同级", 4)
+    ],
+    "root"
+  )
+
+  assert.deepEqual(ids, ["root", "child-1", "child-2"])
 })
