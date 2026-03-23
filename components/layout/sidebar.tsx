@@ -25,15 +25,15 @@ export function Sidebar() {
   const router = useRouter()
 
   return (
-    <aside className="flex h-screen w-[220px] flex-col border-r border-border bg-surface">
+    <aside className="flex h-screen w-[220px] flex-col border-r border-[#2d2d3d] bg-surface">
       <Link
         href="/library"
-        className="group flex h-16 items-center gap-3 px-5 transition-colors hover:bg-elevated/50"
+        className="group flex h-16 items-center gap-3 px-5 transition-colors hover:bg-elevated/60"
       >
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 transition-all duration-300 group-hover:from-primary/30 group-hover:to-primary/10 group-hover:scale-105 group-hover:shadow-[0_0_12px_rgba(139,92,246,0.25)]">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary/25 to-primary/5 transition-all duration-300 group-hover:from-primary/35 group-hover:to-primary/15 group-hover:shadow-[0_0_16px_rgba(139,92,246,0.35)]">
           <Sparkles className="h-4 w-4 text-primary transition-transform duration-300 group-hover:rotate-12" />
         </div>
-        <span className="text-sm font-semibold tracking-tight transition-colors group-hover:text-foreground">Lumina</span>
+        <span className="text-sm font-semibold tracking-tight text-foreground transition-colors">Lumina</span>
       </Link>
       <nav className="flex flex-1 flex-col gap-0.5 px-3 py-2">
         {items.map((item) => {
@@ -46,22 +46,22 @@ export function Sidebar() {
               className={cn(
                 "group flex h-10 items-center gap-3 rounded-lg px-3 text-sm transition-all duration-200",
                 active
-                  ? "bg-elevated text-foreground"
-                  : "text-secondary hover:bg-overlay/70 hover:text-foreground"
+                  ? "bg-elevated text-foreground shadow-sm"
+                  : "text-secondary hover:bg-overlay/50 hover:text-foreground"
               )}
             >
               <Icon className={cn("h-4 w-4 transition-colors", active ? "text-primary" : "text-muted group-hover:text-secondary")} />
               <span className="font-medium">{item.label}</span>
               {active && (
-                <div className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />
+                <div className="ml-auto h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_6px_rgba(139,92,246,0.6)]" />
               )}
             </Link>
           )
         })}
       </nav>
-      <div className="border-t border-border/60 px-5 py-4">
+      <div className="border-t border-[#2d2d3d]/60 px-5 py-4">
         <div className="flex items-center gap-2 text-xs text-muted">
-          <div className="h-1.5 w-1.5 rounded-full bg-emerald-500/80" />
+          <div className="h-1.5 w-1.5 rounded-full bg-emerald-500/80 shadow-[0_0_4px_rgba(16,185,129,0.4)]" />
           单镜像部署
         </div>
       </div>

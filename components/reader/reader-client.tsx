@@ -59,7 +59,7 @@ export function ReaderClient(props: ReaderClientProps) {
 
         <main
           ref={reader.readerMainRef}
-          className="relative min-w-0 flex-1 overflow-hidden bg-reader-sidebar"
+          className="relative min-w-0 flex-1 overflow-hidden bg-surface"
           onWheel={reader.handleWheel}
         >
           <ReaderSelectionToolbar

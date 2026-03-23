@@ -10,7 +10,8 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-md border border-border/60 bg-elevated/80 px-2.5 py-1 text-xs font-medium text-secondary transition-colors hover:border-border hover:text-foreground",
+        "inline-flex items-center rounded-md border border-[#3a3a4a] bg-elevated px-2.5 py-1 text-xs font-medium text-secondary transition-colors",
+        "hover:border-[#4a4a5a] hover:text-foreground",
         className
       )}
     >

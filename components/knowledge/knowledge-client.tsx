@@ -625,9 +625,9 @@ export function KnowledgeClient({
   }
 
   return (
-    <div className="flex min-h-screen bg-base">
+    <div className="flex min-h-screen bg-surface">
       {/* 左侧观点树 */}
-      <aside className="relative flex shrink-0 flex-col border-r border-border/60 bg-reader-sidebar" style={{ width: treeWidth }}>
+      <aside className="relative flex shrink-0 flex-col border-r border-border/60 bg-surface" style={{ width: treeWidth }}>
         <div className="flex h-12 items-center justify-between border-b border-border/60 px-3">
           <span className="text-xs font-semibold uppercase tracking-wider text-muted">观点树</span>
           <Button variant="ghost" size="sm" onClick={() => openDraft(focusedParentId ?? undefined)} className="h-7 w-7 p-0">

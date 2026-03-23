@@ -3,12 +3,12 @@ import { cn } from "@/src/lib/utils"
 
 const buttonVariants = {
   primary:
-    "bg-primary text-white shadow-[0_1px_2px_rgba(139,92,246,0.3)] hover:bg-primary-dark hover:shadow-[0_2px_4px_rgba(139,92,246,0.4)] active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-primary/40",
+    "bg-primary text-white shadow-[0_1px_2px_rgba(139,92,246,0.4)] hover:bg-[#7c4ddb] hover:shadow-[0_2px_8px_rgba(139,92,246,0.5)] active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-primary/50",
   secondary:
-    "bg-surface border border-border text-secondary shadow-sm hover:bg-elevated hover:text-foreground hover:border-border/80 active:scale-[0.98]",
-  ghost: "bg-transparent text-secondary hover:bg-overlay/80 hover:text-foreground active:scale-[0.98]",
+    "bg-surface border border-[#3a3a4a] text-secondary shadow-sm hover:bg-elevated hover:text-foreground hover:border-[#4a4a5a] active:scale-[0.98]",
+  ghost: "bg-transparent text-secondary hover:bg-overlay/60 hover:text-foreground active:scale-[0.98]",
   destructive:
-    "bg-red-500/90 text-white shadow-sm hover:bg-red-500 hover:shadow-[0_2px_4px_rgba(239,68,68,0.3)] active:scale-[0.98]"
+    "bg-red-500/90 text-white shadow-sm hover:bg-red-500 hover:shadow-[0_2px_8px_rgba(239,68,68,0.35)] active:scale-[0.98]"
 }
 
 const buttonSizes = {

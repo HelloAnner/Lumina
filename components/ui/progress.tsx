@@ -10,12 +10,12 @@ export function Progress({
   return (
     <div
       className={cn(
-        "h-1.5 w-full overflow-hidden rounded-full bg-elevated/90",
+        "h-1.5 w-full overflow-hidden rounded-full bg-elevated",
         className
       )}
     >
       <div
-        className="h-full rounded-full bg-primary transition-all duration-500 ease-out"
+        className="h-full rounded-full bg-gradient-to-r from-primary to-[#a78bfa] shadow-[0_0_8px_rgba(139,92,246,0.4)] transition-all duration-500 ease-out"
         style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
       />
     </div>

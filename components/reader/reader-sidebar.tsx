@@ -104,7 +104,7 @@ export function ReaderSidebar({
 
   return (
     <aside
-      className="relative border-r border-border/60 bg-reader-sidebar"
+      className="relative border-r border-border/60 bg-surface"
       style={{ width }}
     >
       <div className="flex h-12 items-center gap-2 border-b border-border/60 px-4 text-sm font-medium">
