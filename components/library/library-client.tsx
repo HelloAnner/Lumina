@@ -1,8 +1,16 @@
 "use client"
-import Image from "next/image"
+
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { ChevronRight, Plus, Search, Trash2, Upload } from "lucide-react"
+import {
+  ChevronRight,
+  Edit3,
+  Plus,
+  Search,
+  Trash2,
+  Upload,
+  X
+} from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -12,7 +20,8 @@ import {
   formatLibraryProgressText,
   normalizeLibraryProgress
 } from "@/components/library/library-progress"
-import type { Book } from "@/src/server/store/types"
+import type { Book, BookFormat } from "@/src/server/store/types"
+import Image from "next/image"
 
 type LibraryBook = Book & {
   coverUrl?: string
@@ -43,11 +52,159 @@ function BookCover({ title, coverUrl }: { title: string; coverUrl?: string }) {
   )
 }
 
+// 编辑对话框组件
+function EditBookDialog({
+  book,
+  isOpen,
+  onClose,
+  onSave
+}: {
+  book: LibraryBook | null
+  isOpen: boolean
+  onClose: () => void
+  onSave: (bookId: string, data: { title: string; author: string; format: BookFormat; tags: string[] }) => void
+}) {
+  const [title, setTitle] = useState(book?.title || "")
+  const [author, setAuthor] = useState(book?.author || "")
+  const [format, setFormat] = useState<BookFormat>(book?.format || "EPUB")
+  const [tags, setTags] = useState<string[]>(book?.tags || [])
+  const [newTag, setNewTag] = useState("")
+
+  // 当 book 变化时更新表单
+  useMemo(() => {
+    if (book) {
+      setTitle(book.title)
+      setAuthor(book.author || "")
+      setFormat(book.format)
+      setTags(book.tags)
+    }
+  }, [book])
+
+  if (!isOpen || !book) return null
+
+  const handleAddTag = () => {
+    if (newTag.trim() && !tags.includes(newTag.trim())) {
+      setTags([...tags, newTag.trim()])
+      setNewTag("")
+    }
+  }
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    setTags(tags.filter((t) => t !== tagToRemove))
+  }
+
+  const handleSave = () => {
+    onSave(book.id, { title: title.trim() || book.title, author: author.trim(), format, tags })
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-2xl">
+        <div className="mb-5 flex items-center justify-between">
+          <h3 className="text-lg font-semibold">编辑书籍信息</h3>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-muted transition-colors hover:bg-elevated hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {/* 书名 */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted">书名</label>
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="输入书名"
+            />
+          </div>
+
+          {/* 作者 */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted">作者</label>
+            <Input
+              value={author}
+              onChange={(e) => setAuthor(e.target.value)}
+              placeholder="输入作者"
+            />
+          </div>
+
+          {/* 格式 */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted">格式</label>
+            <div className="flex gap-2">
+              {(["EPUB", "PDF"] as BookFormat[]).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFormat(f)}
+                  className={`rounded-lg px-4 py-2 text-sm transition-all ${
+                    format === f
+                      ? "bg-primary text-white"
+                      : "bg-elevated text-secondary hover:text-foreground"
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 标签 */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted">标签</label>
+            <div className="flex gap-2">
+              <Input
+                value={newTag}
+                onChange={(e) => setNewTag(e.target.value)}
+                placeholder="添加标签"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    handleAddTag()
+                  }
+                }}
+              />
+              <Button variant="secondary" onClick={handleAddTag}>
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {tags.map((tag) => (
+                <Badge key={tag} className="flex items-center gap-1 pr-1">
+                  {tag}
+                  <button
+                    onClick={() => handleRemoveTag(tag)}
+                    className="ml-1 rounded-full p-0.5 hover:bg-white/10"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            取消
+          </Button>
+          <Button onClick={handleSave}>保存</Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] }) {
   const router = useRouter()
   const [books, setBooks] = useState(initialBooks)
   const [query, setQuery] = useState("")
   const [tag, setTag] = useState("")
+  const [editingBook, setEditingBook] = useState<LibraryBook | null>(null)
+  const [isEditOpen, setIsEditOpen] = useState(false)
 
   const tags = useMemo(
     () => Array.from(new Set(initialBooks.flatMap((item) => item.tags))),
@@ -74,6 +231,33 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
     router.refresh()
   }
 
+  async function handleEditBook(book: LibraryBook) {
+    setEditingBook(book)
+    setIsEditOpen(true)
+  }
+
+  async function handleSaveBook(
+    bookId: string,
+    data: { title: string; author: string; format: BookFormat; tags: string[] }
+  ) {
+    const response = await fetch(`/api/books/${bookId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    })
+    if (response.ok) {
+      const { item } = await response.json()
+      setBooks((current) =>
+        current.map((book) =>
+          book.id === bookId
+            ? { ...book, ...item }
+            : book
+        )
+      )
+      router.refresh()
+    }
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-base">
       {/* Header */}
@@ -98,7 +282,7 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
           </Button>
           <Button onClick={() => router.push("/library/upload")} className="gap-2">
             <Upload className="h-4 w-4" />
-            上传 EPUB
+            上传
           </Button>
         </div>
       </header>
@@ -141,7 +325,7 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
 
       {/* Book Grid */}
       <div className="flex-1 p-8">
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-x-6 gap-y-10">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-x-8 gap-y-10">
           {filtered.map((book) => (
             <Card
               key={book.id}
@@ -188,15 +372,38 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
                     继续阅读
                     <ChevronRight className="ml-0.5 h-3.5 w-3.5" />
                   </button>
-                  <Button variant="ghost" size="sm" onClick={() => removeBook(book.id)} className="h-7 w-7 p-0">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleEditBook(book)}
+                      className="h-7 w-7 p-0"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeBook(book.id)}
+                      className="h-7 w-7 p-0"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
       </div>
+
+      {/* Edit Dialog */}
+      <EditBookDialog
+        book={editingBook}
+        isOpen={isEditOpen}
+        onClose={() => setIsEditOpen(false)}
+        onSave={handleSaveBook}
+      />
     </div>
   )
 }

@@ -6,6 +6,8 @@ import {
   Code2,
   ChevronDown,
   ChevronRight,
+  Edit3,
+  Eye,
   FilePlus,
   GripVertical,
   Heading1,
@@ -24,8 +26,7 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   applyInlineMarkdown,
   applyLinePrefixMarkdown,
-  buildKnowledgeEditorStats,
-  mapScrollTopByRatio
+  buildKnowledgeEditorStats
 } from "@/components/knowledge/knowledge-editor-utils"
 import {
   buildViewpointTree,
@@ -42,6 +43,8 @@ type DraftNode = {
   parentId?: string
   placement: "root" | "child"
 }
+
+type ViewMode = "edit" | "preview" | "split"
 
 /**
  * 知识库页面客户端容器
@@ -82,11 +85,10 @@ export function KnowledgeClient({
   const [pendingNotes, setPendingNotes] = useState(unconfirmed)
   const [loadingPendingNotes, setLoadingPendingNotes] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>("edit")
   const editorRef = useRef<HTMLTextAreaElement>(null)
-  const previewScrollRef = useRef<HTMLDivElement>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prefTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const syncingScrollRef = useRef(false)
 
   const selected = viewpoints.find((item) => item.id === selectedId)
   const tree = useMemo(() => buildViewpointTree(viewpoints), [viewpoints])
@@ -329,24 +331,6 @@ export function KnowledgeClient({
     }
   }
 
-  function syncPreviewScroll(scrollTop: number, scrollHeight: number, clientHeight: number) {
-    const preview = previewScrollRef.current
-    if (!preview) {
-      return
-    }
-    syncingScrollRef.current = true
-    preview.scrollTop = mapScrollTopByRatio({
-      sourceScrollTop: scrollTop,
-      sourceScrollHeight: scrollHeight,
-      sourceClientHeight: clientHeight,
-      targetScrollHeight: preview.scrollHeight,
-      targetClientHeight: preview.clientHeight
-    })
-    window.requestAnimationFrame(() => {
-      syncingScrollRef.current = false
-    })
-  }
-
   function updateEditorSelection(
     nextText: string,
     nextSelectionStart: number,
@@ -369,9 +353,7 @@ export function KnowledgeClient({
       icon: Heading1,
       action: () => {
         const textarea = editorRef.current
-        if (!textarea) {
-          return
-        }
+        if (!textarea) return
         const result = applyLinePrefixMarkdown(
           article,
           textarea.selectionStart,
@@ -387,9 +369,7 @@ export function KnowledgeClient({
       icon: Heading2,
       action: () => {
         const textarea = editorRef.current
-        if (!textarea) {
-          return
-        }
+        if (!textarea) return
         const result = applyLinePrefixMarkdown(
           article,
           textarea.selectionStart,
@@ -405,9 +385,7 @@ export function KnowledgeClient({
       icon: Bold,
       action: () => {
         const textarea = editorRef.current
-        if (!textarea) {
-          return
-        }
+        if (!textarea) return
         const result = applyInlineMarkdown(
           article,
           textarea.selectionStart,
@@ -424,9 +402,7 @@ export function KnowledgeClient({
       icon: Quote,
       action: () => {
         const textarea = editorRef.current
-        if (!textarea) {
-          return
-        }
+        if (!textarea) return
         const result = applyLinePrefixMarkdown(
           article,
           textarea.selectionStart,
@@ -442,9 +418,7 @@ export function KnowledgeClient({
       icon: List,
       action: () => {
         const textarea = editorRef.current
-        if (!textarea) {
-          return
-        }
+        if (!textarea) return
         const result = applyLinePrefixMarkdown(
           article,
           textarea.selectionStart,
@@ -460,9 +434,7 @@ export function KnowledgeClient({
       icon: ListOrdered,
       action: () => {
         const textarea = editorRef.current
-        if (!textarea) {
-          return
-        }
+        if (!textarea) return
         const result = applyLinePrefixMarkdown(
           article,
           textarea.selectionStart,
@@ -478,9 +450,7 @@ export function KnowledgeClient({
       icon: Code2,
       action: () => {
         const textarea = editorRef.current
-        if (!textarea) {
-          return
-        }
+        if (!textarea) return
         const result = applyInlineMarkdown(
           article,
           textarea.selectionStart,
@@ -495,22 +465,18 @@ export function KnowledgeClient({
   ] as const
 
   function renderDraft(depth: number) {
-    if (!draftNode) {
-      return null
-    }
+    if (!draftNode) return null
     return (
       <div className="px-2 py-1" style={{ paddingLeft: 12 + depth * 14 }}>
         <input
           autoFocus
-          className="h-9 w-full rounded-md border border-primary/30 bg-elevated px-3 text-sm text-foreground outline-none focus:border-primary"
+          className="h-9 w-full rounded-lg border border-primary/30 bg-elevated px-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary/20"
           placeholder="输入观点名称"
           value={draftTitle}
           onChange={(event) => setDraftTitle(event.target.value)}
           onBlur={submitDraft}
           onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              submitDraft()
-            }
+            if (event.key === "Enter") submitDraft()
             if (event.key === "Escape") {
               setDraftNode(null)
               setDraftTitle("")
@@ -533,9 +499,9 @@ export function KnowledgeClient({
     return (
       <div
         className={cn(
-          "mx-2 h-0.5 rounded-full border border-transparent transition",
+          "mx-2 h-0.5 rounded-full border border-transparent transition-all",
           draggingId ? "opacity-100" : "opacity-0",
-          active ? "border-primary/80 bg-primary/20" : "hover:border-primary/40",
+          active ? "border-primary/60 bg-primary/30" : "hover:border-primary/40",
           className
         )}
         style={{ marginLeft: 12 + depth * 14 }}
@@ -590,18 +556,12 @@ export function KnowledgeClient({
           onDragOver={(event) => {
             event.preventDefault()
             event.stopPropagation()
-            setDropTarget({
-              type: "inside",
-              targetId: node.id
-            })
+            setDropTarget({ type: "inside", targetId: node.id })
           }}
           onDrop={(event) => {
             event.preventDefault()
             event.stopPropagation()
-            void applyDrop({
-              type: "inside",
-              targetId: node.id
-            })
+            void applyDrop({ type: "inside", targetId: node.id })
           }}
         >
           <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted opacity-0 transition-opacity group-hover:opacity-100" />
@@ -651,26 +611,32 @@ export function KnowledgeClient({
 
   return (
     <div className="flex min-h-screen bg-base">
+      {/* 左侧观点树 */}
       <aside
-        className="relative border-r border-border/60 bg-reader-sidebar"
+        className="relative flex shrink-0 flex-col border-r border-border/60 bg-reader-sidebar"
         style={{ width: treeWidth }}
       >
-        <div className="flex h-14 items-center justify-between border-b border-border/60 px-4">
-          <span className="text-sm font-semibold tracking-tight">观点树</span>
+        <div className="flex h-12 items-center justify-between border-b border-border/60 px-3">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+            观点树
+          </span>
           <Button
             variant="ghost"
+            size="sm"
             onClick={() => openDraft(focusedParentId ?? undefined)}
             title={focusedParentId ? "在当前观点下新建子观点" : "在根目录新建观点"}
-            className="h-8 w-8 p-0"
+            className="h-7 w-7 p-0"
           >
             <FilePlus className="h-4 w-4" />
           </Button>
         </div>
-        <div className="space-y-0.5 px-2 py-3">
+        <div className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
           <button
             className={cn(
-              "flex w-full items-center gap-2 rounded-lg px-3 py-1 text-left text-sm text-secondary transition-all duration-200 hover:bg-overlay/70 hover:text-foreground",
-              focusedParentId === null && "bg-elevated text-foreground"
+              "flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm transition-all duration-200",
+              focusedParentId === null
+                ? "bg-elevated text-foreground"
+                : "text-secondary hover:bg-overlay/70 hover:text-foreground"
             )}
             onClick={(event) => {
               event.stopPropagation()
@@ -679,14 +645,14 @@ export function KnowledgeClient({
             }}
           >
             <span className="flex h-4 w-4 items-center justify-center text-muted">#</span>
-            根目录
+            <span className="truncate">根目录</span>
           </button>
           {draftNode?.placement === "root" ? renderDraft(0) : null}
           {tree.map((node) => renderNode(node))}
           {draggingId ? (
             <div className="pt-2">
               {renderDropZone(0, { type: "root" }, "h-8 border-dashed")}
-              <div className="px-3 text-[11px] text-muted">拖到这里，放到根目录最下方</div>
+              <div className="px-3 pt-1 text-[11px] text-muted">拖到这里，放到根目录最下方</div>
             </div>
           ) : null}
         </div>
@@ -696,149 +662,139 @@ export function KnowledgeClient({
         />
       </aside>
 
-      <main className="min-w-0 flex-1">
-        <div className="flex h-14 items-center justify-between border-b border-border/60 px-8">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-foreground">
+      {/* 中央编辑区域 */}
+      <main className="flex min-w-0 flex-1 flex-col">
+        {/* 顶部标题栏 */}
+        <div className="flex h-12 items-center justify-between border-b border-border/60 bg-surface/50 px-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-sm font-medium text-foreground">
               {selected?.title ?? "未选择观点"}
             </span>
-            <span className="rounded-full border border-border/60 bg-elevated/80 px-2 py-0.5 text-[11px] text-muted">
-              关联笔记 {selected?.highlightCount ?? 0}
+            <span className="shrink-0 rounded-full border border-border/60 bg-elevated/80 px-2 py-0.5 text-[11px] text-muted">
+              {selected?.highlightCount ?? 0} 笔记
             </span>
           </div>
-          <Button variant="ghost" className="gap-2">
-            <Mail className="h-4 w-4" />
-            发送邮件
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant={viewMode === "edit" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("edit")}
+              className="h-8 gap-1.5 text-xs"
+            >
+              <Edit3 className="h-3.5 w-3.5" />
+              编辑
+            </Button>
+            <Button
+              variant={viewMode === "preview" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("preview")}
+              className="h-8 gap-1.5 text-xs"
+            >
+              <Eye className="h-3.5 w-3.5" />
+              预览
+            </Button>
+          </div>
         </div>
 
-        <div className="grid h-[calc(100vh-56px)] grid-cols-[minmax(340px,1fr)_minmax(340px,1fr)] gap-0">
-          <section className="flex min-h-0 flex-col border-r border-border/60 bg-[#0f1012]">
-            <div className="border-b border-border/60 px-6 py-4">
-              <div className="text-sm font-medium text-foreground">笔记工作区</div>
-              <div className="mt-1 text-xs text-muted">
-                类 Obsidian 的暗色编辑体验，保留后续可视化扩展空间
+        {/* 编辑器主体 */}
+        <div className="relative flex-1 overflow-hidden">
+          {/* 编辑模式 */}
+          {viewMode === "edit" && (
+            <div className="flex h-full flex-col">
+              {/* 极简工具栏 */}
+              <div className="flex items-center justify-between border-b border-border/60 bg-surface/30 px-4 py-2">
+                <div className="flex flex-wrap gap-1">
+                  {toolbarItems.map((item) => {
+                    const Icon = item.icon
+                    return (
+                      <Button
+                        key={item.label}
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1 text-xs text-secondary hover:bg-elevated hover:text-foreground"
+                        onClick={item.action}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">{item.label}</span>
+                      </Button>
+                    )
+                  })}
+                </div>
+                <div className="flex shrink-0 items-center gap-3 text-[11px] text-muted">
+                  <span>{editorStats.lines} 行</span>
+                  <span>{editorStats.characters} 字</span>
+                  <span>{selected ? "已保存" : "未选择"}</span>
+                </div>
               </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {toolbarItems.map((item) => {
-                  const Icon = item.icon
-                  return (
-                    <Button
-                      key={item.label}
-                      variant="ghost"
-                      size="sm"
-                      className="gap-1.5 border border-border/60 bg-elevated/60 text-xs text-secondary hover:bg-overlay"
-                      onClick={item.action}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                      {item.label}
-                    </Button>
-                  )
-                })}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-3 text-[11px] text-muted">
-                <span>行数 {editorStats.lines}</span>
-                <span>字数 {editorStats.characters}</span>
-                <span>词数 {editorStats.words}</span>
-                <span>{selected ? "自动保存已开启" : "未选择观点"}</span>
+              {/* 文本编辑区 */}
+              <div className="flex-1 overflow-y-auto p-6">
+                <div className="mx-auto max-w-3xl">
+                  <Textarea
+                    ref={editorRef}
+                    className="min-h-[calc(100vh-180px)] w-full resize-none rounded-xl border-0 bg-transparent px-0 py-0 text-[15px] leading-7 text-foreground shadow-none outline-none ring-0 placeholder:text-muted/60"
+                    placeholder="在此开始记录你的想法、观点和论证..."
+                    value={article}
+                    onChange={(event) => setArticle(event.target.value)}
+                    spellCheck={false}
+                  />
+                </div>
               </div>
             </div>
-            <div className="min-h-0 flex-1 p-6">
-              <Textarea
-                ref={editorRef}
-                className="h-full min-h-full resize-none rounded-2xl border-border/60 bg-[#131417] px-5 py-5 font-mono text-[14px] leading-7 text-[#e8e8ec] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]"
-                placeholder="开始记录你的观点、结论和论证过程…"
-                value={article}
-                onChange={(event) => setArticle(event.target.value)}
-                onScroll={(event) => {
-                  const target = event.currentTarget
-                  if (syncingScrollRef.current) {
-                    return
-                  }
-                  syncPreviewScroll(target.scrollTop, target.scrollHeight, target.clientHeight)
-                }}
-                spellCheck={false}
-              />
-            </div>
-          </section>
+          )}
 
-          <section className="flex min-h-0 flex-col bg-base/90">
-            <div className="border-b border-border/60 px-6 py-4">
-              <div className="text-sm font-medium text-foreground">实时预览</div>
-              <div className="mt-1 text-xs text-muted">
-                当前先支持 Markdown 富文本，后续可继续叠加图表与可视化模块
-              </div>
-            </div>
-            <div
-              ref={previewScrollRef}
-              className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
-              onScroll={(event) => {
-                if (syncingScrollRef.current) {
-                  return
-                }
-                const textarea = editorRef.current
-                if (!textarea) {
-                  return
-                }
-                syncingScrollRef.current = true
-                textarea.scrollTop = mapScrollTopByRatio({
-                  sourceScrollTop: event.currentTarget.scrollTop,
-                  sourceScrollHeight: event.currentTarget.scrollHeight,
-                  sourceClientHeight: event.currentTarget.clientHeight,
-                  targetScrollHeight: textarea.scrollHeight,
-                  targetClientHeight: textarea.clientHeight
-                })
-                window.requestAnimationFrame(() => {
-                  syncingScrollRef.current = false
-                })
-              }}
-            >
-              <Card className="min-h-full rounded-2xl border-border/60 bg-[#101114] p-8 shadow-[0_24px_60px_rgba(0,0,0,0.22)]">
+          {/* 预览模式 */}
+          {viewMode === "preview" && (
+            <div className="h-full overflow-y-auto">
+              <div className="mx-auto max-w-3xl px-6 py-8">
                 {article.trim() ? (
                   <div
-                    className="prose-lumina max-w-none"
+                    className="prose-lumina"
                     dangerouslySetInnerHTML={{ __html: previewHtml }}
                   />
                 ) : (
-                  <div className="flex h-full min-h-[240px] items-center justify-center text-sm text-muted">
-                    这里会实时显示你的笔记预览效果
+                  <div className="flex h-[calc(100vh-180px)] flex-col items-center justify-center text-muted">
+                    <Eye className="mb-3 h-8 w-8 opacity-20" />
+                    <p className="text-sm">暂无内容可预览</p>
                   </div>
                 )}
-              </Card>
+              </div>
             </div>
-          </section>
+          )}
         </div>
       </main>
 
+      {/* 右侧笔记关联 */}
       <aside
-        className="relative border-l border-border/60 bg-surface"
+        className="relative flex shrink-0 flex-col border-l border-border/60 bg-surface"
         style={{ width: relationWidth }}
       >
         <div
           className="absolute left-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-primary/30"
           onMouseDown={createResizeHandler(relationWidth, setRelationWidth, true)}
         />
-        <div className="border-b border-border/60 px-4 py-4">
-          <div className="text-sm font-medium text-foreground">待确认笔记关联</div>
-          <div className="mt-1 text-xs text-muted">
-            {loadingPendingNotes ? "正在加载…" : `共 ${pendingNotes.length} 条`}
-          </div>
+        <div className="flex h-12 items-center justify-between border-b border-border/60 px-4">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted">笔记关联</span>
+          <span className="rounded-full bg-elevated px-2 py-0.5 text-[11px] text-muted">
+            {pendingNotes.length}
+          </span>
         </div>
-        <div className="space-y-3 overflow-y-auto p-4">
+        <div className="flex-1 space-y-2 overflow-y-auto p-3">
           {pendingNotes.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border/60 bg-elevated/40 p-4 text-sm text-muted">
-              暂无待确认笔记关联
+            <div className="rounded-lg border border-dashed border-border/60 bg-elevated/30 p-4 text-center">
+              <Mail className="mx-auto mb-2 h-5 w-5 text-muted/50" />
+              <p className="text-xs text-muted">暂无待确认关联</p>
             </div>
           ) : (
             pendingNotes.map((item) => (
               <Card
                 key={item.id}
-                className="border-border/60 bg-elevated/40 p-4"
+                className="border-border/60 bg-elevated/40 p-3 transition-all hover:bg-elevated/60"
               >
                 <p className="text-sm leading-relaxed text-foreground">{item.content}</p>
-                <div className="mt-3 flex items-center justify-between text-[11px] text-muted">
-                  <span>相似度 {(item.similarityScore ?? 0).toFixed(2)}</span>
-                  <span>笔记</span>
+                <div className="mt-2 flex items-center justify-between text-[11px] text-muted">
+                  <span className="rounded bg-elevated px-1.5 py-0.5">
+                    相似度 {(item.similarityScore ?? 0).toFixed(2)}
+                  </span>
                 </div>
               </Card>
             ))

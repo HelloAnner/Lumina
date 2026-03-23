@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   BookOpen,
   GitBranch,
@@ -22,15 +22,19 @@ const items = [
 
 export function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
 
   return (
     <aside className="flex h-screen w-[220px] flex-col border-r border-border bg-surface">
-      <div className="flex h-16 items-center gap-3 px-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-          <Sparkles className="h-4 w-4 text-primary" />
+      <Link
+        href="/library"
+        className="group flex h-16 items-center gap-3 px-5 transition-colors hover:bg-elevated/50"
+      >
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 transition-all duration-300 group-hover:from-primary/30 group-hover:to-primary/10 group-hover:scale-105 group-hover:shadow-[0_0_12px_rgba(139,92,246,0.25)]">
+          <Sparkles className="h-4 w-4 text-primary transition-transform duration-300 group-hover:rotate-12" />
         </div>
-        <span className="text-sm font-semibold tracking-tight">Lumina</span>
-      </div>
+        <span className="text-sm font-semibold tracking-tight transition-colors group-hover:text-foreground">Lumina</span>
+      </Link>
       <nav className="flex flex-1 flex-col gap-0.5 px-3 py-2">
         {items.map((item) => {
           const Icon = item.icon
