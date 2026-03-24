@@ -3,15 +3,17 @@
  *
  * @author Anner
  * @since 0.1.0
- * Created on 2026/3/23
+ * Created on 2026/3/24
  */
 import test from "node:test"
 import assert from "node:assert/strict"
 import {
   applyInlineMarkdown,
   applyLinePrefixMarkdown,
+  buildKnowledgeSaveRequest,
   buildKnowledgeEditorStats,
-  mapScrollTopByRatio
+  mapScrollTopByRatio,
+  renderKnowledgeMarkdown
 } from "@/components/knowledge/knowledge-editor-utils"
 
 test("buildKnowledgeEditorStats 会统计字符数、行数与近似词数", () => {
@@ -54,4 +56,42 @@ test("mapScrollTopByRatio 会按比例映射滚动位置", () => {
   })
 
   assert.equal(mapped, 240)
+})
+
+test("renderKnowledgeMarkdown 会将连续列表渲染为单个列表容器", () => {
+  const html = renderKnowledgeMarkdown("- 第一项\n- 第二项\n\n1. 有序一\n2. 有序二")
+
+  assert.equal(
+    html,
+    "<ul><li>第一项</li><li>第二项</li></ul><p class=\"empty-paragraph\"><br></p><ol><li>有序一</li><li>有序二</li></ol>"
+  )
+})
+
+test("renderKnowledgeMarkdown 会转义代码块与行内 HTML", () => {
+  const html = renderKnowledgeMarkdown("```ts\nconst value = '<div>'\n```\n\n**强调** 与 `<script>`")
+
+  assert.equal(
+    html,
+    "<pre class=\"code-block\" data-lang=\"ts\"><code>const value = &#39;&lt;div&gt;&#39;</code></pre><p class=\"empty-paragraph\"><br></p><p><strong>强调</strong> 与 <code>&lt;script&gt;</code></p>"
+  )
+})
+
+test("buildKnowledgeSaveRequest 仅在内容变更时返回保存请求", () => {
+  assert.equal(
+    buildKnowledgeSaveRequest(undefined, "新内容", "旧内容"),
+    null
+  )
+
+  assert.equal(
+    buildKnowledgeSaveRequest("vp-1", "旧内容", "旧内容"),
+    null
+  )
+
+  assert.deepEqual(
+    buildKnowledgeSaveRequest("vp-1", "新内容", "旧内容"),
+    {
+      viewpointId: "vp-1",
+      articleContent: "新内容"
+    }
+  )
 })

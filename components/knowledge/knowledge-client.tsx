@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import {
   Bold,
   Code2,
@@ -19,6 +19,14 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  applyInlineMarkdown,
+  applyLinePrefixMarkdown,
+  buildKnowledgeEditorStats,
+  buildKnowledgeSaveRequest,
+  renderKnowledgeMarkdown
+} from "@/components/knowledge/knowledge-editor-utils"
 import {
   buildViewpointTree,
   collectViewpointSubtreeIds,
@@ -35,12 +43,14 @@ type DraftNode = {
   placement: "root" | "child"
 }
 
+type SaveState = "saved" | "pending" | "saving" | "error"
+
 /**
- * 知识库页面客户端容器 - Notion 风格所见即所得编辑器
+ * 知识库页面客户端容器
  *
  * @author Anner
  * @since 0.1.0
- * Created on 2026/3/23
+ * Created on 2026/3/24
  */
 export function KnowledgeClient({
   initialViewpoints,
@@ -74,146 +84,151 @@ export function KnowledgeClient({
   const [pendingNotes, setPendingNotes] = useState(unconfirmed)
   const [loadingPendingNotes, setLoadingPendingNotes] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const editorRef = useRef<HTMLDivElement>(null)
+  const [saveState, setSaveState] = useState<SaveState>("saved")
+  const editorRef = useRef<HTMLTextAreaElement>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prefTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const isComposing = useRef(false)
+  const saveChain = useRef<Promise<boolean>>(Promise.resolve(true))
+  const latestDraftRef = useRef({
+    selectedId: initialSelected?.id ?? initialViewpoints[0]?.id,
+    content: initialSelected?.articleContent ?? ""
+  })
+  const savedContentsRef = useRef(
+    new Map(initialViewpoints.map((item) => [item.id, item.articleContent ?? ""]))
+  )
 
   const selected = viewpoints.find((item) => item.id === selectedId)
   const tree = useMemo(() => buildViewpointTree(viewpoints), [viewpoints])
+  const stats = useMemo(() => buildKnowledgeEditorStats(content), [content])
+  const deferredContent = useDeferredValue(content)
+  const previewHtml = useMemo(() => renderKnowledgeMarkdown(deferredContent), [deferredContent])
+  const previewLagging = deferredContent !== content
 
-  // 统计信息
-  const stats = useMemo(() => {
-    const lines = content ? content.split("\n").length : 0
-    const chars = content.length
-    const words = content.trim().split(/[\s\u3000]+/).filter(Boolean).length
-    return { lines, chars, words }
-  }, [content])
+  useEffect(() => {
+    latestDraftRef.current = { selectedId, content }
+  }, [content, selectedId])
 
-  // 将内容解析为 HTML 用于显示
-  const renderContent = useCallback((text: string): string => {
-    if (!text) return '<p class="empty-paragraph"><br></p>'
+  const updateCachedViewpointContent = useCallback((viewpointId: string, articleContent: string) => {
+    savedContentsRef.current.set(viewpointId, articleContent)
+    setViewpoints((current) =>
+      current.map((item) => (item.id === viewpointId ? { ...item, articleContent } : item))
+    )
+  }, [])
 
-    const lines = text.split("\n")
-    let html = ""
-    let inCodeBlock = false
-    let codeBlockContent = ""
-    let codeBlockLang = ""
+  const syncSaveState = useCallback((viewpointId: string | undefined, articleContent: string) => {
+    const request = buildKnowledgeSaveRequest(
+      viewpointId,
+      articleContent,
+      viewpointId ? savedContentsRef.current.get(viewpointId) : ""
+    )
+    setSaveState(request ? "pending" : "saved")
+  }, [])
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]
+  const queueSave = useCallback(
+    (viewpointId: string | undefined, articleContent: string, keepalive = false) => {
+      const request = buildKnowledgeSaveRequest(
+        viewpointId,
+        articleContent,
+        viewpointId ? savedContentsRef.current.get(viewpointId) : ""
+      )
+      if (!request) {
+        syncSaveState(viewpointId, articleContent)
+        return saveChain.current
+      }
 
-      // 代码块处理
-      if (line.startsWith("```")) {
-        if (!inCodeBlock) {
-          inCodeBlock = true
-          codeBlockLang = line.slice(3).trim()
-          codeBlockContent = ""
-        } else {
-          inCodeBlock = false
-          html += `<pre class="code-block" data-lang="${codeBlockLang}"><code>${escapeHtml(codeBlockContent.trim())}</code></pre>`
-          codeBlockContent = ""
-          codeBlockLang = ""
+      const nextSave = saveChain.current.then(async () => {
+        setSaveState((current) =>
+          latestDraftRef.current.selectedId === request.viewpointId ? "saving" : current
+        )
+        try {
+          const response = await fetch(`/api/viewpoints/${request.viewpointId}/article`, {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ articleContent: request.articleContent }),
+            keepalive
+          })
+          if (!response.ok) {
+            throw new Error("save viewpoint article failed")
+          }
+          updateCachedViewpointContent(request.viewpointId, request.articleContent)
+          syncSaveState(
+            latestDraftRef.current.selectedId,
+            latestDraftRef.current.content
+          )
+          return true
+        } catch {
+          if (latestDraftRef.current.selectedId === request.viewpointId) {
+            setSaveState("error")
+          }
+          return false
         }
-        continue
-      }
-
-      if (inCodeBlock) {
-        codeBlockContent += line + "\n"
-        continue
-      }
-
-      // 空行
-      if (!line.trim()) {
-        html += '<p class="empty-paragraph"><br></p>'
-        continue
-      }
-
-      // 标题
-      if (line.startsWith("# ")) {
-        html += `<h1>${escapeHtml(line.slice(2))}</h1>`
-        continue
-      }
-      if (line.startsWith("## ")) {
-        html += `<h2>${escapeHtml(line.slice(3))}</h2>`
-        continue
-      }
-      if (line.startsWith("### ")) {
-        html += `<h3>${escapeHtml(line.slice(4))}</h3>`
-        continue
-      }
-
-      // 引用
-      if (line.startsWith("> ")) {
-        html += `<blockquote>${escapeHtml(line.slice(2))}</blockquote>`
-        continue
-      }
-
-      // 无序列表
-      if (line.match(/^[-*]\s/)) {
-        html += `<ul><li>${escapeHtml(line.slice(2))}</li></ul>`
-        continue
-      }
-
-      // 有序列表
-      const orderedMatch = line.match(/^(\d+)\.\s/)
-      if (orderedMatch) {
-        html += `<ol><li>${escapeHtml(line.slice(orderedMatch[0].length))}</li></ol>`
-        continue
-      }
-
-      // 普通段落（处理行内格式）
-      let processed = escapeHtml(line)
-      processed = processed
-        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-        .replace(/`([^`]+)`/g, '<code>$1</code>')
-      html += `<p>${processed}</p>`
-    }
-
-    // 未闭合的代码块
-    if (inCodeBlock) {
-      html += `<pre class="code-block" data-lang="${codeBlockLang}"><code>${escapeHtml(codeBlockContent.trim())}</code></pre>`
-    }
-
-    return html
-  }, [])
-
-  // 获取编辑器纯文本
-  const getEditorText = useCallback((): string => {
-    if (!editorRef.current) return ""
-    return editorRef.current.innerText || ""
-  }, [])
-
-  // 设置编辑器内容
-  const setEditorContent = useCallback((text: string) => {
-    if (!editorRef.current) return
-    editorRef.current.innerHTML = renderContent(text)
-  }, [renderContent])
-
-  // 初始化编辑器内容
-  useEffect(() => {
-    if (editorRef.current) {
-      setEditorContent(content)
-    }
-  }, [selectedId])
-
-  // 保存到服务器
-  useEffect(() => {
-    if (!selected || saveTimer.current) {
-      clearTimeout(saveTimer.current!)
-    }
-    saveTimer.current = setTimeout(async () => {
-      await fetch(`/api/viewpoints/${selected!.id}/article`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ articleContent: content })
       })
-    }, 500)
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current)
+
+      saveChain.current = nextSave.catch(() => false)
+      return nextSave
+    },
+    [syncSaveState, updateCachedViewpointContent]
+  )
+
+  const flushCurrentDraft = useCallback(async () => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current)
+      saveTimer.current = null
     }
-  }, [content, selected])
+    const { selectedId: currentSelectedId, content: currentContent } = latestDraftRef.current
+    if (!currentSelectedId) {
+      return true
+    }
+    return queueSave(currentSelectedId, currentContent)
+  }, [queueSave])
+
+  const selectViewpoint = useCallback(
+    async (viewpointId: string) => {
+      if (viewpointId === latestDraftRef.current.selectedId) {
+        setFocusedParentId(viewpointId)
+        return
+      }
+      await flushCurrentDraft()
+      const next = viewpoints.find((item) => item.id === viewpointId)
+      const nextContent = next?.articleContent ?? ""
+      setSelectedId(viewpointId)
+      setFocusedParentId(viewpointId)
+      setContent(nextContent)
+      syncSaveState(viewpointId, nextContent)
+    },
+    [flushCurrentDraft, syncSaveState, viewpoints]
+  )
+
+  const applyEditorSelection = useCallback(
+    (
+      updater: (
+        text: string,
+        selectionStart: number,
+        selectionEnd: number
+      ) => {
+        text: string
+        selectionStart: number
+        selectionEnd: number
+      }
+    ) => {
+      const textarea = editorRef.current
+      if (!textarea) {
+        return
+      }
+      const next = updater(
+        textarea.value,
+        textarea.selectionStart ?? 0,
+        textarea.selectionEnd ?? 0
+      )
+      setContent(next.text)
+      syncSaveState(selectedId, next.text)
+      requestAnimationFrame(() => {
+        textarea.focus()
+        textarea.setSelectionRange(next.selectionStart, next.selectionEnd)
+      })
+    },
+    [selectedId, syncSaveState]
+  )
 
   // 保存偏好设置
   useEffect(() => {
@@ -251,136 +266,89 @@ export function KnowledgeClient({
     return () => { cancelled = true }
   }, [selectedId])
 
-  // 编辑器事件处理
-  const handleInput = useCallback(() => {
-    const text = getEditorText()
-    setContent(text)
-  }, [getEditorText])
-
-  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if (isComposing.current) return
-
-    // 回车键处理 - 智能延续格式
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault()
-
-      const selection = window.getSelection()
-      if (!selection || !selection.rangeCount) return
-
-      const range = selection.getRangeAt(0)
-      const currentNode = range.startContainer.parentElement
-      const currentBlock = currentNode?.closest("p, h1, h2, h3, blockquote, li") || currentNode
-
-      if (currentBlock) {
-        const blockText = currentBlock.textContent || ""
-
-        // 检测当前行格式
-        let prefix = ""
-        if (blockText.startsWith("# ")) prefix = "# "
-        else if (blockText.startsWith("## ")) prefix = "## "
-        else if (blockText.startsWith("### ")) prefix = "### "
-        else if (blockText.startsWith("> ")) prefix = "> "
-        else if (blockText.match(/^[-*]\s/)) prefix = "- "
-        else if (blockText.match(/^\d+\.\s/)) {
-          const match = blockText.match(/^(\d+)\.\s/)
-          if (match) {
-            const num = parseInt(match[1]) + 1
-            prefix = `${num}. `
-          }
-        }
-
-        // 插入新行
-        const br = document.createElement("br")
-        const newBlock = document.createElement("p")
-        newBlock.innerHTML = prefix ? prefix : "<br>"
-
-        range.deleteContents()
-        range.insertNode(br)
-        range.collapse(false)
-
-        // 如果有前缀，在当前位置插入带前缀的文本
-        if (prefix) {
-          const textNode = document.createTextNode(prefix)
-          range.insertNode(textNode)
-          range.setStartAfter(textNode)
-          range.setEndAfter(textNode)
-        }
-
-        selection.removeAllRanges()
-        selection.addRange(range)
-
-        // 触发输入事件更新状态
-        handleInput()
+  useEffect(() => {
+    if (!selectedId) {
+      setSaveState("saved")
+      return
+    }
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current)
+    }
+    const request = buildKnowledgeSaveRequest(
+      selectedId,
+      content,
+      savedContentsRef.current.get(selectedId)
+    )
+    if (!request) {
+      setSaveState("saved")
+      saveTimer.current = null
+      return
+    }
+    setSaveState("pending")
+    saveTimer.current = setTimeout(() => {
+      void queueSave(request.viewpointId, request.articleContent)
+      saveTimer.current = null
+    }, 600)
+    return () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current)
       }
     }
+  }, [content, queueSave, selectedId])
 
-    // 快捷键处理
-    if (event.metaKey || event.ctrlKey) {
-      // 加粗: Cmd/Ctrl + B
+  useEffect(() => {
+    return () => {
+      const { selectedId: currentSelectedId, content: currentContent } = latestDraftRef.current
+      if (!currentSelectedId) {
+        return
+      }
+      void queueSave(currentSelectedId, currentContent, true)
+    }
+  }, [queueSave])
+
+  const handleInput = useCallback(
+    (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const nextContent = event.target.value
+      setContent(nextContent)
+      syncSaveState(selectedId, nextContent)
+    },
+    [selectedId, syncSaveState]
+  )
+
+  const wrapSelection = useCallback(
+    (before: string, after: string) => {
+      applyEditorSelection((text, selectionStart, selectionEnd) =>
+        applyInlineMarkdown(text, selectionStart, selectionEnd, before, after, "内容")
+      )
+    },
+    [applyEditorSelection]
+  )
+
+  const insertBlock = useCallback(
+    (prefix: string) => {
+      applyEditorSelection((text, selectionStart, selectionEnd) =>
+        applyLinePrefixMarkdown(text, selectionStart, selectionEnd, prefix, "内容")
+      )
+    },
+    [applyEditorSelection]
+  )
+
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (!(event.metaKey || event.ctrlKey)) {
+        return
+      }
       if (event.key === "b") {
         event.preventDefault()
         wrapSelection("**", "**")
       }
-      // 斜体: Cmd/Ctrl + I
       if (event.key === "i") {
         event.preventDefault()
         wrapSelection("*", "*")
       }
-    }
-  }, [handleInput])
-
-  const handleCompositionStart = useCallback(() => {
-    isComposing.current = true
-  }, [])
-
-  const handleCompositionEnd = useCallback(() => {
-    isComposing.current = false
-    handleInput()
-  }, [handleInput])
-
-  // 包裹选中文本
-  const wrapSelection = useCallback((before: string, after: string) => {
-    const selection = window.getSelection()
-    if (!selection || !selection.rangeCount) return
-
-    const range = selection.getRangeAt(0)
-    const selectedText = range.toString()
-
-    if (selectedText) {
-      const wrappedText = before + selectedText + after
-      range.deleteContents()
-      const textNode = document.createTextNode(wrappedText)
-      range.insertNode(textNode)
-      range.selectNode(textNode)
-      selection.removeAllRanges()
-      selection.addRange(range)
-      handleInput()
-    }
-  }, [handleInput])
-
-  // 工具栏操作
-  const insertBlock = useCallback((prefix: string) => {
-    const selection = window.getSelection()
-    if (!selection || !selection.rangeCount || !editorRef.current) return
-
-    const range = selection.getRangeAt(0)
-    const currentBlock = range.startContainer.parentElement
-
-    if (currentBlock) {
-      const text = currentBlock.textContent || ""
-      currentBlock.textContent = prefix + text
-
-      // 移动光标到行尾
-      const newRange = document.createRange()
-      newRange.selectNodeContents(currentBlock)
-      newRange.collapse(false)
-      selection.removeAllRanges()
-      selection.addRange(newRange)
-
-      handleInput()
-    }
-    editorRef.current.focus()
-  }, [handleInput])
+    },
+    [wrapSelection]
+  )
 
   const toolbarItems = [
     { label: "H1", icon: Heading1, action: () => insertBlock("# ") },
@@ -391,6 +359,12 @@ export function KnowledgeClient({
     { label: "有序", icon: ListOrdered, action: () => insertBlock("1. ") },
     { label: "代码", icon: Code2, action: () => wrapSelection("`", "`") }
   ]
+  const saveStateText = {
+    saved: "已保存",
+    pending: "待自动保存",
+    saving: "保存中",
+    error: "保存失败"
+  } satisfies Record<SaveState, string>
 
   // 其他函数保持不变...
   const createResizeHandler = useCallback(
@@ -464,14 +438,16 @@ export function KnowledgeClient({
     })
     const data = await response.json()
     if (response.ok) {
+      await flushCurrentDraft()
       setViewpoints((current) => [...current, data.item])
+      savedContentsRef.current.set(data.item.id, data.item.articleContent ?? "")
       if (draftNode.parentId) {
         setExpanded((current) => ({ ...current, [draftNode.parentId!]: true }))
       }
       setSelectedId(data.item.id)
       setFocusedParentId(data.item.id)
       setContent(data.item.articleContent)
-      setEditorContent(data.item.articleContent)
+      syncSaveState(data.item.id, data.item.articleContent)
     }
     setDraftNode(null)
     setDraftTitle("")
@@ -487,6 +463,7 @@ export function KnowledgeClient({
     const subtreeIds = collectViewpointSubtreeIds(viewpoints, viewpointId)
     if (!subtreeIds.length) return
     const childCount = Math.max(0, subtreeIds.length - 1)
+    const removedSnapshots = subtreeIds.map((id) => [id, savedContentsRef.current.get(id) ?? ""] as const)
     const confirmed = window.confirm(
       childCount > 0 ? `确认删除该观点及其 ${childCount} 个子观点吗？` : "确认删除该观点吗？"
     )
@@ -499,10 +476,12 @@ export function KnowledgeClient({
 
     setDeletingId(viewpointId)
     setViewpoints(nextViewpoints)
+    subtreeIds.forEach((id) => savedContentsRef.current.delete(id))
     if (selectedId && subtreeIds.includes(selectedId)) {
       setSelectedId(nextSelected?.id)
-      setContent(nextSelected?.articleContent ?? "")
-      setEditorContent(nextSelected?.articleContent ?? "")
+      const nextContent = nextSelected?.articleContent ?? ""
+      setContent(nextContent)
+      syncSaveState(nextSelected?.id, nextContent)
     }
     if (shouldResetSelection) setFocusedParentId(nextSelected?.id ?? null)
     if (draftNode?.parentId && subtreeIds.includes(draftNode.parentId)) {
@@ -515,11 +494,14 @@ export function KnowledgeClient({
         [...subtreeIds].reverse().map((id) => fetch(`/api/viewpoints/${id}`, { method: "DELETE" }))
       )
     } catch {
+      removedSnapshots.forEach(([id, articleContent]) => {
+        savedContentsRef.current.set(id, articleContent)
+      })
       setViewpoints(viewpoints)
       setSelectedId(selectedId)
       setFocusedParentId(focusedParentId)
       setContent(selected?.articleContent ?? content)
-      setEditorContent(selected?.articleContent ?? content)
+      syncSaveState(selectedId, selected?.articleContent ?? content)
     } finally {
       setDeletingId(null)
     }
@@ -587,13 +569,7 @@ export function KnowledgeClient({
             !active && !focused && "text-secondary hover:bg-overlay/70 hover:text-foreground"
           )}
           style={{ paddingLeft: 12 + depth * 14 }}
-          onClick={() => {
-            setSelectedId(node.id)
-            setFocusedParentId(node.id)
-            const vp = viewpoints.find(v => v.id === node.id)
-            setContent(vp?.articleContent ?? "")
-            setEditorContent(vp?.articleContent ?? "")
-          }}
+          onClick={() => { void selectViewpoint(node.id) }}
           onDragStart={() => { setDraggingId(node.id); setDropTarget(null) }}
           onDragEnd={() => { setDraggingId(null); setDropTarget(null) }}
           onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); setDropTarget({ type: "inside", targetId: node.id }) }}
@@ -668,9 +644,9 @@ export function KnowledgeClient({
           <div className="flex items-center gap-1 text-[11px] text-muted">
             <span>{stats.lines} 行</span>
             <span className="mx-1">·</span>
-            <span>{stats.chars} 字</span>
+            <span>{stats.characters} 字</span>
             <span className="mx-1">·</span>
-            <span>自动保存</span>
+            <span className={cn(saveState === "error" && "text-red-300")}>{saveStateText[saveState]}</span>
           </div>
         </div>
 
@@ -699,8 +675,9 @@ export function KnowledgeClient({
                 size="sm"
                 className="h-7 w-7 p-0 text-muted hover:text-foreground"
                 onClick={() => {
-                  setContent(selected?.articleContent ?? "")
-                  setEditorContent(selected?.articleContent ?? "")
+                  const nextContent = savedContentsRef.current.get(selectedId ?? "") ?? ""
+                  setContent(nextContent)
+                  syncSaveState(selectedId, nextContent)
                 }}
                 title="撤销更改"
               >
@@ -709,22 +686,35 @@ export function KnowledgeClient({
             </div>
           </div>
 
-          {/* 所见即所得编辑区 */}
-          <div className="flex-1 overflow-y-auto">
-            <div className="mx-auto max-w-3xl px-8 py-8">
-              <div
-                ref={editorRef}
-                className="wysiwyg-editor min-h-[calc(100vh-200px)] outline-none"
-                contentEditable
-                suppressContentEditableWarning
-                onInput={handleInput}
-                onKeyDown={handleKeyDown}
-                onCompositionStart={handleCompositionStart}
-                onCompositionEnd={handleCompositionEnd}
-                spellCheck={false}
-                data-placeholder="在此开始记录你的想法、观点和论证..."
-              />
-            </div>
+          <div className="grid flex-1 min-h-0 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1.08fr)_minmax(320px,0.92fr)]">
+            <section className="flex min-h-0 flex-col border-b border-border/60 xl:border-b-0 xl:border-r">
+              <div className="flex h-11 items-center justify-between border-b border-border/60 px-4">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted">编辑</span>
+                <span className="text-[11px] text-muted">Markdown 即时保存</span>
+              </div>
+              <div className="min-h-0 flex-1 p-4">
+                <Textarea
+                  ref={editorRef}
+                  value={content}
+                  onChange={handleInput}
+                  onKeyDown={handleKeyDown}
+                  spellCheck={false}
+                  placeholder="在这里持续记录你的观点、论证和摘录。输入会自动保存，右侧会实时渲染。"
+                  className="h-full min-h-[calc(100vh-220px)] resize-none border-0 bg-transparent px-2 py-1 text-[15px] leading-7 shadow-none focus:ring-0"
+                />
+              </div>
+            </section>
+            <section className="flex min-h-0 flex-col bg-surface/35">
+              <div className="flex h-11 items-center justify-between border-b border-border/60 px-4">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted">预览</span>
+                <span className="text-[11px] text-muted">{previewLagging ? "渲染中" : "实时渲染"}</span>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="prose-lumina mx-auto max-w-3xl px-8 py-6">
+                  <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                </div>
+              </div>
+            </section>
           </div>
         </div>
       </main>
@@ -737,7 +727,11 @@ export function KnowledgeClient({
           <span className="rounded-full bg-elevated px-2 py-0.5 text-[11px] text-muted">{pendingNotes.length}</span>
         </div>
         <div className="flex-1 space-y-2 overflow-y-auto p-3">
-          {pendingNotes.length === 0 ? (
+          {loadingPendingNotes ? (
+            <div className="rounded-lg border border-dashed border-border/60 bg-elevated/30 p-4 text-center">
+              <p className="text-xs text-muted">关联加载中...</p>
+            </div>
+          ) : pendingNotes.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border/60 bg-elevated/30 p-4 text-center">
               <p className="text-xs text-muted">暂无待确认关联</p>
             </div>
@@ -755,11 +749,4 @@ export function KnowledgeClient({
       </aside>
     </div>
   )
-}
-
-// 工具函数：转义 HTML
-function escapeHtml(text: string): string {
-  const div = document.createElement("div")
-  div.textContent = text
-  return div.innerHTML
 }

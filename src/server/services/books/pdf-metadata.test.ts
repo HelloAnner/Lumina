@@ -146,3 +146,80 @@ test("extractPdfMetadata 会用真实 PDF.js 解析 PDF 文本", async () => {
   assert.match(result.sections[0].content, /Real PDF parsing should keep native page semantics/)
   assert.match(result.synopsis, /Real PDF parsing should keep native page semantics/)
 })
+
+test("extractPdfMetadataFromDocument 遇到损坏目录项时仍会继续解析正文", async () => {
+  const result = await extractPdfMetadataFromDocument(
+    {
+      numPages: 1,
+      async getMetadata() {
+        return { info: { Title: "Broken Outline" } }
+      },
+      async getOutline() {
+        return [
+          {
+            title: "损坏目录",
+            dest: "broken-dest",
+            items: []
+          }
+        ]
+      },
+      async getDestination() {
+        throw new Error("outline destination failed")
+      },
+      async getPageIndex() {
+        return 0
+      },
+      async getPage() {
+        return {
+          async getTextContent() {
+            return {
+              items: [{ str: "正文仍然应该可见。", hasEOL: true }]
+            }
+          }
+        }
+      }
+    },
+    "broken-outline.pdf"
+  )
+
+  assert.equal(result.totalPages, 1)
+  assert.equal(result.toc.length, 0)
+  assert.match(result.sections[0].content, /正文仍然应该可见/)
+})
+
+test("extractPdfMetadataFromDocument 遇到单页文本提取失败时会保留其它页面", async () => {
+  const result = await extractPdfMetadataFromDocument(
+    {
+      numPages: 2,
+      async getMetadata() {
+        return { info: { Title: "Broken Page" } }
+      },
+      async getOutline() {
+        return []
+      },
+      async getDestination() {
+        return null
+      },
+      async getPageIndex() {
+        return 0
+      },
+      async getPage(pageNumber: number) {
+        return {
+          async getTextContent() {
+            if (pageNumber === 2) {
+              throw new Error("page text extraction failed")
+            }
+            return {
+              items: [{ str: "第一页正文正常。", hasEOL: true }]
+            }
+          }
+        }
+      }
+    },
+    "broken-page.pdf"
+  )
+
+  assert.equal(result.totalPages, 2)
+  assert.match(result.sections[0].content, /第一页正文正常/)
+  assert.match(result.sections[1].content, /第 2 页暂未提取到可用文本/)
+})

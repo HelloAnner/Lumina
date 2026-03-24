@@ -52,6 +52,15 @@ function buildFallbackPdfMetadata(fileName: string): HardParsedBookMetadata {
   }
 }
 
+async function parsePdfHardMetadata(buffer: Buffer, fileName: string) {
+  try {
+    return await extractPdfMetadata(buffer, fileName)
+  } catch (error) {
+    console.warn(`Failed to parse PDF metadata, fallback to placeholder: ${fileName}`, error)
+    return buildFallbackPdfMetadata(fileName)
+  }
+}
+
 app.get("/", async (c) => {
   const search = c.req.query("search")
   const tag = c.req.query("tag")
@@ -75,7 +84,7 @@ app.post("/upload", async (c) => {
   const hardParsed =
     format === "EPUB"
       ? await extractEpubMetadata(buffer, file.name)
-      : await extractPdfMetadata(buffer, file.name).catch(() => buildFallbackPdfMetadata(file.name))
+      : await parsePdfHardMetadata(buffer, file.name)
 
   const metadata = await deriveBookMetadata({
     fileName: file.name,

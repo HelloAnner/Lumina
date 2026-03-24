@@ -109,6 +109,10 @@ function fallbackSynopsis(title: string, pageTexts: string[]) {
   return `${title} 已完成 PDF 基础解析，可继续在阅读器中查看。`
 }
 
+function buildMissingPageText(pageNumber: number) {
+  return `第 ${pageNumber} 页暂未提取到可用文本。`
+}
+
 async function resolveDestPageIndex(
   pdf: PdfDocumentLike,
   dest: PdfOutlineNodeLike["dest"]
@@ -143,6 +147,18 @@ async function resolveDestPageIndex(
   return pageIndex + 1
 }
 
+async function safeResolveDestPageIndex(
+  pdf: PdfDocumentLike,
+  dest: PdfOutlineNodeLike["dest"]
+) {
+  try {
+    return await resolveDestPageIndex(pdf, dest)
+  } catch (error) {
+    console.warn("Skipped broken PDF outline destination", error)
+    return undefined
+  }
+}
+
 async function appendOutlineNodes(
   pdf: PdfDocumentLike,
   nodes: PdfOutlineNodeLike[],
@@ -151,7 +167,7 @@ async function appendOutlineNodes(
 ) {
   for (const node of nodes) {
     const title = node.title?.trim()
-    const pageIndex = await resolveDestPageIndex(pdf, node.dest)
+    const pageIndex = await safeResolveDestPageIndex(pdf, node.dest)
     if (title && typeof pageIndex === "number") {
       bucket.push({
         id: crypto.randomUUID(),
@@ -164,6 +180,39 @@ async function appendOutlineNodes(
     if (children.length > 0) {
       await appendOutlineNodes(pdf, children, level + 1, bucket)
     }
+  }
+}
+
+async function extractPageContent(
+  pdf: PdfDocumentLike,
+  pageNumber: number
+) {
+  try {
+    const page = await pdf.getPage(pageNumber)
+    const textContent = await page.getTextContent()
+    return buildPageText(textContent) || buildMissingPageText(pageNumber)
+  } catch (error) {
+    console.warn(`Skipped broken PDF page text extraction: page ${pageNumber}`, error)
+    return buildMissingPageText(pageNumber)
+  }
+}
+
+async function extractPdfInfo(pdf: PdfDocumentLike) {
+  try {
+    const metadata = await pdf.getMetadata()
+    return metadata.info ?? {}
+  } catch (error) {
+    console.warn("Failed to read PDF metadata info", error)
+    return {}
+  }
+}
+
+async function extractPdfOutline(pdf: PdfDocumentLike) {
+  try {
+    return (await pdf.getOutline()) ?? []
+  } catch (error) {
+    console.warn("Failed to read PDF outline", error)
+    return []
   }
 }
 
@@ -182,11 +231,10 @@ export async function extractPdfMetadataFromDocument(
   pdf: PdfDocumentLike,
   fileName: string
 ): Promise<HardParsedBookMetadata> {
-  const metadata = await pdf.getMetadata()
-  const info = metadata.info ?? {}
+  const info = await extractPdfInfo(pdf)
   const title = info.Title?.trim() || fallbackTitle(fileName)
   const author = info.Author?.trim() || "未知作者"
-  const outline = (await pdf.getOutline()) ?? []
+  const outline = await extractPdfOutline(pdf)
   const toc: HardParsedBookMetadata["toc"] = []
   await appendOutlineNodes(pdf, outline, 0, toc)
 
@@ -194,9 +242,7 @@ export async function extractPdfMetadataFromDocument(
   const sections: HardParsedBookMetadata["sections"] = []
 
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-    const page = await pdf.getPage(pageNumber)
-    const textContent = await page.getTextContent()
-    const content = buildPageText(textContent) || `第 ${pageNumber} 页暂无可提取文本。`
+    const content = await extractPageContent(pdf, pageNumber)
     pageTexts.push(content)
     sections.push({
       id: crypto.randomUUID(),
