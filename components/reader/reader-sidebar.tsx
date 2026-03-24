@@ -35,19 +35,24 @@ const SidebarTreeNode = memo(function SidebarTreeNode({
           itemRefs.current[node.sourceIndex] = element
         }}
         className={cn(
-          "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-all duration-200",
+          "group relative flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-all duration-200",
           active
-            ? "bg-elevated text-foreground"
+            ? "bg-primary/10 text-foreground font-medium"
             : "text-secondary hover:bg-overlay/70 hover:text-foreground"
         )}
         style={{ paddingLeft: `${12 + depth * 18}px` }}
         onClick={() => onNavigate(node.sourceIndex)}
       >
+        {active && (
+          <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r bg-primary" />
+        )}
         <span className={cn("truncate", depth > 0 && "text-[13px]")}>
           {depth > 0 ? "· " : ""}
           {node.title}
         </span>
-        <span className="ml-2 text-xs text-muted">{node.sourceIndex + 1}</span>
+        <span className={cn("ml-2 text-xs", active ? "text-primary/70" : "text-muted")}>
+          {node.sourceIndex + 1}
+        </span>
       </button>
       {node.children.length > 0 ? (
         <div className="ml-4 mt-0.5 space-y-0.5 border-l border-border/50 pl-2">

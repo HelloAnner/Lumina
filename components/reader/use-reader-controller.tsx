@@ -468,6 +468,18 @@ export function useReaderController({
     ]
   )
 
+  const deleteHighlight = useCallback(
+    async (highlightId: string) => {
+      const response = await fetch(`/api/highlights/${highlightId}`, {
+        method: "DELETE"
+      })
+      if (response.ok) {
+        setPanelItems((current) => current.filter((item) => item.id !== highlightId))
+      }
+    },
+    []
+  )
+
   const handleMouseUp = useCallback(() => {
     const selection = window.getSelection()
     const rawText = selection?.toString() ?? ""
@@ -560,6 +572,7 @@ export function useReaderController({
     goSection,
     openHighlight,
     createHighlight,
+    deleteHighlight,
     createResizeHandler,
     setToast,
     setNoteDraft,

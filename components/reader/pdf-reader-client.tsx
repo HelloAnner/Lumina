@@ -41,13 +41,27 @@ export function PdfReaderClient(props: ReaderClientProps) {
           <span className="h-4 w-px bg-border/60" />
           <span className="font-medium text-foreground">{reader.book.title}</span>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted">
-          {reader.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span className="h-1.5 w-1.5 rounded-full bg-secondary/60" />}
-          {reader.currentPageIndex + 1} / {reader.pageCount}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 text-xs tabular-nums">
+            {reader.loading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted" />
+            ) : (
+              <span className="text-muted">{Math.round(((reader.currentPageIndex + 1) / Math.max(reader.pageCount, 1)) * 100)}%</span>
+            )}
+            <span className="text-secondary">{reader.currentPageIndex + 1}</span>
+            <span className="text-muted">/</span>
+            <span className="text-secondary">{reader.pageCount}</span>
+          </div>
         </div>
       </div>
+      <div className="h-[2px] w-full bg-transparent">
+        <div
+          className="h-full bg-primary/60 transition-all duration-150"
+          style={{ width: `${((reader.currentPageIndex + 1) / Math.max(reader.pageCount, 1)) * 100}%` }}
+        />
+      </div>
 
-      <div className="flex h-[calc(100vh-52px)]">
+      <div className="flex h-[calc(100vh-58px)]">
         <ReaderSidebar
           width={reader.tocWidth}
           nodes={reader.sidebarEntries}
@@ -89,6 +103,7 @@ export function PdfReaderClient(props: ReaderClientProps) {
           items={reader.panelItems}
           currentPageIndex={reader.currentPageIndex}
           onOpenHighlight={reader.openHighlight}
+          onDeleteHighlight={reader.deleteHighlight}
           onResizeStart={reader.createResizeHandler(
             reader.highlightsWidth,
             reader.setHighlightsWidth,

@@ -54,10 +54,95 @@ export interface PdfDocumentLike {
 
 function normalizeTextLine(items: PdfTextItemLike[]) {
   return items
-    .map((item) => item.str?.trim() ?? "")
-    .filter(Boolean)
+    .map((item) => item.str ?? "")
     .join("")
+    .replace(/[ \t]+/g, " ")
     .trim()
+}
+
+function cleanupPunctuationSpacing(text: string) {
+  return text
+    .replace(/\s+([,.;:!?%])/g, "$1")
+    .replace(/\s+([，。！？；：、】【）》〉])/g, "$1")
+    .replace(/([（《「『【])\s+/g, "$1")
+}
+
+function mergeStandalonePunctuationLines(lines: string[]) {
+  const merged: string[] = []
+
+  lines.forEach((line) => {
+    if (/^[,.;:!?%。，！？；：、】【）》〉]+$/.test(line) && merged.length > 0) {
+      merged[merged.length - 1] = `${merged[merged.length - 1]}${line}`
+      return
+    }
+    merged.push(line)
+  })
+
+  return merged.map((line) => cleanupPunctuationSpacing(line))
+}
+
+function countUppercaseLetters(text: string) {
+  const letters = text.match(/[A-Za-z]/g) ?? []
+  if (letters.length === 0) {
+    return 0
+  }
+  const uppercase = text.match(/[A-Z]/g) ?? []
+  return uppercase.length / letters.length
+}
+
+function isLikelyShortHeading(line: string) {
+  if (line.length === 0) {
+    return false
+  }
+  if (
+    line.length <= 24 &&
+    !/[，。！？,.!?;；:：]/.test(line) &&
+    (
+      !/\s/.test(line) ||
+      /^[\u4e00-\u9fff\s]+$/.test(line) ||
+      /^[A-Z][A-Za-z0-9]*(\s+[A-Z][A-Za-z0-9]*)*$/.test(line)
+    )
+  ) {
+    return true
+  }
+  if (line.length <= 120 && countUppercaseLetters(line) >= 0.7) {
+    return true
+  }
+  return false
+}
+
+function chooseInlineSeparator(previous: string, current: string) {
+  if (/[\u4e00-\u9fff]$/.test(previous) && /^[\u4e00-\u9fff]/.test(current)) {
+    return ""
+  }
+  return " "
+}
+
+function collapseWrappedLines(lines: string[]) {
+  const paragraphs: string[] = []
+
+  lines.forEach((line) => {
+    if (paragraphs.length === 0) {
+      paragraphs.push(line)
+      return
+    }
+
+    const previous = paragraphs[paragraphs.length - 1]
+    const currentIsBullet = /^([-*•]\s|\d+[.)]\s)/.test(line)
+    const previousEndsSentence = /[。！？.!?…]$/.test(previous)
+    const previousIsHeading = isLikelyShortHeading(previous)
+    const currentIsHeading = isLikelyShortHeading(line)
+
+    if (currentIsBullet || previousEndsSentence || previousIsHeading || currentIsHeading) {
+      paragraphs.push(line)
+      return
+    }
+
+    paragraphs[paragraphs.length - 1] =
+      `${previous}${chooseInlineSeparator(previous, line)}${line}`
+  })
+
+  return paragraphs.map((line) => cleanupPunctuationSpacing(line))
 }
 
 function buildPageText(content: PdfTextContentLike) {
@@ -66,7 +151,7 @@ function buildPageText(content: PdfTextContentLike) {
   let lineBuffer: PdfTextItemLike[] = []
 
   items.forEach((item) => {
-    if (!item.str?.trim()) {
+    if (!item.str) {
       if (lineBuffer.length > 0 && item.hasEOL) {
         const line = normalizeTextLine(lineBuffer)
         if (line) {
@@ -94,7 +179,7 @@ function buildPageText(content: PdfTextContentLike) {
     }
   }
 
-  return lines.join("\n\n").trim()
+  return collapseWrappedLines(mergeStandalonePunctuationLines(lines)).join("\n\n").trim()
 }
 
 function fallbackTitle(fileName: string) {

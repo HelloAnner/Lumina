@@ -147,6 +147,124 @@ test("extractPdfMetadata 会用真实 PDF.js 解析 PDF 文本", async () => {
   assert.match(result.synopsis, /Real PDF parsing should keep native page semantics/)
 })
 
+test("extractPdfMetadataFromDocument 会保留 PDF 显式空格项", async () => {
+  const result = await extractPdfMetadataFromDocument(
+    {
+      numPages: 1,
+      async getMetadata() {
+        return { info: { Title: "Space Preservation" } }
+      },
+      async getOutline() {
+        return []
+      },
+      async getDestination() {
+        return null
+      },
+      async getPageIndex() {
+        return 0
+      },
+      async getPage() {
+        return {
+          async getTextContent() {
+            return {
+              items: [
+                { str: "LANGUAGE", hasEOL: false },
+                { str: " ", hasEOL: false },
+                { str: "MODELS", hasEOL: true },
+                { str: "ReAct", hasEOL: false },
+                { str: " ", hasEOL: false },
+                { str: "works", hasEOL: true }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "space-preservation.pdf"
+  )
+
+  assert.match(result.sections[0].content, /LANGUAGE MODELS/)
+  assert.match(result.sections[0].content, /ReAct works/)
+})
+
+test("extractPdfMetadataFromDocument 会合并独立标点行并清理标点前空格", async () => {
+  const result = await extractPdfMetadataFromDocument(
+    {
+      numPages: 1,
+      async getMetadata() {
+        return { info: { Title: "Punctuation Cleanup" } }
+      },
+      async getOutline() {
+        return []
+      },
+      async getDestination() {
+        return null
+      },
+      async getPageIndex() {
+        return 0
+      },
+      async getPage() {
+        return {
+          async getTextContent() {
+            return {
+              items: [
+                { str: "Hello", hasEOL: false },
+                { str: " ", hasEOL: false },
+                { str: ":", hasEOL: true },
+                { str: "世界", hasEOL: true },
+                { str: "。", hasEOL: true }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "punctuation-cleanup.pdf"
+  )
+
+  assert.match(result.sections[0].content, /Hello:/)
+  assert.match(result.sections[0].content, /世界。/)
+})
+
+test("extractPdfMetadataFromDocument 会把被视觉换行打断的正文重新拼回段落", async () => {
+  const result = await extractPdfMetadataFromDocument(
+    {
+      numPages: 1,
+      async getMetadata() {
+        return { info: { Title: "Wrapped Paragraphs" } }
+      },
+      async getOutline() {
+        return []
+      },
+      async getDestination() {
+        return null
+      },
+      async getPageIndex() {
+        return 0
+      },
+      async getPage() {
+        return {
+          async getTextContent() {
+            return {
+              items: [
+                { str: "ABSTRACT", hasEOL: true },
+                { str: "This is a wrapped", hasEOL: true },
+                { str: "sentence that should continue.", hasEOL: true },
+                { str: "- 中文项目符号的一半", hasEOL: true },
+                { str: "需要直接接回本条。", hasEOL: true }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "wrapped-paragraphs.pdf"
+  )
+
+  assert.match(result.sections[0].content, /ABSTRACT\n\nThis is a wrapped sentence that should continue\./)
+  assert.match(result.sections[0].content, /- 中文项目符号的一半需要直接接回本条。/)
+})
+
 test("extractPdfMetadataFromDocument 遇到损坏目录项时仍会继续解析正文", async () => {
   const result = await extractPdfMetadataFromDocument(
     {

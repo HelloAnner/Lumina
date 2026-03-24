@@ -8,7 +8,7 @@
 "use client"
 
 import type React from "react"
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import {
   computeCenteredScrollTop,
@@ -16,6 +16,8 @@ import {
 } from "@/components/reader/reader-panel-scroll-utils"
 import type { Highlight } from "@/src/server/store/types"
 import type { ResolvedHighlight } from "@/components/reader/reader-types"
+import { Trash2 } from "lucide-react"
+import { cn } from "@/src/lib/utils"
 
 const COLORS = {
   yellow: "rgba(251,191,36,0.35)",
@@ -24,12 +26,58 @@ const COLORS = {
   pink: "rgba(244,114,182,0.35)"
 } as const
 
+function HighlightCard({
+  item,
+  active,
+  onClick,
+  onDelete
+}: {
+  item: Highlight
+  active: boolean
+  onClick: () => void
+  onDelete: (e: React.MouseEvent) => void
+}) {
+  const [showDelete, setShowDelete] = useState(false)
+
+  return (
+    <Card
+      className={cn(
+        "group relative cursor-pointer space-y-3 p-4 transition",
+        active ? "border-primary/30 bg-elevated/70" : "border-border hover:border-border/80"
+      )}
+      onClick={onClick}
+      onMouseEnter={() => setShowDelete(true)}
+      onMouseLeave={() => setShowDelete(false)}
+    >
+      <button
+        onClick={onDelete}
+        className={cn(
+          "absolute right-2 top-2 rounded p-1.5 text-muted opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive",
+          showDelete && "opacity-100"
+        )}
+        title="删除"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+      <div
+        className="rounded-md px-3 py-2 text-sm leading-6 text-foreground"
+        style={{ backgroundColor: COLORS[item.color] }}
+      >
+        {item.content}
+      </div>
+      <div className="text-[11px] text-muted">第 {item.pageIndex ?? 0} 节</div>
+      {item.note ? <div className="text-sm leading-6 text-secondary">{item.note}</div> : null}
+    </Card>
+  )
+}
+
 export function ReaderHighlightPanel({
   width,
   items,
   currentPageIndex,
   resolvedHighlights,
   onOpenHighlight,
+  onDeleteHighlight,
   onResizeStart
 }: {
   width: number
@@ -37,6 +85,7 @@ export function ReaderHighlightPanel({
   currentPageIndex?: number
   resolvedHighlights: ResolvedHighlight[]
   onOpenHighlight: (item: ResolvedHighlight) => void
+  onDeleteHighlight: (id: string) => void
   onResizeStart: (event: React.MouseEvent) => void
 }) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
@@ -107,27 +156,19 @@ export function ReaderHighlightPanel({
                 itemRefs.current[item.id] = element
               }}
             >
-              <Card
-                className={`cursor-pointer space-y-3 p-4 transition ${
-                  active ? "border-primary/30 bg-elevated/70" : "border-border"
-                }`}
+              <HighlightCard
+                item={item}
+                active={active}
                 onClick={() => {
                   if (resolved) {
                     onOpenHighlight(resolved)
                   }
                 }}
-              >
-                <div
-                  className="rounded-md px-3 py-2 text-sm leading-6 text-foreground"
-                  style={{ backgroundColor: COLORS[item.color] }}
-                >
-                  {item.content}
-                </div>
-                <div className="text-[11px] text-muted">第 {item.pageIndex ?? 0} 节</div>
-                {item.note ? (
-                  <div className="text-sm leading-6 text-secondary">{item.note}</div>
-                ) : null}
-              </Card>
+                onDelete={(e) => {
+                  e.stopPropagation()
+                  onDeleteHighlight(item.id)
+                }}
+              />
             </div>
           )
         })}

@@ -320,6 +320,18 @@ export function usePdfReaderController({
     [book.id, clearSelection, selectedPageIndex, selectedRects, selectedText]
   )
 
+  const deleteHighlight = useCallback(
+    async (highlightId: string) => {
+      const response = await fetch(`/api/highlights/${highlightId}`, {
+        method: "DELETE"
+      })
+      if (response.ok) {
+        setPanelItems((current) => current.filter((item) => item.id !== highlightId))
+      }
+    },
+    []
+  )
+
   const handleScroll = useCallback(() => {
     if (tickingRef.current) {
       return
@@ -367,6 +379,7 @@ export function usePdfReaderController({
     openHighlight,
     handlePageMouseUp,
     createHighlight,
+    deleteHighlight,
     handleScroll,
     setComposerOpen,
     setNoteDraft,

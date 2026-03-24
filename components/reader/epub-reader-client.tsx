@@ -37,13 +37,23 @@ export function EpubReaderClient(props: ReaderClientProps) {
           <span className="h-4 w-px bg-border/60" />
           <span className="font-medium text-foreground">{reader.book.title}</span>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted">
-          <span className="h-1.5 w-1.5 rounded-full bg-secondary/60" />
-          {reader.pageIndex + 1} / {reader.book.content.length}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 text-xs tabular-nums">
+            <span className="text-muted">{Math.round(((reader.pageIndex + 1) / Math.max(reader.book.content.length, 1)) * 100)}%</span>
+            <span className="text-secondary">{reader.pageIndex + 1}</span>
+            <span className="text-muted">/</span>
+            <span className="text-secondary">{reader.book.content.length}</span>
+          </div>
         </div>
       </div>
+      <div className="h-[2px] w-full bg-transparent">
+        <div
+          className="h-full bg-primary/60 transition-all duration-150"
+          style={{ width: `${((reader.pageIndex + 1) / Math.max(reader.book.content.length, 1)) * 100}%` }}
+        />
+      </div>
 
-      <div className="flex h-[calc(100vh-52px)]">
+      <div className="flex h-[calc(100vh-58px)]">
         <ReaderSidebar
           width={reader.tocWidth}
           nodes={reader.sidebarEntries}
@@ -106,6 +116,7 @@ export function EpubReaderClient(props: ReaderClientProps) {
           currentPageIndex={reader.currentSection?.pageIndex}
           resolvedHighlights={reader.resolvedHighlights}
           onOpenHighlight={reader.openHighlight}
+          onDeleteHighlight={reader.deleteHighlight}
           onResizeStart={reader.createResizeHandler(
             reader.highlightsWidth,
             reader.setHighlightsWidth,
