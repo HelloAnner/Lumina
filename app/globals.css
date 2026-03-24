@@ -19,9 +19,9 @@
   --color-muted: #6b6b7b;
   --color-prose-body: #b8bcc8;
   /* 阅读器专用 - 沉浸暗色阅读 */
-  --color-reader-sidebar: #0d0d0f;
-  --color-reader-card: #111113;
-  --color-reader-text: #c4c4c8;
+  --color-reader-sidebar: #0c0c0e;
+  --color-reader-card: #111115;
+  --color-reader-text: #9e9b97;
   /* 渐变背景色 */
   --gradient-glow: radial-gradient(ellipse at 50% 0%, rgba(139, 92, 246, 0.08), transparent 60%);
 }
@@ -42,10 +42,10 @@
   --color-secondary: #6E6E6E;
   --color-muted: #969696;
   --color-prose-body: #4A4A4A;
-  /* 阅读器专用 - 纯净亮色阅读 */
-  --color-reader-sidebar: #F8F9FA;
+  /* 阅读器专用 - 暖纸色阅读 */
+  --color-reader-sidebar: #F6F4F0;
   --color-reader-card: #FFFFFF;
-  --color-reader-text: #374151;
+  --color-reader-text: #44403C;
   /* 渐变背景色 - 更柔和的亮色渐变 */
   --gradient-glow: radial-gradient(ellipse at 50% 0%, rgba(139, 92, 246, 0.04), transparent 60%);
 }

@@ -167,6 +167,14 @@ export const repository = {
       )
     ).map((item) => normalizeHighlight(item))
   },
+  /** 按状态查询用户的所有划线（不依赖 bookId） */
+  listHighlightsByStatus(userId: string, status: Highlight["status"]) {
+    return sortByDate(
+      readDatabase().highlights.filter(
+        (item) => item.userId === userId && item.status === status
+      )
+    ).map((item) => normalizeHighlight(item))
+  },
   listUnconfirmedHighlights(userId: string, viewpointId: string) {
     const database = readDatabase()
     const linkMap = database.highlightViewpoints.filter(

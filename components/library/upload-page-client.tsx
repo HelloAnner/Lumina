@@ -1,10 +1,22 @@
 "use client"
 
-import { useMemo, useRef, useState } from "react"
+import { useCallback, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, BookUp, Loader2, Plus, Sparkles, X } from "lucide-react"
+import {
+  ArrowUp,
+  BookOpen,
+  BookUp,
+  Check,
+  FileText,
+  FileUp,
+  Loader2,
+  Pencil,
+  Plus,
+  Sparkles,
+  Upload,
+  X
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Toast } from "@/components/ui/toast"
 import { Badge } from "@/components/ui/badge"
@@ -31,8 +43,9 @@ export function UploadPageClient() {
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState<UploadResult | null>(null)
   const [toast, setToast] = useState<string>("")
+  const [dragOver, setDragOver] = useState(false)
 
-  // 编辑模式状态
+  // 编辑模式
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState("")
   const [editAuthor, setEditAuthor] = useState("")
@@ -40,19 +53,23 @@ export function UploadPageClient() {
   const [editTags, setEditTags] = useState<string[]>([])
   const [newTag, setNewTag] = useState("")
 
-  const metaRows = useMemo(
-    () =>
-      result
-        ? [
-            ["名称", result.item.title],
-            ["作者", result.item.author || "未知作者"],
-            ["类型", result.item.format],
-            ["标签", result.item.tags.join(" / ") || "未生成"]
-          ]
-        : [],
-    [result]
-  )
-  const previewSections = result?.previewSections?.filter((section) => section.content.trim()) ?? []
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    const dropped = e.dataTransfer.files[0]
+    if (dropped && /\.(epub|pdf)$/i.test(dropped.name)) {
+      setFile(dropped)
+    }
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(true)
+  }, [])
+
+  const handleDragLeave = useCallback(() => {
+    setDragOver(false)
+  }, [])
 
   async function handleSubmit() {
     if (!file) {
@@ -72,7 +89,6 @@ export function UploadPageClient() {
       return
     }
     setResult(data)
-    // 初始化编辑状态
     setEditTitle(data.item.title)
     setEditAuthor(data.item.author || "")
     setEditFormat(data.item.format as BookFormat)
@@ -83,8 +99,9 @@ export function UploadPageClient() {
   }
 
   async function handleSaveEdit() {
-    if (!result) return
-
+    if (!result) {
+      return
+    }
     const response = await fetch(`/api/books/${result.item.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -95,13 +112,9 @@ export function UploadPageClient() {
         tags: editTags
       })
     })
-
     if (response.ok) {
       const { item } = await response.json()
-      setResult({
-        ...result,
-        item: { ...result.item, ...item }
-      })
+      setResult({ ...result, item: { ...result.item, ...item } })
       setIsEditing(false)
       setToast("书籍信息已更新")
       setTimeout(() => {
@@ -120,12 +133,260 @@ export function UploadPageClient() {
     }
   }
 
-  const handleRemoveTag = (tagToRemove: string) => {
-    setEditTags(editTags.filter((t) => t !== tagToRemove))
+  const handleRemoveTag = (tag: string) => {
+    setEditTags(editTags.filter((t) => t !== tag))
+  }
+
+  // 三态渲染
+  const renderContent = () => {
+    // 态三：解析完成
+    if (result && !isEditing) {
+      return (
+        <div className="flex flex-col items-center gap-6">
+          <div className="flex h-[52px] w-[52px] items-center justify-center rounded-full bg-emerald-500/10">
+            <Check className="h-6 w-6 text-emerald-500" />
+          </div>
+          <h2 className="text-lg font-semibold text-white">导入成功</h2>
+
+          <div className="w-[480px] overflow-hidden rounded-xl border border-border/50 bg-[#18181B]">
+            {/* 书籍头部 */}
+            <div className="flex items-center gap-3.5 px-5 py-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-primary/10">
+                <BookOpen className="h-[22px] w-[22px] text-primary" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[15px] font-semibold text-white">
+                  {result.item.title}
+                </div>
+                <div className="mt-0.5 text-[13px] text-muted">
+                  {result.item.author || "未知作者"}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 rounded bg-primary/10 px-2 py-1">
+                <Sparkles className="h-3 w-3 text-primary/80" />
+                <span className="text-[11px] font-semibold text-primary/80">
+                  {result.parseMode === "llm" ? "AI" : "硬解析"}
+                </span>
+              </div>
+            </div>
+
+            <div className="h-px bg-border/50" />
+
+            {/* 元数据 */}
+            <div className="space-y-2.5 px-5 py-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[13px] text-muted-foreground/50">格式</span>
+                <span className="text-[13px] font-medium text-muted-foreground">
+                  {result.item.format}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[13px] text-muted-foreground/50">标签</span>
+                <div className="flex gap-1.5">
+                  {result.item.tags.length > 0 ? (
+                    result.item.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="rounded bg-[#27272A] px-2 py-0.5 text-[11px] text-muted-foreground"
+                      >
+                        {tag}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[13px] text-muted-foreground">未生成</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="h-px bg-border/50" />
+
+            {/* 操作按钮 */}
+            <div className="flex justify-end gap-2.5 px-5 py-3">
+              <button
+                onClick={() => setIsEditing(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 px-4 py-2 text-[13px] text-muted-foreground transition hover:bg-white/5"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                编辑
+              </button>
+              <Button size="sm" onClick={() => router.push(`/reader/${result.item.id}`)}>
+                <BookOpen className="mr-1.5 h-3.5 w-3.5" />
+                开始阅读
+              </Button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    // 态三（编辑子态）
+    if (result && isEditing) {
+      return (
+        <div className="flex flex-col items-center gap-6">
+          <h2 className="text-lg font-semibold text-white">编辑书籍信息</h2>
+          <div className="w-[480px] space-y-4 rounded-xl border border-border/50 bg-[#18181B] p-5">
+            <div>
+              <label className="mb-1.5 block text-xs text-muted">书名</label>
+              <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs text-muted">作者</label>
+              <Input value={editAuthor} onChange={(e) => setEditAuthor(e.target.value)} />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs text-muted">格式</label>
+              <div className="flex gap-2">
+                {(["EPUB", "PDF"] as BookFormat[]).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setEditFormat(f)}
+                    className={`rounded-lg px-4 py-2 text-sm transition-all ${
+                      editFormat === f
+                        ? "bg-primary text-white"
+                        : "bg-white/5 text-secondary hover:text-foreground"
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs text-muted">标签</label>
+              <div className="flex gap-2">
+                <Input
+                  value={newTag}
+                  onChange={(e) => setNewTag(e.target.value)}
+                  placeholder="添加标签"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      handleAddTag()
+                    }
+                  }}
+                />
+                <Button variant="secondary" onClick={handleAddTag}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              {editTags.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {editTags.map((tag) => (
+                    <Badge key={tag} className="flex items-center gap-1 pr-1">
+                      {tag}
+                      <button
+                        onClick={() => handleRemoveTag(tag)}
+                        className="ml-1 rounded-full p-0.5 hover:bg-white/10"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="secondary" onClick={() => setIsEditing(false)}>
+              取消
+            </Button>
+            <Button onClick={handleSaveEdit}>保存并返回</Button>
+          </div>
+        </div>
+      )
+    }
+
+    // 态二：已选文件
+    if (file) {
+      return (
+        <div className="flex flex-col items-center gap-7">
+          <div className="flex w-[420px] items-center gap-3.5 rounded-xl border border-border/50 bg-[#18181B] px-5 py-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-primary/10">
+              <FileText className="h-[22px] w-[22px] text-primary" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium text-white">{file.name}</div>
+              <div className="mt-0.5 text-xs text-muted-foreground/50">
+                {(file.size / 1024 / 1024).toFixed(2)} MB
+              </div>
+            </div>
+            <button
+              onClick={() => setFile(null)}
+              className="rounded-md p-1 text-muted-foreground/50 transition hover:bg-white/5 hover:text-muted-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Button onClick={handleSubmit} disabled={uploading}>
+              {uploading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  正在解析
+                </>
+              ) : (
+                <>
+                  <ArrowUp className="mr-1.5 h-4 w-4" />
+                  开始导入
+                </>
+              )}
+            </Button>
+            <button
+              onClick={() => inputRef.current?.click()}
+              className="rounded-lg border border-border/50 px-5 py-2.5 text-sm text-muted transition hover:bg-white/5 hover:text-foreground"
+            >
+              重新选择
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    // 态一：初始拖拽
+    return (
+      <div className="flex flex-col items-center gap-8">
+        {/* 图标 */}
+        <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-b from-primary/15 to-primary/5 ring-1 ring-primary/20">
+          <BookUp className="h-7 w-7 text-primary" />
+        </div>
+
+        {/* 文案 */}
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-white">上传书籍</h2>
+          <p className="mt-2 text-sm text-muted">拖拽文件到此处，或点击选择</p>
+        </div>
+
+        {/* 拖拽区 */}
+        <button
+          className={`flex h-[200px] w-[420px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed transition ${
+            dragOver
+              ? "border-primary/50 bg-primary/5"
+              : "border-border/50 hover:border-border hover:bg-white/[0.02]"
+          }`}
+          onClick={() => inputRef.current?.click()}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+        >
+          <FileUp className="h-8 w-8 text-[#3F3F46]" />
+          <span className="text-[13px] font-medium tracking-wider text-muted-foreground/50">
+            EPUB / PDF
+          </span>
+          <span className="text-xs text-[#3F3F46]">文件大小不超过 200MB</span>
+        </button>
+
+        <Button onClick={() => inputRef.current?.click()}>
+          <Upload className="mr-1.5 h-4 w-4" />
+          选择文件
+        </Button>
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.16),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(45,212,191,0.12),transparent_26%),#0A0A0B] px-8 py-8">
+    <div className="flex min-h-screen items-center justify-center bg-background">
       {toast ? (
         <Toast
           title={toast}
@@ -134,237 +395,16 @@ export function UploadPageClient() {
           onClose={() => setToast("")}
         />
       ) : null}
-      <div className="mx-auto max-w-6xl">
-        <button
-          className="mb-8 inline-flex items-center gap-2 text-sm text-secondary transition hover:text-foreground"
-          onClick={() => router.push("/library")}
-        >
-          <ArrowLeft className="h-4 w-4" />
-          返回书库
-        </button>
 
-        <div className="grid gap-8 xl:grid-cols-[1.1fr_0.9fr]">
-          <div className="space-y-6">
-            <div className="space-y-4">
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs text-primary">
-                <Sparkles className="h-3.5 w-3.5" />
-                智能导入
-              </div>
-              <div>
-                <h1 className="text-4xl font-semibold tracking-tight text-white">
-                  上传一本书，剩下的交给系统。
-                </h1>
-                <p className="mt-4 max-w-2xl text-sm leading-7 text-secondary">
-                  文件会直接写入 MinIO，元数据写入数据库。优先尝试大模型解析；如果你尚未配置模型，会自动降级到硬解析，并用 Toast 告知你。
-                </p>
-              </div>
-            </div>
+      <input
+        ref={inputRef}
+        className="hidden"
+        type="file"
+        accept=".epub,.pdf"
+        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+      />
 
-            <Card className="overflow-hidden border-white/10 bg-white/5 p-0 backdrop-blur">
-              <div className="border-b border-white/10 px-6 py-5">
-                <div className="text-lg font-medium">上传文件</div>
-                <div className="mt-1 text-sm text-secondary">支持 EPUB / PDF 格式</div>
-              </div>
-              <div className="p-6">
-                <button
-                  className="flex min-h-[280px] w-full flex-col items-center justify-center rounded-2xl border border-dashed border-primary/30 bg-gradient-to-br from-primary/10 via-transparent to-cyan-400/5 p-10 text-center transition hover:border-primary/50 hover:bg-primary/10"
-                  onClick={() => inputRef.current?.click()}
-                >
-                  <div className="mb-5 rounded-2xl border border-primary/20 bg-primary/10 p-5 text-primary">
-                    <BookUp className="h-10 w-10" />
-                  </div>
-                  <div className="text-xl font-medium text-white">
-                    {file ? file.name : "点击选择文件"}
-                  </div>
-                  <div className="mt-3 max-w-md text-sm leading-6 text-secondary">
-                    {file
-                      ? `已选择 ${(file.size / 1024 / 1024).toFixed(2)} MB，点击下方开始导入。`
-                      : "支持 EPUB、PDF 格式，系统会自动解析元数据"}
-                  </div>
-                </button>
-                <input
-                  ref={inputRef}
-                  className="hidden"
-                  type="file"
-                  accept=".epub,.pdf"
-                  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-                />
-                <div className="mt-6 flex justify-end">
-                  <Button disabled={!file || uploading} onClick={handleSubmit}>
-                    {uploading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        正在上传与解析
-                      </>
-                    ) : (
-                      "开始导入"
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          <Card className="border-white/10 bg-black/30 p-6 backdrop-blur">
-            <div className="space-y-2">
-              <div className="text-lg font-medium text-white">解析预览</div>
-              <div className="text-sm text-secondary">
-                上传成功后，这里会直接展示系统提取的书籍信息和正文片段。
-              </div>
-            </div>
-
-            {result && !isEditing ? (
-              <div className="mt-6 space-y-4">
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <span className="text-xs text-muted">书籍信息</span>
-                    <Button variant="ghost" size="sm" onClick={() => setIsEditing(true)}>
-                      <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                      编辑
-                    </Button>
-                  </div>
-                  <div className="space-y-3">
-                    {metaRows.map(([label, value]) => (
-                      <div key={label} className="flex items-start justify-between">
-                        <div className="text-sm text-muted">{label}</div>
-                        <div className="max-w-[70%] text-right text-sm text-foreground">
-                          {value}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-primary/20 bg-primary/10 p-5">
-                  <div className="text-sm font-medium text-white">
-                    解析方式：{result.parseMode === "llm" ? "大模型自动解析" : "自动硬解析"}
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-secondary">{result.item.synopsis}</p>
-                </div>
-
-                {previewSections.length > 0 ? (
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <div className="mb-3 text-sm font-medium text-white">已解析正文</div>
-                    <div className="space-y-3">
-                      {previewSections.slice(0, 2).map((section) => (
-                        <div
-                          key={section.id}
-                          className="rounded-xl border border-white/10 bg-black/20 px-4 py-3"
-                        >
-                          <div className="mb-2 text-xs text-muted">
-                            {section.title || `第 ${section.pageIndex} 段`}
-                          </div>
-                          <div className="line-clamp-6 whitespace-pre-wrap text-sm leading-6 text-secondary">
-                            {section.content}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button onClick={() => router.push(`/reader/${result.item.id}`)}>
-                    继续阅读
-                  </Button>
-                  <Button variant="secondary" onClick={() => router.push("/library")}>
-                    返回书库
-                  </Button>
-                </div>
-              </div>
-            ) : result && isEditing ? (
-              <div className="mt-6 space-y-4">
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                  <div className="mb-4 text-sm font-medium text-white">编辑书籍信息</div>
-
-                  <div className="space-y-4">
-                    <div>
-                      <label className="mb-1.5 block text-xs text-muted">书名</label>
-                      <Input
-                        value={editTitle}
-                        onChange={(e) => setEditTitle(e.target.value)}
-                        placeholder="输入书名"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-1.5 block text-xs text-muted">作者</label>
-                      <Input
-                        value={editAuthor}
-                        onChange={(e) => setEditAuthor(e.target.value)}
-                        placeholder="输入作者"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-1.5 block text-xs text-muted">格式</label>
-                      <div className="flex gap-2">
-                        {(["EPUB", "PDF"] as BookFormat[]).map((f) => (
-                          <button
-                            key={f}
-                            onClick={() => setEditFormat(f)}
-                            className={`rounded-lg px-4 py-2 text-sm transition-all ${
-                              editFormat === f
-                                ? "bg-primary text-white"
-                                : "bg-white/5 text-secondary hover:text-foreground"
-                            }`}
-                          >
-                            {f}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="mb-1.5 block text-xs text-muted">标签</label>
-                      <div className="flex gap-2">
-                        <Input
-                          value={newTag}
-                          onChange={(e) => setNewTag(e.target.value)}
-                          placeholder="添加标签"
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault()
-                              handleAddTag()
-                            }
-                          }}
-                        />
-                        <Button variant="secondary" onClick={handleAddTag}>
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {editTags.map((tag) => (
-                          <Badge key={tag} className="flex items-center gap-1 pr-1">
-                            {tag}
-                            <button
-                              onClick={() => handleRemoveTag(tag)}
-                              className="ml-1 rounded-full p-0.5 hover:bg-white/10"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-2">
-                  <Button variant="secondary" onClick={() => setIsEditing(false)}>
-                    取消
-                  </Button>
-                  <Button onClick={handleSaveEdit}>保存并返回</Button>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5 text-sm leading-7 text-secondary">
-                尚未开始导入。完成上传后，这里会展示名称、作者、类型、标签、解析模式和正文片段。
-              </div>
-            )}
-          </Card>
-        </div>
-      </div>
+      {renderContent()}
     </div>
   )
 }

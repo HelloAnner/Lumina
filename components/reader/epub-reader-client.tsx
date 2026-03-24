@@ -8,7 +8,7 @@
 "use client"
 
 import Link from "next/link"
-import { AlertTriangle, ArrowLeft, Languages, Moon, Sun, Type } from "lucide-react"
+import { AlertTriangle, ArrowLeft, Languages, Moon, PanelLeftOpen, PanelRightOpen, Sun, Type } from "lucide-react"
 import { Toast } from "@/components/ui/toast"
 import { ReaderSidebar } from "@/components/reader/reader-sidebar"
 import { ReaderSelectionToolbar } from "@/components/reader/reader-selection-toolbar"
@@ -19,10 +19,13 @@ import { ReaderNoteComposer } from "@/components/reader/reader-note-composer"
 import type { ReaderClientProps } from "@/components/reader/reader-types"
 import { useReaderController } from "@/components/reader/use-reader-controller"
 import { useTheme } from "@/components/theme-provider"
+import { useState } from "react"
 
 export function EpubReaderClient(props: ReaderClientProps) {
   const reader = useReaderController(props)
   const { theme, setTheme } = useTheme()
+  const [tocCollapsed, setTocCollapsed] = useState(false)
+  const [highlightsCollapsed, setHighlightsCollapsed] = useState(false)
 
   const progress = Math.round(
     ((reader.pageIndex + 1) / Math.max(reader.book.content.length, 1)) * 100
@@ -99,8 +102,8 @@ export function EpubReaderClient(props: ReaderClientProps) {
         </div>
       </div>
 
-      {/* 阅读进度条 3px */}
-      <div className="h-[3px] w-full bg-border/40">
+      {/* 阅读进度条 2px */}
+      <div className="h-[2px] w-full bg-border/40">
         <div
           className="h-full bg-primary transition-all duration-150"
           style={{ width: `${progress}%` }}
@@ -108,13 +111,15 @@ export function EpubReaderClient(props: ReaderClientProps) {
       </div>
 
       {/* 主体三栏 */}
-      <div className="flex h-[calc(100vh-51px)]">
+      <div className="flex h-[calc(100vh-50px)]">
         <ReaderSidebar
           width={reader.tocWidth}
+          collapsed={tocCollapsed}
           nodes={reader.sidebarEntries}
           activeIndex={reader.pageIndex}
           onNavigate={reader.goSection}
           itemRefs={reader.tocItemRefs}
+          onToggleCollapse={() => setTocCollapsed(true)}
           onResizeStart={reader.createResizeHandler(
             reader.tocWidth,
             reader.setTocWidth,
@@ -127,6 +132,26 @@ export function EpubReaderClient(props: ReaderClientProps) {
           className="relative min-w-0 flex-1 overflow-hidden bg-reader-sidebar"
           onWheel={reader.handleWheel}
         >
+          {/* 目录收起时的浮动展开按钮 */}
+          {tocCollapsed && (
+            <button
+              className="absolute left-0 top-1/2 z-10 -translate-y-1/2 flex h-14 w-7 items-center justify-center rounded-r-lg border border-l-0 border-border/60 bg-reader-card text-muted shadow-md transition hover:text-foreground"
+              onClick={() => setTocCollapsed(false)}
+              title="展开目录"
+            >
+              <PanelLeftOpen className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {/* 高亮面板收起时的浮动展开按钮 */}
+          {highlightsCollapsed && (
+            <button
+              className="absolute right-0 top-1/2 z-10 -translate-y-1/2 flex h-14 w-7 items-center justify-center rounded-l-lg border border-r-0 border-border/60 bg-reader-card text-muted shadow-md transition hover:text-foreground"
+              onClick={() => setHighlightsCollapsed(false)}
+              title="展开划线面板"
+            >
+              <PanelRightOpen className="h-3.5 w-3.5" />
+            </button>
+          )}
           <ReaderSelectionToolbar
             selectionRect={reader.selectionRect}
             onHighlight={() => reader.createHighlight("yellow")}
@@ -189,11 +214,13 @@ export function EpubReaderClient(props: ReaderClientProps) {
 
         <ReaderHighlightPanel
           width={reader.highlightsWidth}
+          collapsed={highlightsCollapsed}
           items={reader.groupedHighlights}
           currentPageIndex={reader.currentSection?.pageIndex}
           resolvedHighlights={reader.resolvedHighlights}
           onOpenHighlight={reader.openHighlight}
           onDeleteHighlight={reader.deleteHighlight}
+          onToggleCollapse={() => setHighlightsCollapsed(true)}
           onResizeStart={reader.createResizeHandler(
             reader.highlightsWidth,
             reader.setHighlightsWidth,

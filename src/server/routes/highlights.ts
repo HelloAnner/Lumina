@@ -42,7 +42,7 @@ app.post("/", async (c) => {
 
   // 后台同步划线到主题树（不阻塞响应，不弹通知）
   void syncPendingHighlights(userId).catch((err) => {
-    console.error("highlight sync failed:", err)
+    console.error("[highlight-sync] sync failed:", err)
   })
 
   return c.json({ item: highlight })

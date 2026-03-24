@@ -9,6 +9,7 @@
 
 import type React from "react"
 import { memo, useEffect, useRef } from "react"
+import { PanelLeftClose } from "lucide-react"
 import { cn } from "@/src/lib/utils"
 import { computeCenteredScrollTop } from "@/components/reader/reader-panel-scroll-utils"
 import type { SidebarNode } from "@/components/reader/reader-types"
@@ -73,22 +74,27 @@ const SidebarTreeNode = memo(function SidebarTreeNode({
 
 export function ReaderSidebar({
   width,
+  collapsed,
   nodes,
   activeIndex,
   onNavigate,
   onResizeStart,
+  onToggleCollapse,
   itemRefs
 }: {
   width: number
+  collapsed: boolean
   nodes: SidebarNode[]
   activeIndex: number
   onNavigate: (index: number) => void
   onResizeStart: (event: React.MouseEvent) => void
+  onToggleCollapse: () => void
   itemRefs: React.MutableRefObject<Record<number, HTMLButtonElement | null>>
 }) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
+    if (collapsed) return
     const container = scrollContainerRef.current
     const activeItem = itemRefs.current[activeIndex]
     if (!container || !activeItem) {
@@ -104,15 +110,27 @@ export function ReaderSidebar({
       top: nextTop,
       behavior: "auto"
     })
-  }, [activeIndex, itemRefs])
+  }, [activeIndex, collapsed, itemRefs])
+
+  if (collapsed) return null
 
   return (
     <aside
-      className="relative border-r border-border/60 bg-surface"
+      className="relative flex-shrink-0 border-r border-border/60 bg-reader-sidebar"
       style={{ width }}
     >
-      <div className="flex h-12 items-center border-b border-border/60 px-4">
-        <span className="text-[13px] font-semibold text-foreground">目录</span>
+      {/* 头部：目录标题 + 收起按钮 */}
+      <div className="flex h-12 items-center justify-between border-b border-border/60 px-4">
+        <span className="text-[12px] font-semibold uppercase tracking-[0.5px] text-foreground/80">
+          目录
+        </span>
+        <button
+          className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition hover:bg-overlay hover:text-foreground"
+          onClick={onToggleCollapse}
+          title="收起目录"
+        >
+          <PanelLeftClose className="h-3.5 w-3.5" />
+        </button>
       </div>
       <div
         ref={scrollContainerRef}

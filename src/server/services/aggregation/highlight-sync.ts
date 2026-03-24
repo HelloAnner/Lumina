@@ -1,7 +1,7 @@
 /**
  * 划线同步服务
- * 将新划线通过向量相似度匹配到已有主题，支持降级到关键词匹配
- * 新建主题时通过大模型汇总生成名称
+ * 将新划线优先匹配到已有主题，支持写入多个相关主题
+ * 匹配策略：向量 > 大模型分类 > 关键词，仅无匹配时创建新主题
  *
  * @author Anner
  * @since 0.3.0
@@ -9,6 +9,7 @@
  */
 import { repository } from "@/src/server/repositories"
 import type { Highlight, NoteBlock } from "@/src/server/store/types"
+import { decryptValue } from "@/src/server/lib/crypto"
 import {
   generateEmbedding,
   buildHighlightText,
@@ -21,25 +22,8 @@ import {
   searchSimilarViewpoints
 } from "./vector-store"
 
-/** 相似度阈值：超过此值认为划线与主题相关 */
-const SIMILARITY_THRESHOLD = 0.65
-
-/** 降级用关键词词典 */
-const TOPIC_DICTIONARY = [
-  "第一性原理", "长期主义", "系统思维", "复利", "决策",
-  "学习", "写作", "商业", "管理", "认知",
-  "思考", "创新", "领导力", "效率", "沟通",
-  "心理学", "哲学", "经济", "技术", "设计"
-]
-
-/**
- * 降级：关键词提取主题
- */
-function extractTopicsByKeyword(highlight: Highlight): string[] {
-  const content = `${highlight.content} ${highlight.note ?? ""}`
-  const matches = TOPIC_DICTIONARY.filter((kw) => content.includes(kw))
-  return matches.length > 0 ? matches : [highlight.content.slice(0, 8)]
-}
+/** 向量相似度阈值：降低以鼓励匹配已有主题 */
+const SIMILARITY_THRESHOLD = 0.45
 
 /**
  * 为 viewpoint 追加一条划线引用块
@@ -123,25 +107,140 @@ async function matchByVector(
 }
 
 /**
- * 降级匹配：关键词
+ * 大模型匹配：让模型从已有主题中选择相关的
+ * 鼓励匹配多个、鼓励写入已有主题
  */
-function matchByKeyword(
+async function matchByLLM(
+  userId: string,
+  highlight: Highlight,
+  viewpoints: { id: string; title: string }[]
+): Promise<{ viewpointId: string; similarity: number }[]> {
+  if (viewpoints.length === 0) {
+    return []
+  }
+
+  const featureOrder = ["aggregation_analyze", "article_generate", "instant_explain"] as const
+  let model = null
+  for (const feature of featureOrder) {
+    model = repository.getModelByFeature(userId, feature)
+    if (model) {
+      break
+    }
+  }
+  if (!model) {
+    return []
+  }
+
+  const book = repository.getBook(userId, highlight.bookId)
+  const bookTitle = book?.title ?? "未知书籍"
+
+  const vpList = viewpoints.map((vp, i) => `${i + 1}. ${vp.title}`).join("\n")
+  const prompt = [
+    "以下是用户的一条阅读划线，以及已有的主题列表。",
+    "请判断这条划线与哪些主题相关，可以归入多个主题。",
+    "只要主题和划线有一定关联就应该归入，鼓励归入多个主题。",
+    "如果确实没有任何相关主题，输出「无」。",
+    "",
+    "输出格式：只输出相关主题的编号，用逗号分隔。例如：1,3,5",
+    "如果无相关主题，只输出：无",
+    "",
+    `书名：${bookTitle}`,
+    `划线内容：${highlight.content}`,
+    highlight.note ? `批注：${highlight.note}` : null,
+    "",
+    "已有主题列表：",
+    vpList
+  ].filter(Boolean).join("\n")
+
+  const apiUrl = `${model.baseUrl.replace(/\/$/, "")}/chat/completions`
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${decryptValue(model.apiKey)}`
+    },
+    body: JSON.stringify({
+      model: model.modelName,
+      messages: [{ role: "user", content: prompt }],
+      stream: false
+    })
+  })
+
+  if (!response.ok) {
+    console.error(`[highlight-sync] LLM match API error ${response.status}`)
+    return []
+  }
+
+  const data = (await response.json()) as {
+    choices?: { message?: { content?: string } }[]
+  }
+  const answer = data.choices?.[0]?.message?.content?.trim() ?? ""
+
+  if (answer === "无" || !answer) {
+    return []
+  }
+
+  // 解析编号列表
+  const indices = answer.match(/\d+/g)?.map(Number) ?? []
+  return indices
+    .filter((i) => i >= 1 && i <= viewpoints.length)
+    .map((i) => ({
+      viewpointId: viewpoints[i - 1].id,
+      similarity: 0.8
+    }))
+}
+
+/**
+ * 降级匹配：基于文本重叠的宽松匹配
+ * 将划线内容与已有主题标题和内容做双向子串匹配
+ */
+function matchByText(
   highlight: Highlight,
   viewpoints: ReturnType<typeof repository.listViewpoints>
 ): { viewpointId: string; similarity: number }[] {
-  const topics = extractTopicsByKeyword(highlight)
+  const content = `${highlight.content} ${highlight.note ?? ""}`
   const results: { viewpointId: string; similarity: number }[] = []
 
-  for (const topic of topics) {
-    const match = viewpoints.find(
-      (vp) => !vp.isFolder && (vp.title === topic || vp.title.includes(topic) || topic.includes(vp.title))
-    )
-    if (match) {
-      results.push({ viewpointId: match.id, similarity: 0.88 })
+  for (const vp of viewpoints) {
+    if (vp.isFolder) {
+      continue
+    }
+    // 标题出现在划线内容中，或划线关键词出现在主题标题/内容中
+    const titleInContent = content.includes(vp.title)
+    const contentInTitle = vp.title.length >= 2 && highlight.content.includes(vp.title)
+
+    // 从划线中提取 2-4 字的词组与主题标题比较
+    const keywords = extractKeyPhrases(content)
+    const keywordInTitle = keywords.some((kw) => vp.title.includes(kw))
+    const titleKeywords = extractKeyPhrases(vp.title)
+    const titleKwInContent = titleKeywords.some((kw) => content.includes(kw))
+
+    // 同一本书的主题更容易匹配
+    const sameBook = vp.relatedBookIds.includes(highlight.bookId)
+
+    if (titleInContent || contentInTitle) {
+      results.push({ viewpointId: vp.id, similarity: 0.85 })
+    } else if ((keywordInTitle || titleKwInContent) && sameBook) {
+      results.push({ viewpointId: vp.id, similarity: 0.7 })
+    } else if (keywordInTitle || titleKwInContent) {
+      results.push({ viewpointId: vp.id, similarity: 0.6 })
+    } else if (sameBook) {
+      // 同一本书的主题，默认有弱关联
+      results.push({ viewpointId: vp.id, similarity: 0.5 })
     }
   }
 
   return results
+}
+
+/**
+ * 从文本中提取关键短语（2-4字）
+ */
+function extractKeyPhrases(text: string): string[] {
+  // 移除标点，按常见分隔切词
+  const cleaned = text.replace(/[，。、；：！？""''（）《》\s]+/g, "|")
+  const segments = cleaned.split("|").filter((s) => s.length >= 2 && s.length <= 8)
+  return segments
 }
 
 /**
@@ -188,6 +287,14 @@ function linkHighlightToViewpoint(
     return
   }
 
+  // 避免重复追加
+  const existingQuotes = (viewpoint.articleBlocks ?? []).filter(
+    (b) => b.type === "quote" && "highlightId" in b && b.highlightId === highlight.id
+  )
+  if (existingQuotes.length > 0) {
+    return
+  }
+
   repository.upsertHighlightLink({
     highlightId: highlight.id,
     viewpointId,
@@ -223,17 +330,15 @@ async function createViewpointForHighlight(userId: string, highlight: Highlight)
   // 用大模型汇总主题名称
   let title = await generateTopicTitle(userId, highlight)
 
-  // 降级：关键词提取
+  // 降级：取划线前8字作为名称
   if (!title) {
-    const topics = extractTopicsByKeyword(highlight)
-    title = topics[0]
+    title = highlight.content.replace(/[，。、；：！？""''（）《》\s]+/g, "").slice(0, 8)
   }
 
   // 避免和已有主题重名
   const existing = repository.listViewpoints(userId)
   const duplicate = existing.find((vp) => vp.title === title)
   if (duplicate) {
-    // 重名说明大模型生成的名字和已有主题一致，直接关联
     linkHighlightToViewpoint(userId, highlight, duplicate.id, 0.9)
     return duplicate.id
   }
@@ -268,20 +373,17 @@ async function createViewpointForHighlight(userId: string, highlight: Highlight)
 
 /**
  * 增量同步划线到主题树
- * 匹配维度：书名 + 章节名 + 划线内容
- * 优先向量匹配，无 embedding 模型时降级关键词
- * 新建主题时通过大模型汇总名称
- * 静默执行，不弹通知
+ * 策略：优先匹配已有主题（向量 > 大模型 > 文本），鼓励写入多个
+ * 仅当所有匹配手段都无结果时才创建新主题
  */
 export async function syncPendingHighlights(userId: string): Promise<void> {
-  const books = repository.listBooks(userId)
-  const pendingHighlights = books.flatMap((book) =>
-    repository.listHighlightsByBook(userId, book.id).filter((h) => h.status === "PENDING")
-  )
+  const pendingHighlights = repository.listHighlightsByStatus(userId, "PENDING")
 
   if (pendingHighlights.length === 0) {
     return
   }
+
+  console.log(`[highlight-sync] syncing ${pendingHighlights.length} pending highlights`)
 
   const hasEmbeddingModel = !!repository.getModelByFeature(userId, "embedding_index")
 
@@ -289,11 +391,14 @@ export async function syncPendingHighlights(userId: string): Promise<void> {
     await ensureViewpointVectors(userId)
   }
 
-  const existingViewpoints = repository.listViewpoints(userId)
-
   for (const highlight of pendingHighlights) {
+    // 每次迭代重新获取最新的主题列表（前面的划线可能创建了新主题）
+    const existingViewpoints = repository.listViewpoints(userId)
+    const nonFolderViewpoints = existingViewpoints.filter((vp) => !vp.isFolder)
+
     let matches: { viewpointId: string; similarity: number }[] = []
 
+    // 第一优先：向量匹配
     if (hasEmbeddingModel) {
       const vectorMatches = await matchByVector(userId, highlight)
       if (vectorMatches && vectorMatches.length > 0) {
@@ -301,8 +406,14 @@ export async function syncPendingHighlights(userId: string): Promise<void> {
       }
     }
 
+    // 第二优先：大模型分类（无 embedding 或向量无匹配时）
+    if (matches.length === 0 && nonFolderViewpoints.length > 0) {
+      matches = await matchByLLM(userId, highlight, nonFolderViewpoints)
+    }
+
+    // 第三优先：文本匹配
     if (matches.length === 0) {
-      matches = matchByKeyword(highlight, existingViewpoints)
+      matches = matchByText(highlight, existingViewpoints)
     }
 
     if (matches.length > 0) {
@@ -315,6 +426,7 @@ export async function syncPendingHighlights(userId: string): Promise<void> {
         }
       }
     } else {
+      // 所有匹配手段都失败，才创建新主题
       const newId = await createViewpointForHighlight(userId, highlight)
       if (hasEmbeddingModel) {
         await refreshViewpointVector(userId, newId)

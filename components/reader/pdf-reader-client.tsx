@@ -15,6 +15,8 @@ import {
   Languages,
   Loader2,
   Moon,
+  PanelLeftOpen,
+  PanelRightOpen,
   Sun,
   Type
 } from "lucide-react"
@@ -57,6 +59,8 @@ export function PdfReaderClient(props: ReaderClientProps) {
   const [parsedBook, setParsedBook] = useState(props.book)
   const [isBackfillingImages, setIsBackfillingImages] = useState(false)
   const [pageImageAttempted, setPageImageAttempted] = useState(false)
+  const [tocCollapsed, setTocCollapsed] = useState(false)
+  const [highlightsCollapsed, setHighlightsCollapsed] = useState(false)
   const parsedReader = useReaderController({
     ...props,
     book: parsedBook
@@ -225,20 +229,22 @@ export function PdfReaderClient(props: ReaderClientProps) {
           </span>
         </div>
       </div>
-      <div className="h-[3px] w-full bg-border/40">
+      <div className="h-[2px] w-full bg-border/40">
         <div
           className="h-full bg-primary transition-all duration-150"
           style={{ width: `${progressPercent}%` }}
         />
       </div>
 
-      <div className="flex h-[calc(100vh-51px)]">
+      <div className="flex h-[calc(100vh-50px)]">
         <ReaderSidebar
           width={activeSidebarWidth}
+          collapsed={tocCollapsed}
           nodes={activeSidebarEntries}
           activeIndex={activeSidebarIndex}
           onNavigate={isSourceMode ? sourceReader.goPage : parsedReader.goSection}
           itemRefs={activeSidebarRefs}
+          onToggleCollapse={() => setTocCollapsed(true)}
           onResizeStart={
             isSourceMode
               ? sourceReader.createResizeHandler(
@@ -259,6 +265,24 @@ export function PdfReaderClient(props: ReaderClientProps) {
           className="relative min-w-0 flex-1 overflow-hidden bg-reader-sidebar"
           onWheel={isSourceMode ? undefined : parsedReader.handleWheel}
         >
+          {tocCollapsed && (
+            <button
+              className="absolute left-0 top-1/2 z-10 -translate-y-1/2 flex h-14 w-7 items-center justify-center rounded-r-lg border border-l-0 border-border/60 bg-reader-card text-muted shadow-md transition hover:text-foreground"
+              onClick={() => setTocCollapsed(false)}
+              title="展开目录"
+            >
+              <PanelLeftOpen className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {highlightsCollapsed && (
+            <button
+              className="absolute right-0 top-1/2 z-10 -translate-y-1/2 flex h-14 w-7 items-center justify-center rounded-l-lg border border-r-0 border-border/60 bg-reader-card text-muted shadow-md transition hover:text-foreground"
+              onClick={() => setHighlightsCollapsed(false)}
+              title="展开划线面板"
+            >
+              <PanelRightOpen className="h-3.5 w-3.5" />
+            </button>
+          )}
           {isSourceMode ? (
             <>
               <ReaderSelectionToolbar
@@ -359,6 +383,7 @@ export function PdfReaderClient(props: ReaderClientProps) {
         {isSourceMode ? (
           <PdfHighlightPanel
             width={activeHighlightsWidth}
+            collapsed={highlightsCollapsed}
             items={sourceReader.panelItems}
             currentPageIndex={sourceReader.currentPageIndex}
             onOpenHighlight={sourceReader.openHighlight}
@@ -369,10 +394,12 @@ export function PdfReaderClient(props: ReaderClientProps) {
               { min: 260, max: 480 },
               true
             )}
+            onToggleCollapse={() => setHighlightsCollapsed(true)}
           />
         ) : (
           <ReaderHighlightPanel
             width={activeHighlightsWidth}
+            collapsed={highlightsCollapsed}
             items={parsedReader.groupedHighlights}
             currentPageIndex={parsedReader.currentSection?.pageIndex}
             resolvedHighlights={parsedReader.resolvedHighlights}
@@ -384,6 +411,7 @@ export function PdfReaderClient(props: ReaderClientProps) {
               { min: 260, max: 480 },
               true
             )}
+            onToggleCollapse={() => setHighlightsCollapsed(true)}
           />
         )}
       </div>

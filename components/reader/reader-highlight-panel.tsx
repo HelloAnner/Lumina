@@ -15,12 +15,12 @@ import {
 } from "@/components/reader/reader-panel-scroll-utils"
 import type { Highlight } from "@/src/server/store/types"
 import type { ResolvedHighlight } from "@/components/reader/reader-types"
-import { Trash2 } from "lucide-react"
+import { PanelRightClose, Trash2 } from "lucide-react"
 import { cn } from "@/src/lib/utils"
 
-/** 高亮颜色对应的顶部彩色条纹颜色 */
+/** 高亮颜色对应的左侧彩色边条颜色 */
 const STRIPE_COLORS: Record<string, string> = {
-  yellow: "#FBBF24",
+  yellow: "#F59E0B",
   green: "#34D399",
   blue: "#60A5FA",
   pink: "#F472B6"
@@ -43,61 +43,62 @@ function HighlightCard({
   return (
     <div
       className={cn(
-        "group relative cursor-pointer rounded-xl border p-3 transition",
+        "group relative cursor-pointer overflow-hidden rounded-lg border transition",
         active
           ? "border-primary/30 bg-elevated"
-          : "border-border bg-reader-card hover:border-primary/20"
+          : "border-border/70 bg-reader-card hover:border-border"
       )}
+      style={{ borderLeftColor: stripeColor, borderLeftWidth: 3 }}
       onClick={onClick}
       onMouseEnter={() => setShowDelete(true)}
       onMouseLeave={() => setShowDelete(false)}
     >
-      <button
-        onClick={onDelete}
-        className={cn(
-          "absolute right-2 top-2 rounded p-1 text-muted opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive",
-          showDelete && "opacity-100"
-        )}
-        title="删除"
-      >
-        <Trash2 className="h-3 w-3" />
-      </button>
+      <div className="p-3">
+        <button
+          onClick={onDelete}
+          className={cn(
+            "absolute right-2 top-2 rounded p-1 text-muted opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive",
+            showDelete && "opacity-100"
+          )}
+          title="删除"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
 
-      {/* 彩色顶部条纹 */}
-      <div
-        className="mb-2 h-[3px] w-4 rounded-full"
-        style={{ backgroundColor: stripeColor }}
-      />
+        {/* 引用文本 */}
+        <p className="text-xs leading-relaxed text-secondary">
+          &ldquo;{item.content}&rdquo;
+        </p>
 
-      {/* 引用文本 */}
-      <p className="text-xs leading-relaxed text-secondary">
-        &ldquo;{item.content}&rdquo;
-      </p>
-
-      {/* 批注 */}
-      {item.note ? (
-        <p className="mt-1.5 text-[11px] text-muted">{item.note}</p>
-      ) : null}
+        {/* 批注 */}
+        {item.note ? (
+          <p className="mt-1.5 text-[10px] text-muted">{item.note}</p>
+        ) : null}
+      </div>
     </div>
   )
 }
 
 export function ReaderHighlightPanel({
   width,
+  collapsed,
   items,
   currentPageIndex,
   resolvedHighlights,
   onOpenHighlight,
   onDeleteHighlight,
-  onResizeStart
+  onResizeStart,
+  onToggleCollapse
 }: {
   width: number
+  collapsed: boolean
   items: Highlight[]
   currentPageIndex?: number
   resolvedHighlights: ResolvedHighlight[]
   onOpenHighlight: (item: ResolvedHighlight) => void
   onDeleteHighlight: (id: string) => void
   onResizeStart: (event: React.MouseEvent) => void
+  onToggleCollapse: () => void
 }) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -134,21 +135,36 @@ export function ReaderHighlightPanel({
     container.scrollTo({ top: nextTop, behavior: "auto" })
   }, [currentHighlightId])
 
+  if (collapsed) return null
+
   return (
-    <aside className="relative border-l border-border/60 bg-reader-sidebar" style={{ width }}>
+    <aside className="relative flex-shrink-0 border-l border-border/60 bg-reader-sidebar" style={{ width }}>
       <div
         className="absolute left-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-primary/30"
         onMouseDown={onResizeStart}
       />
       {/* 面板头部 */}
       <div className="flex h-12 items-center justify-between border-b border-border/60 px-4">
-        <span className="text-[13px] font-semibold text-foreground">划线与想法</span>
-        <span className="text-xs font-medium text-primary">{items.length}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] font-semibold uppercase tracking-[0.5px] text-foreground/80">
+            划线与想法
+          </span>
+          {items.length > 0 && (
+            <span className="text-[11px] font-medium text-primary">{items.length}</span>
+          )}
+        </div>
+        <button
+          className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition hover:bg-overlay hover:text-foreground"
+          onClick={onToggleCollapse}
+          title="收起面板"
+        >
+          <PanelRightClose className="h-3.5 w-3.5" />
+        </button>
       </div>
       {/* 列表 */}
       <div
         ref={scrollContainerRef}
-        className="h-[calc(100%-48px)] space-y-2 overflow-y-auto p-3"
+        className="h-[calc(100%-48px)] space-y-2 overflow-y-auto p-3.5"
       >
         {items.map((item) => {
           const resolved = resolvedHighlights.find((entry) => entry.id === item.id)

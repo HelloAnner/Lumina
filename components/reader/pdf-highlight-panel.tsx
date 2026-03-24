@@ -13,7 +13,7 @@ import { Card } from "@/components/ui/card"
 import { computeCenteredScrollTop } from "@/components/reader/reader-panel-scroll-utils"
 import { pickPdfCurrentHighlightId } from "@/components/reader/pdf-reader-utils"
 import type { Highlight } from "@/src/server/store/types"
-import { Trash2 } from "lucide-react"
+import { PanelRightClose, Trash2 } from "lucide-react"
 import { cn } from "@/src/lib/utils"
 
 const COLORS = {
@@ -70,18 +70,22 @@ function HighlightCard({
 
 export function PdfHighlightPanel({
   width,
+  collapsed,
   items,
   currentPageIndex,
   onOpenHighlight,
   onDeleteHighlight,
-  onResizeStart
+  onResizeStart,
+  onToggleCollapse
 }: {
   width: number
+  collapsed: boolean
   items: Highlight[]
   currentPageIndex: number
   onOpenHighlight: (item: Highlight) => void
   onDeleteHighlight: (id: string) => void
   onResizeStart: (event: React.MouseEvent) => void
+  onToggleCollapse: () => void
 }) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -117,17 +121,32 @@ export function PdfHighlightPanel({
     })
   }, [currentHighlightId])
 
+  if (collapsed) return null
+
   return (
-    <aside className="relative border-l border-border bg-surface" style={{ width }}>
+    <aside className="relative flex-shrink-0 border-l border-border/60 bg-reader-sidebar" style={{ width }}>
       <div
         className="absolute left-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-primary/30"
         onMouseDown={onResizeStart}
       />
-      <div className="flex h-12 items-center justify-between border-b border-border px-4 text-sm">
-        <span>划线与想法</span>
-        <span>{items.length}</span>
+      <div className="flex h-12 items-center justify-between border-b border-border/60 px-4">
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] font-semibold uppercase tracking-[0.5px] text-foreground/80">
+            划线与想法
+          </span>
+          {items.length > 0 && (
+            <span className="text-[11px] font-medium text-primary">{items.length}</span>
+          )}
+        </div>
+        <button
+          className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition hover:bg-overlay hover:text-foreground"
+          onClick={onToggleCollapse}
+          title="收起面板"
+        >
+          <PanelRightClose className="h-3.5 w-3.5" />
+        </button>
       </div>
-      <div ref={scrollContainerRef} className="h-[calc(100%-48px)] space-y-3 overflow-y-auto p-4">
+      <div ref={scrollContainerRef} className="h-[calc(100%-48px)] space-y-2 overflow-y-auto p-3.5">
         {items.map((item) => {
           const active = item.id === currentHighlightId
           return (
