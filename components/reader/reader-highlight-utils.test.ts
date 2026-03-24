@@ -8,6 +8,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import {
+  buildTextHighlightPayload,
   buildParagraphLayouts,
   buildParagraphSegments,
   resolveBookHighlightAnchor
@@ -103,4 +104,59 @@ test("buildParagraphSegments 会把命中的正文切成高亮片段", () => {
     { text: "目标句子", activeHighlightId: "h-1", color: "yellow" },
     { text: "。", activeHighlightId: null, color: null }
   ])
+})
+
+test("buildTextHighlightPayload 为 EPUB 保留 chapterHref", () => {
+  const payload = buildTextHighlightPayload({
+    bookId: "book-1",
+    format: "EPUB",
+    sections: [
+      { pageIndex: 3, href: "chapter-3", content: "第一段。\n\n第二段。" }
+    ],
+    selectedSectionIndex: 0,
+    fallbackSection: { pageIndex: 3, href: "chapter-3", content: "第一段。\n\n第二段。" },
+    selectedText: "第二段",
+    selectedRange: { start: 5, end: 8 },
+    color: "yellow",
+    note: "记一下"
+  })
+
+  assert.deepEqual(payload, {
+    bookId: "book-1",
+    format: "EPUB",
+    pageIndex: 3,
+    chapterHref: "chapter-3",
+    paraOffsetStart: 5,
+    paraOffsetEnd: 8,
+    content: "第二段",
+    note: "记一下",
+    color: "yellow"
+  })
+})
+
+test("buildTextHighlightPayload 为 PDF 只保留文本锚点", () => {
+  const payload = buildTextHighlightPayload({
+    bookId: "book-2",
+    format: "PDF",
+    sections: [
+      { pageIndex: 9, content: "第一页。\n\n第二页重点。" }
+    ],
+    selectedSectionIndex: 0,
+    fallbackSection: { pageIndex: 9, content: "第一页。\n\n第二页重点。" },
+    selectedText: "重点",
+    selectedRange: { start: 8, end: 10 },
+    color: "blue"
+  })
+
+  assert.deepEqual(payload, {
+    bookId: "book-2",
+    format: "PDF",
+    pageIndex: 9,
+    chapterHref: undefined,
+    paraOffsetStart: 8,
+    paraOffsetEnd: 10,
+    content: "重点",
+    note: undefined,
+    color: "blue"
+  })
 })

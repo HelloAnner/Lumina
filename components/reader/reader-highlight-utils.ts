@@ -6,7 +6,7 @@
  * Created on 2026/3/23
  */
 import { decodeHtmlEntities } from "@/src/lib/html-entities"
-import type { HighlightColor } from "@/src/server/store/types"
+import type { BookFormat, HighlightColor } from "@/src/server/store/types"
 
 export interface SectionLike {
   pageIndex: number
@@ -39,6 +39,21 @@ export interface ParagraphSegment {
   text: string
   activeHighlightId: string | null
   color: HighlightColor | null
+}
+
+export interface BuildTextHighlightPayloadInput {
+  bookId: string
+  format: BookFormat
+  sections: SectionLike[]
+  selectedSectionIndex: number
+  fallbackSection: SectionLike
+  selectedText: string
+  selectedRange: {
+    start: number
+    end: number
+  }
+  color: HighlightColor
+  note?: string
 }
 
 export function splitParagraphs(content: string) {
@@ -204,4 +219,19 @@ export function buildParagraphSegments(
   }
 
   return segments
+}
+
+export function buildTextHighlightPayload(input: BuildTextHighlightPayloadInput) {
+  const targetSection = input.sections[input.selectedSectionIndex] ?? input.fallbackSection
+  return {
+    bookId: input.bookId,
+    format: input.format,
+    pageIndex: targetSection.pageIndex,
+    chapterHref: input.format === "EPUB" ? targetSection.href : undefined,
+    paraOffsetStart: input.selectedRange.start,
+    paraOffsetEnd: input.selectedRange.end,
+    content: input.selectedText,
+    note: input.note,
+    color: input.color
+  }
 }

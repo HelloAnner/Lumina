@@ -9,12 +9,7 @@
 
 import type { ReaderClientProps } from "@/components/reader/reader-types"
 import { EpubReaderClient } from "@/components/reader/epub-reader-client"
-import { PdfReaderClient } from "@/components/reader/pdf-reader-client"
 
 export function ReaderClient(props: ReaderClientProps) {
-  if (props.book.format === "PDF") {
-    return <PdfReaderClient {...props} />
-  }
-
   return <EpubReaderClient {...props} />
 }

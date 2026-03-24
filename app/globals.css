@@ -336,20 +336,3 @@ select {
   font-style: italic;
   color: var(--color-secondary);
 }
-
-.lumina-pdf-text-layer {
-  overflow: hidden;
-  line-height: 1;
-  color: transparent;
-}
-
-.lumina-pdf-text-layer span,
-.lumina-pdf-text-layer br {
-  position: absolute;
-  white-space: pre;
-  transform-origin: 0 0;
-}
-
-.lumina-pdf-text-layer ::selection {
-  background: rgba(251, 191, 36, 0.35);
-}

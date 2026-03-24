@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ReaderSettings } from "@/src/server/store/types"
 import type { ReaderClientProps, ResolvedHighlight } from "@/components/reader/reader-types"
 import {
+  buildTextHighlightPayload,
   buildParagraphLayouts,
   buildParagraphSegments,
   resolveBookHighlightAnchor,
@@ -426,21 +427,19 @@ export function useReaderController({
       const response = await fetch("/api/highlights", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          bookId: book.id,
-          format: book.format,
-          pageIndex:
-            book.content[selectedSectionIndex]?.pageIndex ?? currentSection.pageIndex,
-          chapterHref:
-            book.format === "EPUB"
-              ? book.content[selectedSectionIndex]?.href ?? currentSection.href
-              : undefined,
-          paraOffsetStart: selectedRange.start,
-          paraOffsetEnd: selectedRange.end,
-          content: selectedText,
-          note,
-          color
-        })
+        body: JSON.stringify(
+          buildTextHighlightPayload({
+            bookId: book.id,
+            format: book.format,
+            sections: book.content,
+            selectedSectionIndex,
+            fallbackSection: currentSection,
+            selectedText,
+            selectedRange,
+            note,
+            color
+          })
+        )
       })
       const data = await response.json()
       if (response.ok) {
@@ -460,8 +459,7 @@ export function useReaderController({
       book.content,
       book.format,
       book.id,
-      currentSection.href,
-      currentSection.pageIndex,
+      currentSection,
       selectedRange,
       selectedSectionIndex,
       selectedText
