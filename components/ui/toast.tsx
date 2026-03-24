@@ -1,18 +1,28 @@
 "use client"
 
+import { useEffect } from "react"
 import { X } from "lucide-react"
 
 export function Toast({
   title,
   description,
   tone = "default",
-  onClose
+  onClose,
+  autoClose = 3000
 }: {
   title: string
   description?: string
   tone?: "default" | "warning" | "success"
   onClose?: () => void
+  autoClose?: number
 }) {
+  useEffect(() => {
+    if (autoClose > 0 && onClose) {
+      const timer = setTimeout(onClose, autoClose)
+      return () => clearTimeout(timer)
+    }
+  }, [autoClose, onClose])
+
   const toneClass =
     tone === "warning"
       ? "border-amber-500/40 bg-amber-500/15 shadow-lg"

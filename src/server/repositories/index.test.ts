@@ -47,3 +47,65 @@ test("repository.createBook 保留传入的书籍 id", async () => {
     rmSync(dataDir, { recursive: true, force: true })
   }
 })
+
+test("repository.createHighlight 默认原文模式，允许保存译文模式高亮", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "lumina-highlight-test-"))
+  process.env.DATA_DIR = dataDir
+
+  const { repository } = await import("@/src/server/repositories")
+
+  try {
+    const demo = repository.getUserByEmail(
+      process.env.DEFAULT_DEMO_EMAIL ?? "demo@lumina.local"
+    )
+
+    assert.ok(demo, "应存在默认演示账号")
+
+    const book = repository.listBooks(demo!.id)[0]
+    assert.ok(book, "应存在默认演示书籍")
+
+    const originalHighlight = repository.createHighlight({
+      userId: demo!.id,
+      bookId: book.id,
+      format: "EPUB",
+      pageIndex: 1,
+      content: "原文片段",
+      color: "yellow"
+    } as any)
+
+    const translatedHighlight = repository.createHighlight({
+      userId: demo!.id,
+      bookId: book.id,
+      format: "EPUB",
+      pageIndex: 1,
+      contentMode: "translation",
+      targetLanguage: "zh-CN",
+      content: "译文片段",
+      counterpartContent: "Original snippet",
+      counterpartParaOffsetStart: 3,
+      counterpartParaOffsetEnd: 11,
+      color: "blue"
+    } as any)
+
+    const items = repository.listHighlightsByBook(demo!.id, book.id)
+
+    assert.equal(
+      items.find((item) => item.id === originalHighlight.id)?.contentMode,
+      "original"
+    )
+    assert.equal(
+      items.find((item) => item.id === translatedHighlight.id)?.contentMode,
+      "translation"
+    )
+    assert.equal(
+      items.find((item) => item.id === translatedHighlight.id)?.content,
+      "译文片段"
+    )
+    assert.equal(
+      items.find((item) => item.id === translatedHighlight.id)?.counterpartContent,
+      "Original snippet"
+    )
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true })
+  }
+})

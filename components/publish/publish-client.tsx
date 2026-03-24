@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { cn } from "@/src/lib/utils"
 import type { PublishRecord, PublishTarget, PublishTask, Viewpoint, TriggerType, PublishFormat } from "@/src/server/store/types"
 
@@ -86,6 +87,15 @@ export function PublishClient({
 
   // 下拉菜单状态
   const [showViewpointDropdown, setShowViewpointDropdown] = useState(false)
+
+  // 确认对话框状态
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean
+    title: string
+    description?: string
+    variant: "default" | "danger"
+    onConfirm: () => void
+  } | null>(null)
 
   // 计算过滤后的记录
   const records = useMemo(() => {
@@ -172,25 +182,31 @@ export function PublishClient({
   // 删除目标
   async function deleteTarget(targetId: string) {
     const target = targets.find((t) => t.id === targetId)
-    const confirmed = window.confirm(`确认删除发布目标「${target?.name ?? "未命名"}」吗？`)
-    if (!confirmed) return
-
-    setDeletingId(targetId)
-    try {
-      const response = await fetch(`/api/publish/targets/${targetId}`, {
-        method: "DELETE"
-      })
-      if (response.ok) {
-        showToast("success", "目标已删除")
-        router.refresh()
-      } else {
-        showToast("error", "删除失败")
+    setConfirmDialog({
+      open: true,
+      title: "删除发布目标",
+      description: `确认删除发布目标「${target?.name ?? "未命名"}」吗？`,
+      variant: "danger",
+      onConfirm: async () => {
+        setConfirmDialog(null)
+        setDeletingId(targetId)
+        try {
+          const response = await fetch(`/api/publish/targets/${targetId}`, {
+            method: "DELETE"
+          })
+          if (response.ok) {
+            showToast("success", "目标已删除")
+            router.refresh()
+          } else {
+            showToast("error", "删除失败")
+          }
+        } catch {
+          showToast("error", "网络错误")
+        } finally {
+          setDeletingId(null)
+        }
       }
-    } catch {
-      showToast("error", "网络错误")
-    } finally {
-      setDeletingId(null)
-    }
+    })
   }
 
   // 创建任务
@@ -262,28 +278,34 @@ export function PublishClient({
   // 删除任务
   async function deleteTask(taskId: string) {
     const task = tasks.find((t) => t.id === taskId)
-    const confirmed = window.confirm(`确认删除发布任务「${task?.name ?? "未命名"}」吗？`)
-    if (!confirmed) return
-
-    setDeletingId(taskId)
-    try {
-      const response = await fetch(`/api/publish/tasks/${taskId}`, {
-        method: "DELETE"
-      })
-      if (response.ok) {
-        if (activeTask?.id === taskId) {
-          setActiveTask(tasks.find((t) => t.id !== taskId))
+    setConfirmDialog({
+      open: true,
+      title: "删除发布任务",
+      description: `确认删除发布任务「${task?.name ?? "未命名"}」吗？`,
+      variant: "danger",
+      onConfirm: async () => {
+        setConfirmDialog(null)
+        setDeletingId(taskId)
+        try {
+          const response = await fetch(`/api/publish/tasks/${taskId}`, {
+            method: "DELETE"
+          })
+          if (response.ok) {
+            if (activeTask?.id === taskId) {
+              setActiveTask(tasks.find((t) => t.id !== taskId))
+            }
+            showToast("success", "任务已删除")
+            router.refresh()
+          } else {
+            showToast("error", "删除失败")
+          }
+        } catch {
+          showToast("error", "网络错误")
+        } finally {
+          setDeletingId(null)
         }
-        showToast("success", "任务已删除")
-        router.refresh()
-      } else {
-        showToast("error", "删除失败")
       }
-    } catch {
-      showToast("error", "网络错误")
-    } finally {
-      setDeletingId(null)
-    }
+    })
   }
 
   // 触发任务
@@ -436,6 +458,18 @@ export function PublishClient({
           </div>
         ))}
       </div>
+
+      {/* 确认对话框 */}
+      <ConfirmDialog
+        open={confirmDialog?.open ?? false}
+        title={confirmDialog?.title ?? ""}
+        description={confirmDialog?.description}
+        variant={confirmDialog?.variant ?? "default"}
+        confirmText="确认删除"
+        cancelText="取消"
+        onConfirm={confirmDialog?.onConfirm ?? (() => {})}
+        onCancel={() => setConfirmDialog(null)}
+      />
 
       {/* 左侧边栏 */}
       <aside

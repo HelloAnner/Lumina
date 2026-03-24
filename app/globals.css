@@ -18,10 +18,10 @@
   --color-secondary: #9ca0b0;
   --color-muted: #6b6b7b;
   --color-prose-body: #b8bcc8;
-  /* 阅读器专用 - 与 surface 保持一致 */
-  --color-reader-sidebar: #15151e;
-  --color-reader-card: #1e1e2e;
-  --color-reader-text: #e0e0e8;
+  /* 阅读器专用 - 沉浸暗色阅读 */
+  --color-reader-sidebar: #0d0d0f;
+  --color-reader-card: #111113;
+  --color-reader-text: #c4c4c8;
   /* 渐变背景色 */
   --gradient-glow: radial-gradient(ellipse at 50% 0%, rgba(139, 92, 246, 0.08), transparent 60%);
 }
@@ -42,10 +42,10 @@
   --color-secondary: #6E6E6E;
   --color-muted: #969696;
   --color-prose-body: #4A4A4A;
-  /* 阅读器专用 - 与 surface 保持一致 */
-  --color-reader-sidebar: #F8F8F8;
+  /* 阅读器专用 - 纯净亮色阅读 */
+  --color-reader-sidebar: #F8F9FA;
   --color-reader-card: #FFFFFF;
-  --color-reader-text: #2C2C2C;
+  --color-reader-text: #374151;
   /* 渐变背景色 - 更柔和的亮色渐变 */
   --gradient-glow: radial-gradient(ellipse at 50% 0%, rgba(139, 92, 246, 0.04), transparent 60%);
 }
@@ -335,4 +335,21 @@ select {
 .wysiwyg-editor em {
   font-style: italic;
   color: var(--color-secondary);
+}
+
+.lumina-pdf-text-layer {
+  overflow: hidden;
+  line-height: 1;
+  color: transparent;
+}
+
+.lumina-pdf-text-layer span,
+.lumina-pdf-text-layer br {
+  position: absolute;
+  white-space: pre;
+  transform-origin: 0 0;
+}
+
+.lumina-pdf-text-layer ::selection {
+  background: rgba(251, 191, 36, 0.35);
 }

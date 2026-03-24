@@ -2,12 +2,14 @@ export type ReaderTheme = "day" | "sepia" | "night"
 export type HighlightColor = "yellow" | "green" | "blue" | "pink"
 export type BookFormat = "PDF" | "EPUB"
 export type ModelCategory = "language" | "speech" | "embedding"
+export type TranslationDisplayMode = "original" | "translation"
 export type ModelFeature =
   | "instant_explain"
   | "article_generate"
   | "aggregation_analyze"
   | "voice_read"
   | "embedding_index"
+  | "section_translate"
 export type PublishFormat = "markdown" | "html" | "pdf"
 export type TriggerType = "manual" | "cron" | "on_change"
 
@@ -49,6 +51,11 @@ export interface TocItem {
   level?: number
 }
 
+export interface TocTranslationItem {
+  id: string
+  title: string
+}
+
 export interface ReaderSection {
   id: string
   title: string
@@ -83,6 +90,11 @@ export interface Highlight {
   userId: string
   bookId: string
   format: BookFormat
+  contentMode: TranslationDisplayMode
+  targetLanguage?: string
+  counterpartContent?: string
+  counterpartParaOffsetStart?: number
+  counterpartParaOffsetEnd?: number
   pageIndex?: number
   pdfRects?: PdfHighlightRect[]
   paraOffsetStart?: number
@@ -158,6 +170,36 @@ export interface ReaderSettings {
   fontFamily: "system" | "serif" | "sans"
   theme: ReaderTheme
   navigationMode: "horizontal" | "vertical"
+  translationView: TranslationDisplayMode
+}
+
+export interface BookTranslation {
+  id: string
+  userId: string
+  bookId: string
+  sectionId: string
+  sectionIndex: number
+  pageIndex: number
+  chapterHref?: string
+  sourceHash: string
+  targetLanguage: string
+  content: string
+  blocks?: ReaderSectionBlock[]
+  modelId?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface BookTocTranslation {
+  id: string
+  userId: string
+  bookId: string
+  sourceHash: string
+  targetLanguage: string
+  items: TocTranslationItem[]
+  modelId?: string
+  createdAt: string
+  updatedAt: string
 }
 
 export interface PublishTarget {
@@ -216,6 +258,8 @@ export interface Database {
   modelBindings: ModelBinding[]
   storageConfigs: StorageConfig[]
   readerSettings: ReaderSettings[]
+  translations: BookTranslation[]
+  tocTranslations: BookTocTranslation[]
   publishTargets: PublishTarget[]
   publishTasks: PublishTask[]
   publishRecords: PublishRecord[]

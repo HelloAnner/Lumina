@@ -9,7 +9,6 @@
 
 import type React from "react"
 import { memo, useEffect, useRef } from "react"
-import { ListTree } from "lucide-react"
 import { cn } from "@/src/lib/utils"
 import { computeCenteredScrollTop } from "@/components/reader/reader-panel-scroll-utils"
 import type { SidebarNode } from "@/components/reader/reader-types"
@@ -112,9 +111,8 @@ export function ReaderSidebar({
       className="relative border-r border-border/60 bg-surface"
       style={{ width }}
     >
-      <div className="flex h-12 items-center gap-2 border-b border-border/60 px-4 text-sm font-medium">
-        <ListTree className="h-4 w-4 text-muted" />
-        目录
+      <div className="flex h-12 items-center border-b border-border/60 px-4">
+        <span className="text-[13px] font-semibold text-foreground">目录</span>
       </div>
       <div
         ref={scrollContainerRef}

@@ -11,6 +11,7 @@ import { extractPdfMetadata } from "@/src/server/services/books/pdf-metadata"
 import { getStoredObjectBuffer } from "@/src/server/services/books/minio"
 import type { HardParsedBookMetadata } from "@/src/server/services/books/metadata"
 import type { Book } from "@/src/server/store/types"
+import { attachPdfPageImageBlocks } from "@/src/server/services/books/pdf-page-images"
 
 export const PDF_UPLOAD_PLACEHOLDER_TEXT = "当前 PDF 已存储成功，但暂未提取到可用正文。"
 
@@ -96,7 +97,22 @@ export async function repairPlaceholderPdfBook(
       return book
     }
 
-    const updates = buildRepairedPdfBookUpdates(book, parsed, fileName)
+    let nextParsed = parsed
+    try {
+      nextParsed = {
+        ...parsed,
+        sections: await attachPdfPageImageBlocks({
+          buffer,
+          userId: book.userId,
+          bookId: book.id,
+          sections: parsed.sections
+        })
+      }
+    } catch {
+      nextParsed = parsed
+    }
+
+    const updates = buildRepairedPdfBookUpdates(book, nextParsed, fileName)
     return (await saveBook(book.userId, book.id, updates)) ?? {
       ...book,
       ...updates

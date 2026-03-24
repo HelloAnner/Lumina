@@ -6,7 +6,11 @@
  * Created on 2026/3/23
  */
 import { decodeHtmlEntities } from "@/src/lib/html-entities"
-import type { BookFormat, HighlightColor } from "@/src/server/store/types"
+import type {
+  BookFormat,
+  HighlightColor,
+  TranslationDisplayMode
+} from "@/src/server/store/types"
 
 export interface SectionLike {
   pageIndex: number
@@ -45,6 +49,7 @@ export interface BuildTextHighlightPayloadInput {
   bookId: string
   format: BookFormat
   sections: SectionLike[]
+  counterpartSections?: SectionLike[]
   selectedSectionIndex: number
   fallbackSection: SectionLike
   selectedText: string
@@ -52,6 +57,8 @@ export interface BuildTextHighlightPayloadInput {
     start: number
     end: number
   }
+  contentMode?: TranslationDisplayMode
+  targetLanguage?: string
   color: HighlightColor
   note?: string
 }
@@ -124,11 +131,16 @@ export function resolveBookHighlightAnchor(
   sections: SectionLike[],
   highlight: {
     content: string
+    contentMode?: TranslationDisplayMode
+    counterpartContent?: string
     pageIndex?: number
     chapterHref?: string
     paraOffsetStart?: number
     paraOffsetEnd?: number
-  }
+    counterpartParaOffsetStart?: number
+    counterpartParaOffsetEnd?: number
+  },
+  contentMode: TranslationDisplayMode = "original"
 ): HighlightAnchor | null {
   const sectionIndex = sections.findIndex((section) => {
     if (highlight.chapterHref && section.href === highlight.chapterHref) {
@@ -145,17 +157,21 @@ export function resolveBookHighlightAnchor(
     return null
   }
   const normalizedContent = layouts.map((item) => item.text).join("\n\n")
+  const useCounterpart =
+    (highlight.contentMode ?? "original") !== contentMode &&
+    Boolean(highlight.counterpartContent)
+  const activeContent = useCounterpart ? highlight.counterpartContent ?? "" : highlight.content
   const highlightTexts = Array.from(
     new Set([
-      highlight.content.trim(),
-      decodeHtmlEntities(highlight.content).trim()
+      activeContent.trim(),
+      decodeHtmlEntities(activeContent).trim()
     ].filter(Boolean))
   )
   const range = normalizeRange(
     normalizedContent,
     highlightTexts,
-    highlight.paraOffsetStart,
-    highlight.paraOffsetEnd
+    useCounterpart ? highlight.counterpartParaOffsetStart : highlight.paraOffsetStart,
+    useCounterpart ? highlight.counterpartParaOffsetEnd : highlight.paraOffsetEnd
   )
   if (!range) {
     return null
@@ -221,13 +237,63 @@ export function buildParagraphSegments(
   return segments
 }
 
+function findLayoutByOffset(layouts: ParagraphLayout[], offset: number) {
+  return layouts.find((item) => offset >= item.start && offset <= item.end) ?? null
+}
+
+function mapRangeToCounterpart(
+  sourceContent: string,
+  targetContent: string,
+  selectedRange: { start: number; end: number }
+) {
+  const sourceLayouts = buildParagraphLayouts(sourceContent)
+  const targetLayouts = buildParagraphLayouts(targetContent)
+  const sourceLayout = findLayoutByOffset(sourceLayouts, selectedRange.start)
+  if (!sourceLayout) {
+    return null
+  }
+  const targetLayout = targetLayouts[sourceLayout.index]
+  if (!targetLayout) {
+    return null
+  }
+  const sourceLength = Math.max(1, sourceLayout.end - sourceLayout.start)
+  const targetLength = Math.max(1, targetLayout.end - targetLayout.start)
+  const relativeStart = (selectedRange.start - sourceLayout.start) / sourceLength
+  const relativeEnd = (selectedRange.end - sourceLayout.start) / sourceLength
+  const mappedStart = targetLayout.start + Math.floor(relativeStart * targetLength)
+  const mappedEnd = targetLayout.start + Math.ceil(relativeEnd * targetLength)
+  const start = Math.max(targetLayout.start, Math.min(mappedStart, targetLayout.end - 1))
+  const end = Math.max(start + 1, Math.min(mappedEnd, targetLayout.end))
+  return { start, end }
+}
+
 export function buildTextHighlightPayload(input: BuildTextHighlightPayloadInput) {
   const targetSection = input.sections[input.selectedSectionIndex] ?? input.fallbackSection
+  const counterpartSection = input.counterpartSections?.[input.selectedSectionIndex]
+  const counterpartRange = counterpartSection
+    ? mapRangeToCounterpart(
+        targetSection.content,
+        counterpartSection.content,
+        input.selectedRange
+      )
+    : null
   return {
     bookId: input.bookId,
     format: input.format,
     pageIndex: targetSection.pageIndex,
     chapterHref: input.format === "EPUB" ? targetSection.href : undefined,
+    contentMode: input.contentMode ?? "original",
+    targetLanguage: input.targetLanguage,
+    ...(counterpartRange
+      ? {
+          counterpartContent: counterpartSection?.content.slice(
+            counterpartRange.start,
+            counterpartRange.end
+          ),
+          counterpartParaOffsetStart: counterpartRange.start,
+          counterpartParaOffsetEnd: counterpartRange.end
+        }
+      : {}),
     paraOffsetStart: input.selectedRange.start,
     paraOffsetEnd: input.selectedRange.end,
     content: input.selectedText,

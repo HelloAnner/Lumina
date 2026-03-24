@@ -1,3 +1,4 @@
+import path from "node:path"
 import { Hono } from "hono"
 import { randomUUID } from "node:crypto"
 import { z } from "zod"
@@ -15,6 +16,7 @@ import {
   createBookInStore,
   deleteBookFromStore,
   getBookFromStore,
+  getBookObjectLocationFromStore,
   listBooksFromStore,
   updateBookInStore
 } from "@/src/server/services/books/store"
@@ -23,13 +25,19 @@ import {
   saveReaderProgress
 } from "@/src/server/services/books/progress"
 import {
+  buildBookFileProxyPath,
+  buildBookObjectName,
+  getBookObjectBuffer,
+  buildObjectResponse,
   formatMinioPath,
+  getStoredObjectContentType,
   getStoredObjectUrl,
   parseMinioPath,
   removeBookObject,
   uploadBookObject,
   uploadCoverImage
 } from "@/src/server/services/books/minio"
+import { attachPdfPageImageBlocks } from "@/src/server/services/books/pdf-page-images"
 
 const app = new Hono<AppEnv>()
 
@@ -87,7 +95,7 @@ app.post("/upload", async (c) => {
       ? await extractEpubMetadata(buffer, file.name)
       : await parsePdfHardMetadata(buffer, file.name)
 
-  const metadata = await deriveBookMetadata({
+  let metadata = await deriveBookMetadata({
     fileName: file.name,
     userId: c.get("userId"),
     hardParsed,
@@ -99,6 +107,22 @@ app.post("/upload", async (c) => {
         }
       : null
   })
+
+  if (format === "PDF") {
+    try {
+      metadata = {
+        ...metadata,
+        sections: await attachPdfPageImageBlocks({
+          buffer,
+          userId: c.get("userId"),
+          bookId,
+          sections: metadata.sections
+        })
+      }
+    } catch (error) {
+      console.warn(`Failed to attach PDF page images during upload: ${file.name}`, error)
+    }
+  }
 
   const uploaded = await uploadBookObject({
     userId: c.get("userId"),
@@ -173,7 +197,7 @@ app.get("/:id/access-url", async (c) => {
   if (!book) {
     return c.json({ error: "书籍不存在" }, 404)
   }
-  const fileUrl = await getStoredObjectUrl(book.filePath)
+  const fileUrl = buildBookFileProxyPath(book.id)
   const coverUrl = await getStoredObjectUrl(book.coverPath)
   return c.json({
     fileUrl,
@@ -182,6 +206,116 @@ app.get("/:id/access-url", async (c) => {
     totalPages: book.totalPages,
     toc: book.toc,
     content: book.content
+  })
+})
+
+app.on(["GET", "HEAD"], "/:id/file", async (c) => {
+  const stored = await getBookFromStore(c.get("userId"), c.req.param("id"))
+  const book = stored ? await repairStoredBook(stored) : null
+  if (!book) {
+    return c.json({ error: "书籍不存在" }, 404)
+  }
+
+  const objectLocation = await getBookObjectLocationFromStore(
+    c.get("userId"),
+    c.req.param("id")
+  )
+  const buffer = objectLocation
+    ? await getBookObjectBuffer(objectLocation.bucket, objectLocation.objectName)
+    : null
+  if (!buffer) {
+    return c.json({ error: "文件不存在" }, 404)
+  }
+
+  const payload = buildObjectResponse(buffer, {
+    contentType: getStoredObjectContentType(objectLocation?.storedPath ?? book.filePath),
+    rangeHeader: c.req.header("range")
+  })
+  const fileName = path.basename(objectLocation?.objectName ?? book.filePath)
+  const headers = new Headers(payload.headers)
+  headers.set("Content-Disposition", `inline; filename="${encodeURIComponent(fileName)}"`)
+  headers.set("Cache-Control", "private, max-age=900")
+
+  if (c.req.method === "HEAD") {
+    return new Response(null, {
+      headers,
+      status: payload.status
+    })
+  }
+
+  return new Response(new Uint8Array(payload.body), {
+    headers,
+    status: payload.status
+  })
+})
+
+app.get("/:id/page-images/:pageNumber", async (c) => {
+  const stored = await getBookFromStore(c.get("userId"), c.req.param("id"))
+  const book = stored ? await repairStoredBook(stored) : null
+  if (!book) {
+    return c.json({ error: "书籍不存在" }, 404)
+  }
+
+  const objectLocation = await getBookObjectLocationFromStore(
+    c.get("userId"),
+    c.req.param("id")
+  )
+  const buffer = await getBookObjectBuffer(
+    objectLocation?.bucket ?? parseMinioPath(book.filePath)?.bucket ?? "lumina-books",
+    buildBookObjectName(
+      c.get("userId"),
+      book.id,
+      `page-images/${c.req.param("pageNumber")}.png`
+    )
+  )
+  if (!buffer) {
+    return c.json({ error: "页图不存在" }, 404)
+  }
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      "Cache-Control": "private, max-age=900",
+      "Content-Type": "image/png"
+    },
+    status: 200
+  })
+})
+
+app.post("/:id/pdf-page-images/rebuild", async (c) => {
+  const stored = await getBookFromStore(c.get("userId"), c.req.param("id"))
+  const book = stored ? await repairStoredBook(stored) : null
+  if (!book) {
+    return c.json({ error: "书籍不存在" }, 404)
+  }
+  if (book.format !== "PDF") {
+    return c.json({ error: "当前书籍不是 PDF" }, 400)
+  }
+
+  const objectLocation = await getBookObjectLocationFromStore(
+    c.get("userId"),
+    c.req.param("id")
+  )
+  const buffer = objectLocation
+    ? await getBookObjectBuffer(objectLocation.bucket, objectLocation.objectName)
+    : null
+  if (!buffer) {
+    return c.json({ error: "原始 PDF 不存在" }, 404)
+  }
+
+  const nextContent = await attachPdfPageImageBlocks({
+    buffer,
+    userId: c.get("userId"),
+    bookId: book.id,
+    sections: book.content
+  })
+  const updated = await updateBookInStore(c.get("userId"), book.id, {
+    content: nextContent
+  })
+  return c.json({
+    item: updated ?? {
+      ...book,
+      content: nextContent
+    }
   })
 })
 

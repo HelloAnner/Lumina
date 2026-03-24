@@ -12,6 +12,17 @@ interface StorageRuntimeConfig {
   bucket?: string
 }
 
+interface ObjectResponseOptions {
+  contentType: string
+  rangeHeader?: string
+}
+
+interface ObjectResponsePayload {
+  status: number
+  headers: Record<string, string>
+  body: Buffer
+}
+
 function getMinioConfig(runtimeConfig?: StorageRuntimeConfig) {
   const endpointUrl =
     runtimeConfig?.endpoint || process.env.MINIO_ENDPOINT || "http://localhost:29000"
@@ -41,6 +52,10 @@ export function buildCoverObjectName(userId: string, bookId: string) {
   return `${userId}/${bookId}.jpg`
 }
 
+export function buildBookFileProxyPath(bookId: string) {
+  return `/api/books/${bookId}/file`
+}
+
 export function formatMinioPath(bucket: string, objectName: string) {
   return `minio://${bucket}/${objectName}`
 }
@@ -56,6 +71,70 @@ export function parseMinioPath(value?: string) {
   return {
     bucket: matched[1],
     objectName: matched[2]
+  }
+}
+
+export function getStoredObjectContentType(storedPath?: string) {
+  const normalized = storedPath?.toLowerCase() ?? ""
+  if (normalized.endsWith(".pdf")) {
+    return "application/pdf"
+  }
+  if (normalized.endsWith(".epub")) {
+    return "application/epub+zip"
+  }
+  if (normalized.endsWith(".jpg") || normalized.endsWith(".jpeg")) {
+    return "image/jpeg"
+  }
+  if (normalized.endsWith(".png")) {
+    return "image/png"
+  }
+  return "application/octet-stream"
+}
+
+function parseRange(rangeHeader: string | undefined, size: number) {
+  if (!rangeHeader?.startsWith("bytes=") || size <= 0) {
+    return null
+  }
+  const [startValue, endValue] = rangeHeader.replace("bytes=", "").split("-", 2)
+  const start = Number.parseInt(startValue ?? "", 10)
+  const end = Number.parseInt(endValue ?? "", 10)
+  if (Number.isNaN(start) || start < 0 || start >= size) {
+    return null
+  }
+  const resolvedEnd = Number.isNaN(end) ? size - 1 : Math.min(end, size - 1)
+  if (resolvedEnd < start) {
+    return null
+  }
+  return { start, end: resolvedEnd }
+}
+
+export function buildObjectResponse(
+  buffer: Buffer,
+  options: ObjectResponseOptions
+): ObjectResponsePayload {
+  const range = parseRange(options.rangeHeader, buffer.length)
+  if (!range) {
+    return {
+      status: 200,
+      headers: {
+        "Accept-Ranges": "bytes",
+        "Content-Length": String(buffer.length),
+        "Content-Type": options.contentType
+      },
+      body: buffer
+    }
+  }
+
+  const body = buffer.subarray(range.start, range.end + 1)
+  return {
+    status: 206,
+    headers: {
+      "Accept-Ranges": "bytes",
+      "Content-Length": String(body.length),
+      "Content-Range": `bytes ${range.start}-${range.end}/${buffer.length}`,
+      "Content-Type": options.contentType
+    },
+    body
   }
 }
 
@@ -134,14 +213,18 @@ export async function getBookObjectBuffer(
   if (!bucket || !objectName) {
     return null
   }
-  const stream = await getClient(runtimeConfig).getObject(bucket, objectName)
-  const chunks: Buffer[] = []
-  await new Promise<void>((resolve, reject) => {
-    stream.on("data", (chunk) => chunks.push(Buffer.from(chunk)))
-    stream.on("end", () => resolve())
-    stream.on("error", reject)
-  })
-  return Buffer.concat(chunks)
+  try {
+    const stream = await getClient(runtimeConfig).getObject(bucket, objectName)
+    const chunks: Buffer[] = []
+    await new Promise<void>((resolve, reject) => {
+      stream.on("data", (chunk) => chunks.push(Buffer.from(chunk)))
+      stream.on("end", () => resolve())
+      stream.on("error", reject)
+    })
+    return Buffer.concat(chunks)
+  } catch {
+    return null
+  }
 }
 
 export async function getStoredObjectUrl(

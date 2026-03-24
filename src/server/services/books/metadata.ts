@@ -449,20 +449,57 @@ export async function extractEpubMetadata(
     manifestItems.map((item: Record<string, string>) => [item.id, item])
   )
 
-  const coverItem = manifestItems.find(
-    (item: Record<string, string>) =>
-      item.properties?.includes("cover-image") ||
-      /cover/i.test(item.id)
+  // 查找封面图片，按优先级依次尝试三种方式
+  let coverItem: Record<string, string> | undefined
+
+  // 优先级 1：EPUB 3 标准 - properties="cover-image"
+  coverItem = manifestItems.find(
+    (item: Record<string, string>) => item.properties?.includes("cover-image")
   )
+
+  // 优先级 2：EPUB 2 标准 - <meta name="cover" content="item-id">
+  if (!coverItem) {
+    const metaItems = ensureArray(opf?.package?.metadata?.meta)
+    const coverMeta = metaItems.find(
+      (m: any) => m?.name === "cover" && m?.content
+    )
+    if (coverMeta?.content) {
+      const candidate = manifestMap.get(coverMeta.content)
+      // 确认是图片类型
+      if (candidate && (
+        (candidate["media-type"] as string)?.startsWith("image/") ||
+        /\.(jpg|jpeg|png|gif|webp)$/i.test(candidate.href ?? "")
+      )) {
+        coverItem = candidate
+      }
+    }
+  }
+
+  // 优先级 3：兜底 - id 含 "cover" 且为图片类型（避免匹配到封面 HTML 页）
+  if (!coverItem) {
+    coverItem = manifestItems.find(
+      (item: Record<string, string>) =>
+        /cover/i.test(item.id) &&
+        ((item["media-type"] as string)?.startsWith("image/") ||
+          /\.(jpg|jpeg|png|gif|webp)$/i.test(item.href ?? ""))
+    )
+  }
+
   let coverImageBase64: string | undefined
   if (coverItem?.href) {
     const opfDir = path.posix.dirname(opfPath)
     const coverPath = path.posix.join(opfDir, coverItem.href)
-    const coverFile = zip.file(coverPath)
+    const coverFile = zip.file(coverPath) ?? zip.file(coverItem.href)
     if (coverFile) {
       const coverBuffer = await coverFile.async("nodebuffer")
+      const declaredMime = coverItem["media-type"] as string | undefined
       const ext = path.extname(coverItem.href).toLowerCase()
-      const mimeType = ext === ".png" ? "image/png" : ext === ".gif" ? "image/gif" : "image/jpeg"
+      const mimeType =
+        declaredMime?.startsWith("image/") ? declaredMime :
+        ext === ".png" ? "image/png" :
+        ext === ".gif" ? "image/gif" :
+        ext === ".webp" ? "image/webp" :
+        "image/jpeg"
       coverImageBase64 = `data:${mimeType};base64,${coverBuffer.toString("base64")}`
     }
   }

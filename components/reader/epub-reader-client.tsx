@@ -8,7 +8,7 @@
 "use client"
 
 import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Languages, Moon, Sun, Type } from "lucide-react"
 import { Toast } from "@/components/ui/toast"
 import { ReaderSidebar } from "@/components/reader/reader-sidebar"
 import { ReaderSelectionToolbar } from "@/components/reader/reader-selection-toolbar"
@@ -18,42 +18,97 @@ import { ReaderHighlightPanel } from "@/components/reader/reader-highlight-panel
 import { ReaderNoteComposer } from "@/components/reader/reader-note-composer"
 import type { ReaderClientProps } from "@/components/reader/reader-types"
 import { useReaderController } from "@/components/reader/use-reader-controller"
+import { useTheme } from "@/components/theme-provider"
 
 export function EpubReaderClient(props: ReaderClientProps) {
   const reader = useReaderController(props)
+  const { theme, setTheme } = useTheme()
+
+  const progress = Math.round(
+    ((reader.pageIndex + 1) / Math.max(reader.book.content.length, 1)) * 100
+  )
+  const total = reader.book.content.length
+
+  function toggleTheme() {
+    setTheme(theme === "light" ? "dark" : "light")
+  }
 
   return (
-    <div className="h-screen overflow-hidden bg-base">
+    <div className="h-screen overflow-hidden bg-reader-sidebar">
       {reader.toast ? (
-        <Toast title={reader.toast} tone="success" onClose={() => reader.setToast("")} />
+        <Toast
+          title={reader.toast}
+          tone={/失败|错误|请检查/.test(reader.toast) ? "warning" : "success"}
+          onClose={() => reader.setToast("")}
+        />
       ) : null}
 
-      <div className="flex h-14 items-center justify-between border-b border-border/60 bg-surface px-5">
-        <div className="flex items-center gap-4 text-sm">
-          <Link className="flex items-center gap-2 text-muted transition-colors hover:text-foreground" href="/library">
-            <ArrowLeft className="h-4 w-4" />
-            书库
+      {/* 顶部导航栏 48px */}
+      <div className="flex h-12 items-center justify-between border-b border-border/60 bg-elevated px-5">
+        <div className="flex items-center gap-3">
+          <Link
+            className="flex items-center gap-1.5 text-muted transition-colors hover:text-foreground"
+            href="/library"
+          >
+            <ArrowLeft className="h-[15px] w-[15px]" />
+            <span className="text-[13px]">书库</span>
           </Link>
           <span className="h-4 w-px bg-border/60" />
-          <span className="font-medium text-foreground">{reader.book.title}</span>
+          <span className="text-[14px] font-medium text-foreground">{reader.book.title}</span>
+          {reader.currentSection?.title ? (
+            <span className="hidden text-[13px] text-muted md:inline">
+              ·&nbsp;&nbsp;{reader.currentSection.title}
+            </span>
+          ) : null}
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-xs tabular-nums">
-            <span className="text-muted">{Math.round(((reader.pageIndex + 1) / Math.max(reader.book.content.length, 1)) * 100)}%</span>
-            <span className="text-secondary">{reader.pageIndex + 1}</span>
-            <span className="text-muted">/</span>
-            <span className="text-secondary">{reader.book.content.length}</span>
-          </div>
+        <div className="flex items-center gap-2">
+          <button
+            className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition ${
+              reader.translationView === "translation"
+                ? "bg-primary/10 text-primary"
+                : "text-muted hover:bg-overlay hover:text-foreground"
+            }`}
+            onClick={reader.toggleTranslationView}
+            title={reader.translationView === "translation" ? "切换到原文" : "切换到译文"}
+          >
+            <Languages className="h-3.5 w-3.5" />
+            {reader.translationView === "translation" ? "译文" : "原文"}
+          </button>
+          <button
+            className={`flex h-7 w-7 items-center justify-center rounded-md transition ${
+              reader.showFontPanel
+                ? "bg-elevated text-foreground"
+                : "text-muted hover:bg-elevated hover:text-foreground"
+            }`}
+            onClick={() => reader.setShowFontPanel((prev) => !prev)}
+            title="字体设置"
+          >
+            <Type className="h-[15px] w-[15px]" />
+          </button>
+          <span className="h-4 w-px bg-border/60" />
+          <button
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted transition hover:bg-overlay hover:text-foreground"
+            onClick={toggleTheme}
+            title="切换主题"
+          >
+            {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+          </button>
+          <span className="text-xs tabular-nums text-muted">
+            {progress}%&nbsp;&nbsp;·&nbsp;&nbsp;{reader.pageIndex + 1} / {total}
+          </span>
         </div>
       </div>
-      <div className="h-[2px] w-full bg-transparent">
+
+      {/* 阅读进度条 3px */}
+      <div className="h-[3px] w-full bg-border/40">
         <div
-          className="h-full bg-primary/60 transition-all duration-150"
-          style={{ width: `${((reader.pageIndex + 1) / Math.max(reader.book.content.length, 1)) * 100}%` }}
+          className="h-full bg-primary transition-all duration-150"
+          style={{ width: `${progress}%` }}
         />
       </div>
 
-      <div className="flex h-[calc(100vh-58px)]">
+      {/* 主体三栏 */}
+      <div className="flex h-[calc(100vh-51px)]">
         <ReaderSidebar
           width={reader.tocWidth}
           nodes={reader.sidebarEntries}
@@ -69,7 +124,7 @@ export function EpubReaderClient(props: ReaderClientProps) {
 
         <main
           ref={reader.readerMainRef}
-          className="relative min-w-0 flex-1 overflow-hidden bg-surface"
+          className="relative min-w-0 flex-1 overflow-hidden bg-reader-sidebar"
           onWheel={reader.handleWheel}
         >
           <ReaderSelectionToolbar
@@ -80,6 +135,7 @@ export function EpubReaderClient(props: ReaderClientProps) {
 
           <ReaderContent
             book={reader.book}
+            displayContent={reader.displayContent}
             isVertical={reader.isVertical}
             currentSection={reader.currentSection}
             currentParagraphs={reader.currentParagraphs}
@@ -103,10 +159,12 @@ export function EpubReaderClient(props: ReaderClientProps) {
             fontSize={reader.fontSize}
             lineHeight={reader.lineHeight}
             letterSpacing={reader.letterSpacing}
+            translationView={reader.translationView}
+            isCurrentSectionTranslating={reader.isCurrentSectionTranslating}
             onFontSizeChange={reader.setFontSize}
             onLineHeightChange={reader.setLineHeight}
             onLetterSpacingChange={reader.setLetterSpacing}
-            onToggle={() => reader.setShowFontPanel((current) => !current)}
+            onToggleTranslation={reader.toggleTranslationView}
           />
         </main>
 

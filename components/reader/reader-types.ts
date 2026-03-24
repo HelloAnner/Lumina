@@ -22,6 +22,7 @@ export type ResolvedHighlight = Highlight & {
   paragraphIndex: number
   start: number
   end: number
+  displayContent: string
 }
 
 export interface ReaderClientProps {

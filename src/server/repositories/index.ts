@@ -4,6 +4,8 @@ import { encryptValue } from "@/src/server/lib/crypto"
 import type {
   AggregateJob,
   Book,
+  BookTocTranslation,
+  BookTranslation,
   Highlight,
   HighlightViewpoint,
   ModelBinding,
@@ -20,6 +22,13 @@ import type {
 
 function now() {
   return new Date().toISOString()
+}
+
+function normalizeHighlight<T extends Partial<Highlight>>(highlight: T): T & Pick<Highlight, "contentMode"> {
+  return {
+    ...highlight,
+    contentMode: highlight.contentMode ?? "original"
+  }
 }
 
 function sortByDate<
@@ -58,7 +67,8 @@ export const repository = {
         lineHeight: 1.75,
         fontFamily: "serif",
         theme: "night",
-        navigationMode: "horizontal"
+        navigationMode: "horizontal",
+        translationView: "original"
       })
       database.storageConfigs.push({
         userId: user.id,
@@ -139,6 +149,12 @@ export const repository = {
       database.highlights = database.highlights.filter(
         (item) => !(item.userId === userId && item.bookId === bookId)
       )
+      database.translations = (database.translations || []).filter(
+        (item) => !(item.userId === userId && item.bookId === bookId)
+      )
+      database.tocTranslations = (database.tocTranslations || []).filter(
+        (item) => !(item.userId === userId && item.bookId === bookId)
+      )
     })
   },
   listHighlightsByBook(userId: string, bookId: string) {
@@ -146,7 +162,7 @@ export const repository = {
       readDatabase().highlights.filter(
         (item) => item.userId === userId && item.bookId === bookId
       )
-    )
+    ).map((item) => normalizeHighlight(item))
   },
   listUnconfirmedHighlights(userId: string, viewpointId: string) {
     const database = readDatabase()
@@ -154,16 +170,22 @@ export const repository = {
       (item) => item.viewpointId === viewpointId && !item.confirmed
     )
     return linkMap
-      .map((link) => ({
-        ...database.highlights.find((item) => item.id === link.highlightId),
-        similarityScore: link.similarityScore
-      }))
+      .map((link) => {
+        const highlight = database.highlights.find((item) => item.id === link.highlightId)
+        if (!highlight) {
+          return null
+        }
+        return {
+          ...normalizeHighlight(highlight),
+          similarityScore: link.similarityScore
+        }
+      })
       .filter(Boolean)
   },
   createHighlight(input: Omit<Highlight, "id" | "createdAt" | "status">) {
     return mutateDatabase((database) => {
       const highlight: Highlight = {
-        ...input,
+        ...normalizeHighlight(input),
         id: randomUUID(),
         createdAt: now(),
         status: "PENDING"
@@ -289,6 +311,79 @@ export const repository = {
       }
       Object.assign(settings, updates)
       return settings
+    })
+  },
+  listBookTranslations(userId: string, bookId: string): BookTranslation[] {
+    return sortByDate(
+      (readDatabase().translations || []).filter(
+        (item) => item.userId === userId && item.bookId === bookId
+      )
+    ) as BookTranslation[]
+  },
+  listBookTocTranslations(userId: string, bookId: string): BookTocTranslation[] {
+    return sortByDate(
+      (readDatabase().tocTranslations || []).filter(
+        (item) => item.userId === userId && item.bookId === bookId
+      )
+    ) as BookTocTranslation[]
+  },
+  upsertBookTranslation(
+    input: Omit<BookTranslation, "id" | "createdAt" | "updatedAt"> & { id?: string }
+  ) {
+    return mutateDatabase((database) => {
+      if (!database.translations) {
+        database.translations = []
+      }
+      const existing = database.translations.find((item) =>
+        item.userId === input.userId &&
+        item.bookId === input.bookId &&
+        item.sectionId === input.sectionId &&
+        item.sourceHash === input.sourceHash &&
+        item.targetLanguage === input.targetLanguage
+      )
+      if (existing) {
+        Object.assign(existing, input, {
+          updatedAt: now()
+        })
+        return existing
+      }
+      const entry: BookTranslation = {
+        ...input,
+        id: input.id || randomUUID(),
+        createdAt: now(),
+        updatedAt: now()
+      }
+      database.translations.push(entry)
+      return entry
+    })
+  },
+  upsertBookTocTranslation(
+    input: Omit<BookTocTranslation, "id" | "createdAt" | "updatedAt"> & { id?: string }
+  ) {
+    return mutateDatabase((database) => {
+      if (!database.tocTranslations) {
+        database.tocTranslations = []
+      }
+      const existing = database.tocTranslations.find((item) =>
+        item.userId === input.userId &&
+        item.bookId === input.bookId &&
+        item.sourceHash === input.sourceHash &&
+        item.targetLanguage === input.targetLanguage
+      )
+      if (existing) {
+        Object.assign(existing, input, {
+          updatedAt: now()
+        })
+        return existing
+      }
+      const entry: BookTocTranslation = {
+        ...input,
+        id: input.id || randomUUID(),
+        createdAt: now(),
+        updatedAt: now()
+      }
+      database.tocTranslations.push(entry)
+      return entry
     })
   },
   listModelConfigs(userId: string) {

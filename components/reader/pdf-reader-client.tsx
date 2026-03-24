@@ -1,15 +1,393 @@
 /**
- * PDF 阅读器文本壳层
+ * PDF 阅读器页面容器
  *
  * @author Anner
  * @since 0.1.0
- * Created on 2026/3/23
+ * Created on 2026/3/24
  */
 "use client"
 
+import Link from "next/link"
+import { useEffect, useMemo, useState } from "react"
+import {
+  ArrowLeft,
+  Languages,
+  Loader2,
+  Moon,
+  Sun,
+  Type
+} from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { Toast } from "@/components/ui/toast"
+import { ReaderSidebar } from "@/components/reader/reader-sidebar"
+import { ReaderSelectionToolbar } from "@/components/reader/reader-selection-toolbar"
+import { ReaderContent } from "@/components/reader/reader-content"
+import { ReaderFontPanel } from "@/components/reader/reader-font-panel"
+import { ReaderHighlightPanel } from "@/components/reader/reader-highlight-panel"
+import { ReaderNoteComposer } from "@/components/reader/reader-note-composer"
+import { PdfPageView } from "@/components/reader/pdf-page-view"
+import { PdfHighlightPanel } from "@/components/reader/pdf-highlight-panel"
+import { usePdfReaderController } from "@/components/reader/use-pdf-reader-controller"
+import { useReaderController } from "@/components/reader/use-reader-controller"
 import type { ReaderClientProps } from "@/components/reader/reader-types"
-import { EpubReaderClient } from "@/components/reader/epub-reader-client"
+import { useTheme } from "@/components/theme-provider"
+
+type PdfDisplayMode = "parsed" | "source"
+
+function PdfSourcePlaceholder({
+  title,
+  message
+}: {
+  title: string
+  message: string
+}) {
+  return (
+    <div className="flex h-full items-center justify-center px-8 py-8">
+      <div className="w-full max-w-3xl rounded-2xl border border-border/60 bg-surface p-6">
+        <div className="text-lg font-medium text-foreground">{title}</div>
+        <div className="mt-2 text-sm leading-7 text-secondary">{message}</div>
+      </div>
+    </div>
+  )
+}
 
 export function PdfReaderClient(props: ReaderClientProps) {
-  return <EpubReaderClient {...props} />
+  const [mode, setMode] = useState<PdfDisplayMode>("parsed")
+  const [parsedBook, setParsedBook] = useState(props.book)
+  const [isBackfillingImages, setIsBackfillingImages] = useState(false)
+  const [pageImageAttempted, setPageImageAttempted] = useState(false)
+  const parsedReader = useReaderController({
+    ...props,
+    book: parsedBook
+  })
+  const sourceReader = usePdfReaderController(props)
+  const needsPageImages = useMemo(
+    () =>
+      !parsedBook.content.some((section) =>
+        section.blocks?.some((block) => block.type === "image")
+      ),
+    [parsedBook.content]
+  )
+
+  useEffect(() => {
+    setParsedBook(props.book)
+    setPageImageAttempted(false)
+  }, [props.book])
+
+  useEffect(() => {
+    if (!needsPageImages || isBackfillingImages || pageImageAttempted) {
+      return
+    }
+    let disposed = false
+    setIsBackfillingImages(true)
+    setPageImageAttempted(true)
+    fetch(`/api/books/${props.book.id}/pdf-page-images/rebuild`, {
+      method: "POST"
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          return null
+        }
+        return response.json()
+      })
+      .then((data) => {
+        if (!disposed && data?.item) {
+          setParsedBook(data.item)
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!disposed) {
+          setIsBackfillingImages(false)
+        }
+      })
+
+    return () => {
+      disposed = true
+    }
+  }, [isBackfillingImages, needsPageImages, pageImageAttempted, props.book.id])
+
+  const isSourceMode = mode === "source"
+  const activeToast = isSourceMode ? sourceReader.toast : parsedReader.toast
+  const activeSidebarWidth = isSourceMode ? sourceReader.tocWidth : parsedReader.tocWidth
+  const activeSidebarEntries = isSourceMode
+    ? sourceReader.sidebarEntries
+    : parsedReader.sidebarEntries
+  const activeSidebarIndex = isSourceMode
+    ? sourceReader.currentPageIndex
+    : parsedReader.pageIndex
+  const activeSidebarRefs = isSourceMode ? sourceReader.tocItemRefs : parsedReader.tocItemRefs
+  const activeHighlightsWidth = isSourceMode
+    ? sourceReader.highlightsWidth
+    : parsedReader.highlightsWidth
+  const progressPercent = isSourceMode
+    ? Math.round(
+        ((sourceReader.currentPageIndex + 1) / Math.max(sourceReader.pageCount, 1)) * 100
+      )
+    : Math.round(
+        ((parsedReader.pageIndex + 1) / Math.max(parsedReader.book.content.length, 1)) * 100
+      )
+  const progressCurrent = isSourceMode
+    ? sourceReader.currentPageIndex + 1
+    : parsedReader.pageIndex + 1
+  const progressTotal = isSourceMode
+    ? sourceReader.pageCount
+    : parsedReader.book.content.length
+
+  const { theme, setTheme } = useTheme()
+
+  function toggleMode() {
+    setMode((current) => (current === "parsed" ? "source" : "parsed"))
+  }
+
+  function toggleTheme() {
+    setTheme(theme === "light" ? "dark" : "light")
+  }
+
+  return (
+    <div className="h-screen overflow-hidden bg-reader-sidebar">
+      {activeToast ? (
+        <Toast
+          title={activeToast}
+          tone={/失败|错误|请检查/.test(activeToast) ? "warning" : "success"}
+          onClose={() => {
+            if (isSourceMode) {
+              sourceReader.setToast("")
+              return
+            }
+            parsedReader.setToast("")
+          }}
+        />
+      ) : null}
+
+      <div className="flex h-12 items-center justify-between border-b border-border/60 bg-elevated px-5">
+        <div className="flex items-center gap-3">
+          <Link
+            className="flex items-center gap-1.5 text-muted transition-colors hover:text-foreground"
+            href="/library"
+          >
+            <ArrowLeft className="h-[15px] w-[15px]" />
+            <span className="text-[13px]">书库</span>
+          </Link>
+          <span className="h-4 w-px bg-border/60" />
+          <span className="text-[14px] font-medium text-foreground">
+            {isSourceMode ? sourceReader.book.title : parsedReader.book.title}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {!isSourceMode ? (
+            <>
+              <button
+                className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition ${
+                  parsedReader.translationView === "translation"
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted hover:bg-overlay hover:text-foreground"
+                }`}
+                onClick={parsedReader.toggleTranslationView}
+                title={parsedReader.translationView === "translation" ? "切换到原文" : "切换到译文"}
+              >
+                <Languages className="h-3.5 w-3.5" />
+                {parsedReader.translationView === "translation" ? "译文" : "原文"}
+              </button>
+              <button
+                className={`flex h-7 w-7 items-center justify-center rounded-md transition ${
+                  parsedReader.showFontPanel
+                    ? "bg-elevated text-foreground"
+                    : "text-muted hover:bg-elevated hover:text-foreground"
+                }`}
+                onClick={() => parsedReader.setShowFontPanel((prev) => !prev)}
+                title="字体设置"
+              >
+                <Type className="h-[15px] w-[15px]" />
+              </button>
+              <span className="h-4 w-px bg-border/60" />
+            </>
+          ) : null}
+          <button
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted transition hover:bg-overlay hover:text-foreground"
+            onClick={toggleTheme}
+            title="切换主题"
+          >
+            {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+          </button>
+          <Switch
+            checked={isSourceMode}
+            onCheckedChange={toggleMode}
+            title={isSourceMode ? "切换到解析模式" : "切换到原文模式"}
+          />
+          <span className="text-xs tabular-nums text-muted">
+            {isSourceMode && sourceReader.loading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <>{progressPercent}%&nbsp;&nbsp;·&nbsp;&nbsp;{progressCurrent} / {progressTotal}</>
+            )}
+          </span>
+        </div>
+      </div>
+      <div className="h-[3px] w-full bg-border/40">
+        <div
+          className="h-full bg-primary transition-all duration-150"
+          style={{ width: `${progressPercent}%` }}
+        />
+      </div>
+
+      <div className="flex h-[calc(100vh-51px)]">
+        <ReaderSidebar
+          width={activeSidebarWidth}
+          nodes={activeSidebarEntries}
+          activeIndex={activeSidebarIndex}
+          onNavigate={isSourceMode ? sourceReader.goPage : parsedReader.goSection}
+          itemRefs={activeSidebarRefs}
+          onResizeStart={
+            isSourceMode
+              ? sourceReader.createResizeHandler(
+                  sourceReader.tocWidth,
+                  sourceReader.setTocWidth,
+                  { min: 200, max: 420 }
+                )
+              : parsedReader.createResizeHandler(
+                  parsedReader.tocWidth,
+                  parsedReader.setTocWidth,
+                  { min: 200, max: 420 }
+                )
+          }
+        />
+
+        <main
+          ref={isSourceMode ? sourceReader.readerMainRef : parsedReader.readerMainRef}
+          className="relative min-w-0 flex-1 overflow-hidden bg-reader-sidebar"
+          onWheel={isSourceMode ? undefined : parsedReader.handleWheel}
+        >
+          {isSourceMode ? (
+            <>
+              <ReaderSelectionToolbar
+                selectionRect={sourceReader.selectionRect}
+                onHighlight={() => sourceReader.createHighlight("yellow")}
+                onNote={() => sourceReader.setComposerOpen(true)}
+              />
+              {sourceReader.fallbackMessage ? (
+                <PdfSourcePlaceholder
+                  title={sourceReader.book.title}
+                  message={sourceReader.fallbackMessage}
+                />
+              ) : (
+                <div
+                  ref={sourceReader.scrollContainerRef}
+                  className="h-full overflow-y-auto px-8 py-8"
+                  onScroll={sourceReader.handleScroll}
+                >
+                  <div className="mx-auto max-w-[980px]">
+                    {sourceReader.pageNumbers.map((pageNumber) => (
+                      <PdfPageView
+                        key={pageNumber}
+                        pdfDocument={sourceReader.pdfDocument}
+                        pageNumber={pageNumber}
+                        highlights={sourceReader.highlightsByPage.get(pageNumber) ?? []}
+                        boxSelectionEnabled={sourceReader.boxSelectionEnabled}
+                        onPageMouseUp={sourceReader.handlePageMouseUp}
+                        onPageBoxSelect={sourceReader.handlePageBoxSelect}
+                        pageRef={(element) => sourceReader.setPageRef(pageNumber - 1, element)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <ReaderSelectionToolbar
+                selectionRect={parsedReader.selectionRect}
+                onHighlight={() => parsedReader.createHighlight("yellow")}
+                onNote={() => parsedReader.setComposerOpen(true)}
+              />
+              <ReaderContent
+                book={parsedReader.book}
+                displayContent={parsedReader.displayContent}
+                isVertical={parsedReader.isVertical}
+                currentSection={parsedReader.currentSection}
+                currentParagraphs={parsedReader.currentParagraphs}
+                pageIndex={parsedReader.pageIndex}
+                safeParagraphIndex={parsedReader.safeParagraphIndex}
+                visibleParagraphs={parsedReader.visibleParagraphs}
+                fontSize={parsedReader.fontSize}
+                lineHeight={parsedReader.lineHeight}
+                letterSpacing={parsedReader.letterSpacing}
+                scrollContainerRef={parsedReader.scrollContainerRef}
+                sectionRefs={parsedReader.sectionRefs}
+                paragraphRefs={parsedReader.paragraphRefs}
+                onScroll={parsedReader.handleScroll}
+                onParagraphMouseUp={parsedReader.handleMouseUp}
+                renderParagraphContent={parsedReader.renderParagraphContent}
+              />
+              <ReaderFontPanel
+                open={parsedReader.showFontPanel}
+                fontPanelRef={parsedReader.fontPanelRef}
+                fontSize={parsedReader.fontSize}
+                lineHeight={parsedReader.lineHeight}
+                letterSpacing={parsedReader.letterSpacing}
+                translationView={parsedReader.translationView}
+                isCurrentSectionTranslating={parsedReader.isCurrentSectionTranslating}
+                onFontSizeChange={parsedReader.setFontSize}
+                onLineHeightChange={parsedReader.setLineHeight}
+                onLetterSpacingChange={parsedReader.setLetterSpacing}
+                onToggleTranslation={parsedReader.toggleTranslationView}
+              />
+            </>
+          )}
+        </main>
+
+        {isSourceMode ? (
+          <PdfHighlightPanel
+            width={activeHighlightsWidth}
+            items={sourceReader.panelItems}
+            currentPageIndex={sourceReader.currentPageIndex}
+            onOpenHighlight={sourceReader.openHighlight}
+            onDeleteHighlight={sourceReader.deleteHighlight}
+            onResizeStart={sourceReader.createResizeHandler(
+              sourceReader.highlightsWidth,
+              sourceReader.setHighlightsWidth,
+              { min: 260, max: 480 },
+              true
+            )}
+          />
+        ) : (
+          <ReaderHighlightPanel
+            width={activeHighlightsWidth}
+            items={parsedReader.groupedHighlights}
+            currentPageIndex={parsedReader.currentSection?.pageIndex}
+            resolvedHighlights={parsedReader.resolvedHighlights}
+            onOpenHighlight={parsedReader.openHighlight}
+            onDeleteHighlight={parsedReader.deleteHighlight}
+            onResizeStart={parsedReader.createResizeHandler(
+              parsedReader.highlightsWidth,
+              parsedReader.setHighlightsWidth,
+              { min: 260, max: 480 },
+              true
+            )}
+          />
+        )}
+      </div>
+
+      <ReaderNoteComposer
+        open={isSourceMode ? sourceReader.composerOpen : parsedReader.composerOpen}
+        selectedText={isSourceMode ? sourceReader.selectedText : parsedReader.selectedText}
+        noteDraft={isSourceMode ? sourceReader.noteDraft : parsedReader.noteDraft}
+        onChange={isSourceMode ? sourceReader.setNoteDraft : parsedReader.setNoteDraft}
+        onCancel={() => {
+          if (isSourceMode) {
+            sourceReader.setComposerOpen(false)
+            return
+          }
+          parsedReader.setComposerOpen(false)
+        }}
+        onSave={() => {
+          if (isSourceMode) {
+            void sourceReader.createHighlight("yellow", sourceReader.noteDraft)
+            return
+          }
+          void parsedReader.createHighlight("yellow", parsedReader.noteDraft)
+        }}
+      />
+    </div>
+  )
 }

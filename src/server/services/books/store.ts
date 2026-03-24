@@ -7,6 +7,7 @@ import {
 } from "@/src/lib/book-content"
 import { decodeHtmlEntities } from "@/src/lib/html-entities"
 import { ensureBookSchema, getBookPool } from "@/src/server/services/books/postgres"
+import { parseMinioPath } from "@/src/server/services/books/minio"
 import type { Book, ReaderSectionBlock } from "@/src/server/store/types"
 
 function sanitizeText(value: unknown, fallback = "") {
@@ -339,6 +340,46 @@ export async function getBookFromStore(userId: string, bookId: string) {
     return built.book
   } catch {
     return repository.getBook(userId, bookId) ?? null
+  }
+}
+
+export async function getBookObjectLocationFromStore(userId: string, bookId: string) {
+  try {
+    await seedFromRepositoryIfNeeded(userId)
+    const result = await getBookPool().query(
+      `SELECT file_path, object_bucket, object_key
+         FROM app_books
+        WHERE user_id = $1 AND id = $2
+        LIMIT 1`,
+      [userId, bookId]
+    )
+    const row = result.rows[0]
+    if (row?.object_bucket && row?.object_key) {
+      return {
+        bucket: row.object_bucket as string,
+        objectName: row.object_key as string,
+        storedPath: row.file_path as string | undefined
+      }
+    }
+    const parsed = parseMinioPath(row?.file_path)
+    if (parsed) {
+      return {
+        ...parsed,
+        storedPath: row.file_path as string | undefined
+      }
+    }
+  } catch {
+    // fallback below
+  }
+
+  const book = repository.getBook(userId, bookId)
+  const parsed = parseMinioPath(book?.filePath)
+  if (!parsed) {
+    return null
+  }
+  return {
+    ...parsed,
+    storedPath: book?.filePath
   }
 }
 

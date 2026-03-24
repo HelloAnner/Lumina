@@ -27,7 +27,39 @@ type LibraryBook = Book & {
   coverUrl?: string
 }
 
-function BookCover({ title, coverUrl }: { title: string; coverUrl?: string }) {
+/** 根据书名哈希生成封面色系，保证同一本书颜色稳定 */
+const COVER_THEMES = [
+  { from: "#6d28d9", to: "#4338ca" },  // 紫蓝
+  { from: "#0369a1", to: "#0e7490" },  // 深蓝青
+  { from: "#065f46", to: "#0f766e" },  // 深绿
+  { from: "#9a3412", to: "#b45309" },  // 橙红
+  { from: "#86198f", to: "#be185d" },  // 紫粉
+  { from: "#1e3a5f", to: "#1d4ed8" },  // 海军蓝
+  { from: "#374151", to: "#1f2937" },  // 深石墨
+  { from: "#7c2d12", to: "#dc2626" },  // 深红
+  { from: "#14532d", to: "#166534" },  // 墨绿
+  { from: "#312e81", to: "#5b21b6" },  // 靛紫
+]
+
+function hashTitle(title: string): number {
+  let h = 5381
+  for (let i = 0; i < title.length; i++) {
+    h = ((h << 5) + h) ^ title.charCodeAt(i)
+  }
+  return Math.abs(h)
+}
+
+function BookCover({
+  title,
+  author,
+  format,
+  coverUrl
+}: {
+  title: string
+  author?: string
+  format?: string
+  coverUrl?: string
+}) {
   if (coverUrl) {
     return (
       <div className="relative h-[178px] w-[118px] overflow-hidden rounded-[14px] border border-border bg-elevated shadow-lg">
@@ -43,11 +75,52 @@ function BookCover({ title, coverUrl }: { title: string; coverUrl?: string }) {
     )
   }
 
+  const theme = COVER_THEMES[hashTitle(title) % COVER_THEMES.length]
+
   return (
-    <div className="flex h-[178px] w-[118px] items-end justify-start rounded-[14px] border border-border bg-gradient-to-br from-primary/60 via-primary/30 to-primary/10 p-3 text-left shadow-lg">
-      <div className="line-clamp-3 text-sm font-semibold leading-5 text-white">
-        {title}
+    <div
+      className="relative h-[178px] w-[118px] overflow-hidden rounded-[14px] shadow-lg"
+      style={{ background: `linear-gradient(145deg, ${theme.from}, ${theme.to})` }}
+    >
+      {/* 书脊效果 */}
+      <div className="absolute left-0 top-0 h-full w-[5px] bg-black/25" />
+
+      {/* 装饰圆环 */}
+      <div
+        className="absolute rounded-full border border-white/10"
+        style={{ width: 80, height: 80, top: -20, right: -20 }}
+      />
+      <div
+        className="absolute rounded-full border border-white/10"
+        style={{ width: 52, height: 52, bottom: 10, left: -14 }}
+      />
+      <div
+        className="absolute rounded-full bg-white/5"
+        style={{ width: 36, height: 36, top: 24, right: 10 }}
+      />
+
+      {/* 格式标签 */}
+      {format && (
+        <div className="absolute right-2.5 top-2.5 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white/60 backdrop-blur-sm"
+          style={{ background: "rgba(0,0,0,0.2)" }}>
+          {format}
+        </div>
+      )}
+
+      {/* 主文字区域 */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center px-4 pb-3 pt-8 text-center">
+        <div className="line-clamp-4 text-[13px] font-bold leading-snug tracking-tight text-white drop-shadow-sm">
+          {title}
+        </div>
+        {author && author !== "未知作者" && (
+          <div className="mt-2 line-clamp-1 text-[10px] font-normal text-white/60">
+            {author}
+          </div>
+        )}
       </div>
+
+      {/* 底部装饰线 */}
+      <div className="absolute bottom-0 left-5 right-5 h-px bg-white/10" />
     </div>
   )
 }
@@ -336,7 +409,7 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
                 onClick={() => router.push(`/reader/${book.id}`)}
               >
                 <div className="transition-transform duration-300 ease-out group-hover:-translate-y-2">
-                  <BookCover title={book.title} coverUrl={book.coverUrl} />
+                  <BookCover title={book.title} author={book.author} format={book.format} coverUrl={book.coverUrl} />
                 </div>
               </button>
               <CardContent className="space-y-2.5 px-1 pb-0 pt-4">

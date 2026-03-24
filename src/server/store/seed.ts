@@ -107,6 +107,7 @@ function createDemoHighlights(userId: string, books: Book[]): Highlight[] {
       userId,
       bookId: books[0].id,
       format: "PDF",
+      contentMode: "original",
       pageIndex: 42,
       paraOffsetStart: 0,
       paraOffsetEnd: 32,
@@ -121,6 +122,7 @@ function createDemoHighlights(userId: string, books: Book[]): Highlight[] {
       userId,
       bookId: books[0].id,
       format: "PDF",
+      contentMode: "original",
       pageIndex: 55,
       paraOffsetStart: 0,
       paraOffsetEnd: 20,
@@ -135,6 +137,7 @@ function createDemoHighlights(userId: string, books: Book[]): Highlight[] {
       userId,
       bookId: books[1].id,
       format: "EPUB",
+      contentMode: "original",
       chapterHref: "chapter-2",
       cfiRange: "epubcfi(/6/4!/4/2/1:0,/1:22)",
       content: "真正值得追求的，是可被不断重复的高质量决策。",
@@ -267,7 +270,8 @@ export function buildSeedDatabase(): Database {
       lineHeight: 1.75,
       fontFamily: "serif",
       theme: "night",
-      navigationMode: "horizontal"
+      navigationMode: "horizontal",
+      translationView: "original"
     }
   ]
 
@@ -331,6 +335,8 @@ export function buildSeedDatabase(): Database {
     modelBindings,
     storageConfigs,
     readerSettings,
+    translations: [],
+    tocTranslations: [],
     publishTargets,
     publishTasks,
     publishRecords,

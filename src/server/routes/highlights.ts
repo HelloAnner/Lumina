@@ -16,6 +16,11 @@ app.post("/", async (c) => {
     .object({
       bookId: z.string(),
       format: z.enum(["PDF", "EPUB"]),
+      contentMode: z.enum(["original", "translation"]).optional(),
+      targetLanguage: z.string().optional(),
+      counterpartContent: z.string().optional(),
+      counterpartParaOffsetStart: z.number().optional(),
+      counterpartParaOffsetEnd: z.number().optional(),
       pageIndex: z.number().optional(),
       pdfRects: z.array(pdfRectSchema).optional(),
       paraOffsetStart: z.number().optional(),
@@ -29,7 +34,8 @@ app.post("/", async (c) => {
     .parse(await c.req.json())
   const highlight = repository.createHighlight({
     userId: c.get("userId"),
-    ...payload
+    ...payload,
+    contentMode: payload.contentMode ?? "original"
   })
   return c.json({ item: highlight })
 })

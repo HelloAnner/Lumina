@@ -1,5 +1,5 @@
 /**
- * 阅读器正文渲染
+ * 阅读器正文渲染（带白色内容卡片）
  *
  * @author Anner
  * @since 0.1.0
@@ -72,6 +72,7 @@ function buildRenderableBlocks(section: Book["content"][number]): RenderableBloc
 
 export function ReaderContent({
   book,
+  displayContent,
   isVertical,
   currentSection,
   currentParagraphs,
@@ -89,6 +90,7 @@ export function ReaderContent({
   renderParagraphContent
 }: {
   book: Book
+  displayContent: Book["content"]
   isVertical: boolean
   currentSection: Book["content"][number]
   currentParagraphs: string[]
@@ -109,16 +111,10 @@ export function ReaderContent({
     sectionIndex: number
   ) => React.ReactNode
 }) {
-  function renderBlock(
-    block: RenderableBlock,
-    sectionIndex: number
-  ) {
+  function renderBlock(block: RenderableBlock, sectionIndex: number) {
     if (block.type === "image") {
       return (
-        <div
-          key={block.key}
-          className="my-6 flex justify-center"
-        >
+        <div key={block.key} className="my-6 flex justify-center">
           <img
             src={block.src}
             alt={block.alt ?? "章节插图"}
@@ -153,61 +149,56 @@ export function ReaderContent({
     return (
       <div
         ref={scrollContainerRef}
-        className="h-full overflow-y-auto px-12 py-10"
+        className="h-full overflow-y-auto bg-reader-sidebar px-8 py-8"
         onScroll={onScroll}
       >
-        <div className="mx-auto max-w-2xl space-y-12">
-          {book.content.map((section, sectionIndex) => {
-            const blocks = buildRenderableBlocks(section)
-            return (
-              <div
-                key={section.id}
-                ref={(element) => {
-                  sectionRefs.current[sectionIndex] = element
-                }}
-                data-section-index={sectionIndex}
-              >
-                {sectionIndex > 0 ? (
-                  <div className="mb-8 border-t border-border/60" />
-                ) : null}
-                <h2 className="mb-8 text-lg font-medium text-foreground">
-                  {section.title}
-                </h2>
+        <div className="mx-auto max-w-[720px] rounded-xl bg-reader-card px-12 py-10 shadow-sm">
+          <div className="space-y-12">
+            {displayContent.map((section, sectionIndex) => {
+              const blocks = buildRenderableBlocks(section)
+              return (
                 <div
-                  className="text-reader-text selection:bg-amber-300/40"
-                  style={{
-                    fontSize,
-                    lineHeight,
-                    letterSpacing: `${letterSpacing}em`
+                  key={section.id}
+                  ref={(element) => {
+                    sectionRefs.current[sectionIndex] = element
                   }}
+                  data-section-index={sectionIndex}
                 >
-                  {blocks.map((block) => renderBlock(block, sectionIndex))}
+                  {sectionIndex > 0 ? (
+                    <div className="mb-8 border-t border-border/60" />
+                  ) : null}
+                  <h2 className="mb-8 text-lg font-medium text-foreground">{section.title}</h2>
+                  <div
+                    className="text-reader-text selection:bg-amber-300/40"
+                    style={{ fontSize, lineHeight, letterSpacing: `${letterSpacing}em` }}
+                  >
+                    {blocks.map((block) => renderBlock(block, sectionIndex))}
+                  </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
       </div>
     )
   }
 
+  /* 横向翻章模式：内容居于白色圆角卡片内 */
   return (
-    <div className="h-full w-full px-8 py-12">
-      <div className="mx-auto flex h-full max-w-2xl flex-col justify-center">
-        <div className="max-w-2xl">
-          <h1 className="mb-10 text-xl font-medium text-foreground">
+    <div className="flex h-full w-full items-stretch p-8">
+      <div className="mx-auto flex w-full max-w-[720px] flex-col overflow-hidden rounded-xl bg-reader-card shadow-sm">
+        <div className="flex flex-1 flex-col justify-center overflow-y-auto px-12 py-10">
+          <h1 className="mb-8 text-xl font-semibold text-foreground">
             {currentSection?.title ?? book.title}
           </h1>
           <div
             className="text-reader-text selection:bg-amber-300/40"
-            style={{
-              fontSize,
-              lineHeight,
-              letterSpacing: `${letterSpacing}em`
-            }}
+            style={{ fontSize, lineHeight, letterSpacing: `${letterSpacing}em` }}
           >
             {currentSection.blocks?.length
-              ? buildRenderableBlocks(currentSection).map((block) => renderBlock(block, pageIndex))
+              ? buildRenderableBlocks(currentSection).map((block) =>
+                  renderBlock(block, pageIndex)
+                )
               : visibleParagraphs.map((paragraph) => (
                   <p
                     key={`${currentSection.id}-${paragraph.index}`}
@@ -220,7 +211,7 @@ export function ReaderContent({
                   </p>
                 ))}
           </div>
-          <div className="mt-12 flex items-center justify-between text-xs text-secondary">
+          <div className="mt-10 flex items-center justify-between text-xs text-muted">
             <span>
               第 {pageIndex + 1} 章 · 段落{" "}
               {Math.min(safeParagraphIndex + 1, Math.max(1, currentParagraphs.length))}

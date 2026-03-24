@@ -18,6 +18,7 @@ import {
   splitParagraphs
 } from "@/components/reader/reader-highlight-utils"
 import { buildSidebarTree, normalizeSidebarTitle } from "@/components/reader/reader-sidebar-utils"
+import { useReaderTranslation } from "@/components/reader/use-reader-translation"
 
 const COLORS = {
   yellow: "rgba(251,191,36,0.35)",
@@ -84,10 +85,17 @@ export function useReaderController({
   const tickingRef = useRef(false)
   const prefTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const translation = useReaderTranslation({
+    book,
+    pageIndex,
+    initialView: settings?.translationView ?? "original",
+    onError: setToast
+  })
+
   const sidebarEntries = useMemo(
     () =>
       buildSidebarTree(
-        book.toc
+        translation.displayToc
           .map((item, index) => {
             const contentTitle = book.content[index]?.title ?? `第 ${index + 1} 节`
             return {
@@ -103,10 +111,11 @@ export function useReaderController({
             return !["封面", "扉页"].includes(item.title)
           })
       ),
-    [book.content, book.toc, pageIndex]
+    [book.content, pageIndex, translation.displayToc]
   )
 
-  const currentSection = book.content[pageIndex] ?? book.content[0]
+  const currentSection =
+    translation.displayContent[pageIndex] ?? translation.displayContent[0]
   const currentParagraphs = useMemo(
     () => splitParagraphs(currentSection?.content ?? ""),
     [currentSection?.content]
@@ -128,18 +137,31 @@ export function useReaderController({
       ),
     [currentParagraphLayouts, safeParagraphIndex]
   )
+  const activeContentMode =
+    translation.translationView === "translation" ? "translation" : "original"
+  const anchorSections =
+    translation.translationView === "translation"
+      ? translation.displayContent
+      : book.content
   const resolvedHighlights = useMemo<ResolvedHighlight[]>(
     () =>
       panelItems
         .map((item) => {
-          const anchor = resolveBookHighlightAnchor(book.content, item)
+          const anchor = resolveBookHighlightAnchor(anchorSections, item, activeContentMode)
           if (!anchor) {
             return null
           }
-          return { ...item, ...anchor }
+          return {
+            ...item,
+            ...anchor,
+            displayContent:
+              (item.contentMode ?? "original") === activeContentMode
+                ? item.content
+                : item.counterpartContent ?? item.content
+          }
         })
         .filter((item): item is ResolvedHighlight => Boolean(item)),
-    [book.content, panelItems]
+    [activeContentMode, anchorSections, panelItems]
   )
   const highlightsBySection = useMemo(() => {
     const map = new Map<number, ResolvedHighlight[]>()
@@ -174,6 +196,14 @@ export function useReaderController({
     persistProgress,
     safeParagraphIndex
   ])
+
+  useEffect(() => {
+    setSelectedText("")
+    setSelectedRange(null)
+    setSelectionRect(null)
+    setComposerOpen(false)
+    window.getSelection()?.removeAllRanges()
+  }, [translation.translationView])
 
   const createResizeHandler = useCallback(
     (
@@ -229,7 +259,9 @@ export function useReaderController({
   const jumpToPosition = useCallback(
     (sectionIndex: number, paraIndex: number) => {
       const safeSectionIndex = Math.min(book.content.length - 1, Math.max(0, sectionIndex))
-      const layouts = buildParagraphLayouts(book.content[safeSectionIndex]?.content ?? "")
+      const layouts = buildParagraphLayouts(
+        translation.displayContent[safeSectionIndex]?.content ?? ""
+      )
       const safeParagraph = Math.min(Math.max(0, paraIndex), Math.max(0, layouts.length - 1))
       setSelectedText("")
       setSelectedRange(null)
@@ -244,7 +276,7 @@ export function useReaderController({
         })
       }
     },
-    [book.content, isVertical, scrollToReadingPosition]
+    [book.content.length, isVertical, scrollToReadingPosition, translation.displayContent]
   )
 
   const goSection = useCallback(
@@ -389,7 +421,17 @@ export function useReaderController({
     })
   }, [updateVerticalProgress])
 
-  const groupedHighlights = useMemo(() => panelItems, [panelItems])
+  const groupedHighlights = useMemo(
+    () =>
+      resolvedHighlights.map((item) => ({
+        ...item,
+        content: item.displayContent
+      })),
+    [resolvedHighlights]
+  )
+  const canSelectCurrentContent =
+    activeContentMode === "original" ||
+    Boolean(translation.translationItems[pageIndex])
 
   const renderParagraphContent = useCallback(
     (paragraphText: string, paragraphStart: number, sectionIndex: number) => {
@@ -431,13 +473,21 @@ export function useReaderController({
           buildTextHighlightPayload({
             bookId: book.id,
             format: book.format,
-            sections: book.content,
+            sections: translation.displayContent,
+            counterpartSections:
+              activeContentMode === "translation"
+                ? book.content
+                : translation.translationItems[selectedSectionIndex]
+                  ? translation.displayContent
+                  : undefined,
             selectedSectionIndex,
             fallbackSection: currentSection,
             selectedText,
             selectedRange,
             note,
-            color
+            color,
+            contentMode: activeContentMode,
+            targetLanguage: activeContentMode === "translation" ? "zh-CN" : undefined
           })
         )
       })
@@ -459,10 +509,13 @@ export function useReaderController({
       book.content,
       book.format,
       book.id,
+      activeContentMode,
       currentSection,
       selectedRange,
       selectedSectionIndex,
-      selectedText
+      selectedText,
+      translation.displayContent,
+      translation.translationItems
     ]
   )
 
@@ -478,7 +531,33 @@ export function useReaderController({
     []
   )
 
+  // 点击选区工具栏外部时清除选区浮层（handleMouseUp 只绑在段落上，点击其他区域不会触发）
+  useEffect(() => {
+    function handleDocumentMouseDown(event: MouseEvent) {
+      if (!selectionRect) {
+        return
+      }
+      const target = event.target as Element
+      if (target.closest("[data-reader-selection-toolbar]")) {
+        return
+      }
+      setSelectionRect(null)
+      setSelectedText("")
+      setSelectedRange(null)
+    }
+    document.addEventListener("mousedown", handleDocumentMouseDown)
+    return () => {
+      document.removeEventListener("mousedown", handleDocumentMouseDown)
+    }
+  }, [selectionRect])
+
   const handleMouseUp = useCallback(() => {
+    if (!canSelectCurrentContent) {
+      setSelectedText("")
+      setSelectedRange(null)
+      setSelectionRect(null)
+      return
+    }
     const selection = window.getSelection()
     const rawText = selection?.toString() ?? ""
     const text = rawText.trim()
@@ -533,10 +612,11 @@ export function useReaderController({
       top: Math.max(12, top),
       left: Math.max(12, left)
     })
-  }, [pageIndex])
+  }, [canSelectCurrentContent, pageIndex])
 
   return {
     book,
+    displayContent: translation.displayContent,
     isVertical,
     currentSection,
     currentParagraphs,
@@ -551,6 +631,9 @@ export function useReaderController({
     noteDraft,
     composerOpen,
     toast,
+    translationView: translation.translationView,
+    hasCurrentTranslation: Boolean(translation.currentTranslation),
+    isCurrentSectionTranslating: translation.isCurrentSectionTranslating,
     fontSize,
     lineHeight,
     letterSpacing,
@@ -569,6 +652,7 @@ export function useReaderController({
     handleMouseUp,
     goSection,
     openHighlight,
+    toggleTranslationView: translation.toggleTranslationView,
     createHighlight,
     deleteHighlight,
     createResizeHandler,

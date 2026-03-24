@@ -1,6 +1,7 @@
 export {
   DELETE,
   GET,
+  HEAD,
   OPTIONS,
   PATCH,
   POST,
