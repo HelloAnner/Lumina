@@ -3,19 +3,19 @@
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
-  ChevronRight,
+  ArrowRight,
+  Check,
+  ChevronDown,
   Edit3,
+  LayoutGrid,
   Plus,
   Search,
   Trash2,
-  Upload,
   X
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Progress } from "@/components/ui/progress"
 import {
   formatLibraryProgressText,
   normalizeLibraryProgress
@@ -27,18 +27,18 @@ type LibraryBook = Book & {
   coverUrl?: string
 }
 
-/** 根据书名哈希生成封面色系，保证同一本书颜色稳定 */
-const COVER_THEMES = [
-  { from: "#6d28d9", to: "#4338ca" },  // 紫蓝
-  { from: "#0369a1", to: "#0e7490" },  // 深蓝青
-  { from: "#065f46", to: "#0f766e" },  // 深绿
-  { from: "#9a3412", to: "#b45309" },  // 橙红
-  { from: "#86198f", to: "#be185d" },  // 紫粉
-  { from: "#1e3a5f", to: "#1d4ed8" },  // 海军蓝
-  { from: "#374151", to: "#1f2937" },  // 深石墨
-  { from: "#7c2d12", to: "#dc2626" },  // 深红
-  { from: "#14532d", to: "#166534" },  // 墨绿
-  { from: "#312e81", to: "#5b21b6" },  // 靛紫
+/** 封面渐变色系，根据书名哈希稳定分配 */
+const COVER_GRADIENTS = [
+  { from: "#4C1D95", to: "#1E1B4B", angle: 150 },
+  { from: "#0F2E2E", to: "#0A1A1A", angle: 150 },
+  { from: "#1A2F0F", to: "#0F1A0A", angle: 150 },
+  { from: "#2E1A0F", to: "#1A0F0A", angle: 150 },
+  { from: "#1A1A2E", to: "#0F0F1A", angle: 150 },
+  { from: "#2E0F1A", to: "#1A0A10", angle: 150 },
+  { from: "#1B2838", to: "#0D1520", angle: 150 },
+  { from: "#2D1B30", to: "#160E18", angle: 150 },
+  { from: "#0F2838", to: "#081820", angle: 150 },
+  { from: "#30251A", to: "#1A150F", angle: 150 },
 ]
 
 function hashTitle(title: string): number {
@@ -49,83 +49,174 @@ function hashTitle(title: string): number {
   return Math.abs(h)
 }
 
+/** 极简书籍封面 */
 function BookCover({
   title,
-  author,
-  format,
-  coverUrl
+  coverUrl,
+  progress,
+  isComplete
 }: {
   title: string
-  author?: string
-  format?: string
   coverUrl?: string
+  progress: number
+  isComplete: boolean
 }) {
-  if (coverUrl) {
-    return (
-      <div className="relative h-[178px] w-[118px] overflow-hidden rounded-[14px] border border-border bg-elevated shadow-lg">
-        <Image
-          src={coverUrl}
-          alt={`${title} 封面`}
-          width={118}
-          height={178}
-          className="h-full w-full object-cover"
-          unoptimized
-        />
-      </div>
-    )
-  }
-
-  const theme = COVER_THEMES[hashTitle(title) % COVER_THEMES.length]
+  const gradient = COVER_GRADIENTS[hashTitle(title) % COVER_GRADIENTS.length]
+  const normalizedProgress = normalizeLibraryProgress(progress)
 
   return (
-    <div
-      className="relative h-[178px] w-[118px] overflow-hidden rounded-[14px] shadow-lg"
-      style={{ background: `linear-gradient(145deg, ${theme.from}, ${theme.to})` }}
-    >
-      {/* 书脊效果 */}
-      <div className="absolute left-0 top-0 h-full w-[5px] bg-black/25" />
-
-      {/* 装饰圆环 */}
+    <div className="group/cover relative">
       <div
-        className="absolute rounded-full border border-white/10"
-        style={{ width: 80, height: 80, top: -20, right: -20 }}
-      />
-      <div
-        className="absolute rounded-full border border-white/10"
-        style={{ width: 52, height: 52, bottom: 10, left: -14 }}
-      />
-      <div
-        className="absolute rounded-full bg-white/5"
-        style={{ width: 36, height: 36, top: 24, right: 10 }}
-      />
-
-      {/* 格式标签 */}
-      {format && (
-        <div className="absolute right-2.5 top-2.5 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white/60 backdrop-blur-sm"
-          style={{ background: "rgba(0,0,0,0.2)" }}>
-          {format}
-        </div>
-      )}
-
-      {/* 主文字区域 */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center px-4 pb-3 pt-8 text-center">
-        <div className="line-clamp-4 text-[13px] font-bold leading-snug tracking-tight text-white drop-shadow-sm">
-          {title}
-        </div>
-        {author && author !== "未知作者" && (
-          <div className="mt-2 line-clamp-1 text-[10px] font-normal text-white/60">
-            {author}
+        className="relative aspect-[3/4] w-full overflow-hidden rounded-[10px] shadow-[0_4px_20px_rgba(0,0,0,0.4)] transition-transform duration-300 ease-out group-hover/cover:-translate-y-1"
+        style={
+          coverUrl
+            ? undefined
+            : {
+                background: `linear-gradient(${gradient.angle}deg, ${gradient.from}, ${gradient.to})`
+              }
+        }
+      >
+        {coverUrl ? (
+          <Image
+            src={coverUrl}
+            alt={title}
+            fill
+            className="object-cover"
+            unoptimized
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-start p-4">
+            <span className="text-[2.5rem] font-bold leading-[0.9] tracking-tighter text-white/[0.07]">
+              {title.split("").slice(0, 6).join("\n")}
+            </span>
           </div>
         )}
-      </div>
 
-      {/* 底部装饰线 */}
-      <div className="absolute bottom-0 left-5 right-5 h-px bg-white/10" />
+        {/* 已读完标记 */}
+        {isComplete && (
+          <div className="absolute left-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500">
+            <Check className="h-3 w-3 text-white" strokeWidth={3} />
+          </div>
+        )}
+
+        {/* 底部进度条 */}
+        {normalizedProgress > 0 && !isComplete && (
+          <div className="absolute bottom-0 left-0 h-[2px] bg-violet-500/50"
+            style={{ width: `${normalizedProgress}%` }}
+          />
+        )}
+      </div>
     </div>
   )
 }
 
-// 编辑对话框组件
+/** 继续阅读 - 精选横向卡片 */
+function ContinueReadingCard({
+  book,
+  onClick
+}: {
+  book: LibraryBook
+  onClick: () => void
+}) {
+  const gradient = COVER_GRADIENTS[hashTitle(book.title) % COVER_GRADIENTS.length]
+  const normalizedProgress = normalizeLibraryProgress(book.readProgress)
+
+  return (
+    <button
+      onClick={onClick}
+      className="group flex w-full overflow-hidden rounded-2xl bg-[#111113] transition-colors hover:bg-[#161618]"
+    >
+      {/* 封面 */}
+      <div
+        className="h-[180px] w-[130px] flex-shrink-0"
+        style={
+          book.coverUrl
+            ? undefined
+            : {
+                background: `linear-gradient(${gradient.angle}deg, ${gradient.from}, ${gradient.to})`
+              }
+        }
+      >
+        {book.coverUrl ? (
+          <Image
+            src={book.coverUrl}
+            alt={book.title}
+            width={130}
+            height={180}
+            className="h-full w-full object-cover"
+            unoptimized
+          />
+        ) : (
+          <div className="flex h-full items-start p-4">
+            <span className="text-2xl font-bold leading-tight tracking-tighter text-white/[0.12]">
+              {book.title}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* 信息 */}
+      <div className="flex flex-1 flex-col justify-center gap-3 px-7 py-6">
+        <div>
+          <h3 className="text-xl font-semibold tracking-tight text-zinc-100">
+            {book.title}
+          </h3>
+          <p className="mt-1 text-[13px] text-zinc-500">
+            {book.author || "未知作者"}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <div className="h-[3px] w-[120px] overflow-hidden rounded-full bg-[#1E1E2E]">
+              <div
+                className="h-full rounded-full bg-violet-500"
+                style={{ width: `${normalizedProgress}%` }}
+              />
+            </div>
+            <span className="text-xs font-medium text-violet-500">
+              {normalizedProgress}%
+            </span>
+          </div>
+          {book.lastReadAt && (
+            <span className="text-xs text-zinc-700">
+              {formatLastRead(book.lastReadAt)}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5 text-xs text-zinc-500 transition-colors group-hover:text-zinc-400">
+          继续阅读
+          <ArrowRight className="h-3.5 w-3.5" />
+        </div>
+      </div>
+    </button>
+  )
+}
+
+/** 格式化上次阅读时间 */
+function formatLastRead(dateStr: string): string {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+  if (diffDays === 0) {
+    return "今天阅读"
+  }
+  if (diffDays === 1) {
+    return "昨天阅读"
+  }
+  if (diffDays < 7) {
+    return `${diffDays}天前阅读`
+  }
+  if (diffDays < 30) {
+    return `${Math.floor(diffDays / 7)}周前阅读`
+  }
+  return `${Math.floor(diffDays / 30)}月前阅读`
+}
+
+/** 编辑书籍对话框 */
 function EditBookDialog({
   book,
   isOpen,
@@ -143,7 +234,6 @@ function EditBookDialog({
   const [tags, setTags] = useState<string[]>(book?.tags || [])
   const [newTag, setNewTag] = useState("")
 
-  // 当 book 变化时更新表单
   useMemo(() => {
     if (book) {
       setTitle(book.title)
@@ -153,7 +243,9 @@ function EditBookDialog({
     }
   }, [book])
 
-  if (!isOpen || !book) return null
+  if (!isOpen || !book) {
+    return null
+  }
 
   const handleAddTag = () => {
     if (newTag.trim() && !tags.includes(newTag.trim())) {
@@ -185,27 +277,14 @@ function EditBookDialog({
         </div>
 
         <div className="space-y-4">
-          {/* 书名 */}
           <div>
             <label className="mb-1.5 block text-xs font-medium text-muted">书名</label>
-            <Input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="输入书名"
-            />
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="输入书名" />
           </div>
-
-          {/* 作者 */}
           <div>
             <label className="mb-1.5 block text-xs font-medium text-muted">作者</label>
-            <Input
-              value={author}
-              onChange={(e) => setAuthor(e.target.value)}
-              placeholder="输入作者"
-            />
+            <Input value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="输入作者" />
           </div>
-
-          {/* 格式 */}
           <div>
             <label className="mb-1.5 block text-xs font-medium text-muted">格式</label>
             <div className="flex gap-2">
@@ -214,9 +293,7 @@ function EditBookDialog({
                   key={f}
                   onClick={() => setFormat(f)}
                   className={`rounded-lg px-4 py-2 text-sm transition-all ${
-                    format === f
-                      ? "bg-primary text-white"
-                      : "bg-elevated text-secondary hover:text-foreground"
+                    format === f ? "bg-primary text-white" : "bg-elevated text-secondary hover:text-foreground"
                   }`}
                 >
                   {f}
@@ -224,8 +301,6 @@ function EditBookDialog({
               ))}
             </div>
           </div>
-
-          {/* 标签 */}
           <div>
             <label className="mb-1.5 block text-xs font-medium text-muted">标签</label>
             <div className="flex gap-2">
@@ -245,13 +320,10 @@ function EditBookDialog({
               </Button>
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {tags.map((tag) => (
-                <Badge key={tag} className="flex items-center gap-1 pr-1">
-                  {tag}
-                  <button
-                    onClick={() => handleRemoveTag(tag)}
-                    className="ml-1 rounded-full p-0.5 hover:bg-white/10"
-                  >
+              {tags.map((t) => (
+                <Badge key={t} className="flex items-center gap-1 pr-1">
+                  {t}
+                  <button onClick={() => handleRemoveTag(t)} className="ml-1 rounded-full p-0.5 hover:bg-white/10">
                     <X className="h-3 w-3" />
                   </button>
                 </Badge>
@@ -261,9 +333,7 @@ function EditBookDialog({
         </div>
 
         <div className="mt-6 flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>
-            取消
-          </Button>
+          <Button variant="secondary" onClick={onClose}>取消</Button>
           <Button onClick={handleSave}>保存</Button>
         </div>
       </div>
@@ -271,42 +341,47 @@ function EditBookDialog({
   )
 }
 
+type TabFilter = "all" | "reading" | "done" | "unread"
+
 export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] }) {
   const router = useRouter()
   const [books, setBooks] = useState(initialBooks)
   const [query, setQuery] = useState("")
-  const [tag, setTag] = useState("")
+  const [showSearch, setShowSearch] = useState(false)
+  const [tab, setTab] = useState<TabFilter>("all")
   const [editingBook, setEditingBook] = useState<LibraryBook | null>(null)
   const [isEditOpen, setIsEditOpen] = useState(false)
 
-  const tags = useMemo(
-    () => Array.from(new Set(initialBooks.flatMap((item) => item.tags))),
-    [initialBooks]
-  )
+  /** 最近阅读的书（用于继续阅读区域） */
+  const lastReadBook = useMemo(() => {
+    return books
+      .filter((b) => b.readProgress > 0 && b.readProgress < 1 && b.lastReadAt)
+      .sort((a, b) => new Date(b.lastReadAt!).getTime() - new Date(a.lastReadAt!).getTime())[0]
+  }, [books])
 
+  /** 按标签过滤后的书籍 */
   const filtered = useMemo(() => {
-    return books.filter((item) => {
-      if (query && !`${item.title} ${item.author ?? ""}`.includes(query)) {
+    return books.filter((book) => {
+      if (query && !`${book.title} ${book.author ?? ""}`.toLowerCase().includes(query.toLowerCase())) {
         return false
       }
-      if (tag && !item.tags.includes(tag)) {
+      if (tab === "reading" && !(book.readProgress > 0 && book.readProgress < 1)) {
+        return false
+      }
+      if (tab === "done" && !(book.readProgress >= 1)) {
+        return false
+      }
+      if (tab === "unread" && !(book.readProgress === 0 || !book.readProgress)) {
         return false
       }
       return true
     })
-  }, [books, query, tag])
+  }, [books, query, tab])
 
   async function removeBook(bookId: string) {
-    await fetch(`/api/books/${bookId}`, {
-      method: "DELETE"
-    })
-    setBooks((current) => current.filter((item) => item.id !== bookId))
+    await fetch(`/api/books/${bookId}`, { method: "DELETE" })
+    setBooks((current) => current.filter((b) => b.id !== bookId))
     router.refresh()
-  }
-
-  async function handleEditBook(book: LibraryBook) {
-    setEditingBook(book)
-    setIsEditOpen(true)
   }
 
   async function handleSaveBook(
@@ -320,157 +395,183 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
     })
     if (response.ok) {
       const { item } = await response.json()
-      setBooks((current) =>
-        current.map((book) =>
-          book.id === bookId
-            ? { ...book, ...item }
-            : book
-        )
-      )
+      setBooks((current) => current.map((b) => (b.id === bookId ? { ...b, ...item } : b)))
       router.refresh()
     }
   }
 
+  const tabs: { key: TabFilter; label: string }[] = [
+    { key: "all", label: "全部" },
+    { key: "reading", label: "阅读中" },
+    { key: "done", label: "已读完" },
+    { key: "unread", label: "未开始" },
+  ]
+
   return (
-    <div className="flex min-h-screen flex-col bg-base">
-      {/* Header */}
-      <header className="flex items-center justify-between border-b border-border/60 px-8 py-5">
-        <div className="flex items-center gap-6">
-          <h1 className="text-lg font-semibold tracking-tight">书库</h1>
-          <div className="flex gap-3 text-xs">
-            <div className="flex items-center gap-2 rounded-full border border-border/60 bg-surface px-3 py-1.5 text-secondary">
-              <span className="h-1.5 w-1.5 rounded-full bg-primary/60" />
-              书籍 {books.length}
-            </div>
-            <div className="flex items-center gap-2 rounded-full border border-border/60 bg-surface px-3 py-1.5 text-secondary">
-              <span className="h-1.5 w-1.5 rounded-full bg-secondary/60" />
-              标签 {tags.length}
-            </div>
-          </div>
+    <div className="flex min-h-screen flex-col bg-[#09090B]">
+      {/* 简洁头部 */}
+      <header className="flex items-center justify-between px-8 py-5">
+        <div className="flex items-end gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">
+            书库
+          </h1>
+          <span className="mb-0.5 text-sm text-zinc-700">
+            {books.length}
+          </span>
         </div>
-        <div className="flex gap-3">
-          <Button variant="secondary" className="gap-2">
-            <Plus className="h-4 w-4" />
-            新建分类
-          </Button>
-          <Button onClick={() => router.push("/library/upload")} className="gap-2">
-            <Upload className="h-4 w-4" />
+
+        <div className="flex items-center gap-1">
+          {/* 搜索 */}
+          {showSearch ? (
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-600" />
+                <input
+                  autoFocus
+                  className="h-9 w-64 rounded-lg border border-zinc-800 bg-zinc-900/50 pl-9 pr-3 text-sm text-zinc-300 outline-none placeholder:text-zinc-600 focus:border-zinc-700"
+                  placeholder="搜索书名、作者..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </div>
+              <button
+                onClick={() => { setShowSearch(false); setQuery("") }}
+                className="rounded-lg p-2 text-zinc-600 hover:text-zinc-400"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowSearch(true)}
+              className="rounded-lg p-2 text-zinc-600 hover:text-zinc-400"
+            >
+              <Search className="h-[18px] w-[18px]" />
+            </button>
+          )}
+
+          <button className="rounded-lg p-2 text-zinc-600 hover:text-zinc-400">
+            <LayoutGrid className="h-[18px] w-[18px]" />
+          </button>
+
+          <Button
+            onClick={() => router.push("/library/upload")}
+            className="ml-1 h-[34px] gap-1.5 rounded-lg bg-violet-600 px-4 text-[13px] font-medium text-white hover:bg-violet-500"
+          >
+            <Plus className="h-3.5 w-3.5" />
             上传
           </Button>
         </div>
       </header>
 
-      {/* Filter Bar */}
-      <div className="flex items-center justify-between border-b border-border/60 px-8 py-4">
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-            <Input
-              className="w-72 pl-10"
-              placeholder="搜索书名、作者"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
+      {/* 主内容 */}
+      <div className="flex-1 overflow-y-auto px-8 pb-12">
+        {/* 继续阅读 */}
+        {lastReadBook && !query && tab === "all" && (
+          <section className="mb-8">
+            <h2 className="mb-4 text-[11px] font-semibold uppercase tracking-[1.5px] text-zinc-600">
+              继续阅读
+            </h2>
+            <ContinueReadingCard
+              book={lastReadBook}
+              onClick={() => router.push(`/reader/${lastReadBook.id}`)}
             />
-          </div>
-          <div className="h-5 w-px bg-border/60" />
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant={tag ? "secondary" : "ghost"}
-              onClick={() => setTag("")}
-              className="text-sm"
-            >
-              全部
-            </Button>
-            {tags.map((item) => (
-              <Button
-                key={item}
-                variant={tag === item ? "secondary" : "ghost"}
-                onClick={() => setTag(item)}
-                className="text-sm"
+          </section>
+        )}
+
+        {/* 间距 */}
+        {lastReadBook && !query && tab === "all" && <div className="h-6" />}
+
+        {/* 网格标签过滤 */}
+        <div className="mb-5 flex items-center justify-between">
+          <div className="flex items-center gap-0.5">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`rounded-md px-3 py-1.5 text-xs transition-colors ${
+                  tab === t.key
+                    ? "bg-zinc-800 font-medium text-zinc-200"
+                    : "text-zinc-600 hover:text-zinc-400"
+                }`}
               >
-                {item}
-              </Button>
+                {t.label}
+              </button>
             ))}
           </div>
+          <button className="flex items-center gap-1 text-xs text-zinc-700 hover:text-zinc-500">
+            最近阅读
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
         </div>
-        <div className="text-xs text-muted">细长书脊视图</div>
-      </div>
 
-      {/* Book Grid */}
-      <div className="flex-1 p-8">
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-x-8 gap-y-10">
+        {/* 书籍网格 */}
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-x-6 gap-y-8">
           {filtered.map((book) => (
-            <Card
-              key={book.id}
-              className="group border-transparent bg-transparent shadow-none hover:border-transparent hover:shadow-none"
-            >
+            <div key={book.id} className="group relative">
+              {/* 封面 */}
               <button
-                className="flex w-full flex-col items-center text-left"
+                className="block w-full text-left"
                 onClick={() => router.push(`/reader/${book.id}`)}
               >
-                <div className="transition-transform duration-300 ease-out group-hover:-translate-y-2">
-                  <BookCover title={book.title} author={book.author} format={book.format} coverUrl={book.coverUrl} />
-                </div>
+                <BookCover
+                  title={book.title}
+                  coverUrl={book.coverUrl}
+                  progress={book.readProgress}
+                  isComplete={book.readProgress >= 1}
+                />
               </button>
-              <CardContent className="space-y-2.5 px-1 pb-0 pt-4">
-                <div className="space-y-1 text-center">
-                  <div className="line-clamp-2 text-sm font-medium leading-snug text-foreground transition-colors group-hover:text-primary">
-                    {book.title}
-                  </div>
-                  <div className="text-xs text-muted">{book.author || "未知作者"}</div>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-[11px] text-muted">
-                    <span>阅读进度</span>
-                    <span className="font-medium text-foreground">
-                      {formatLibraryProgressText(book.readProgress)}
-                    </span>
-                  </div>
-                  <Progress value={normalizeLibraryProgress(book.readProgress)} />
-                  <div className="flex items-center justify-between text-[11px] text-muted">
-                    <span>{book.lastReadAt ? "最近打开" : "等待阅读"}</span>
-                    <span>{book.lastReadAt ? "已有阅读记录" : "进度为 0"}</span>
-                  </div>
-                </div>
-                <div className="flex flex-wrap justify-center gap-1.5">
-                  {book.tags.slice(0, 3).map((item) => (
-                    <Badge key={item}>{item}</Badge>
-                  ))}
-                </div>
-                <div className="flex items-center justify-between pt-1">
-                  <button
-                    className="inline-flex items-center text-xs text-muted transition-colors hover:text-foreground"
-                    onClick={() => router.push(`/reader/${book.id}`)}
-                  >
-                    继续阅读
-                    <ChevronRight className="ml-0.5 h-3.5 w-3.5" />
-                  </button>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEditBook(book)}
-                      className="h-7 w-7 p-0"
-                    >
-                      <Edit3 className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeBook(book.id)}
-                      className="h-7 w-7 p-0"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+
+              {/* 悬浮操作按钮 */}
+              <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                <button
+                  onClick={() => { setEditingBook(book); setIsEditOpen(true) }}
+                  className="rounded-md bg-black/60 p-1.5 text-zinc-400 backdrop-blur-sm hover:text-zinc-200"
+                >
+                  <Edit3 className="h-3 w-3" />
+                </button>
+                <button
+                  onClick={() => removeBook(book.id)}
+                  className="rounded-md bg-black/60 p-1.5 text-zinc-400 backdrop-blur-sm hover:text-red-400"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+
+              {/* 书名和作者 */}
+              <div className="mt-2.5 space-y-0.5">
+                <p className="line-clamp-1 text-[13px] font-medium text-zinc-300">
+                  {book.title}
+                </p>
+                <p className="text-[11px] text-zinc-600">
+                  {book.author || "未知作者"}
+                </p>
+              </div>
+            </div>
           ))}
         </div>
+
+        {/* 空状态 */}
+        {filtered.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-32 text-center">
+            <p className="text-sm text-zinc-600">
+              {query ? "没有找到匹配的书籍" : "书库为空"}
+            </p>
+            {!query && (
+              <Button
+                onClick={() => router.push("/library/upload")}
+                variant="secondary"
+                className="mt-4 gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                上传第一本书
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Edit Dialog */}
+      {/* 编辑对话框 */}
       <EditBookDialog
         book={editingBook}
         isOpen={isEditOpen}
