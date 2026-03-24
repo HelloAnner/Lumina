@@ -9,6 +9,7 @@ import {
   type HardParsedBookMetadata,
   extractEpubMetadata
 } from "@/src/server/services/books/metadata"
+import { repairStoredBook } from "@/src/server/services/books/book-repair"
 import { extractPdfMetadata } from "@/src/server/services/books/pdf-metadata"
 import {
   createBookInStore,
@@ -152,12 +153,14 @@ app.post("/upload", async (c) => {
   return c.json({
     item: book,
     parseMode: metadata.parseMode,
-    toastMessage: metadata.toastMessage
+    toastMessage: metadata.toastMessage,
+    previewSections: metadata.sections.slice(0, 3)
   })
 })
 
 app.get("/:id", async (c) => {
-  const book = await getBookFromStore(c.get("userId"), c.req.param("id"))
+  const stored = await getBookFromStore(c.get("userId"), c.req.param("id"))
+  const book = stored ? await repairStoredBook(stored) : null
   if (!book) {
     return c.json({ error: "书籍不存在" }, 404)
   }
@@ -165,7 +168,8 @@ app.get("/:id", async (c) => {
 })
 
 app.get("/:id/access-url", async (c) => {
-  const book = await getBookFromStore(c.get("userId"), c.req.param("id"))
+  const stored = await getBookFromStore(c.get("userId"), c.req.param("id"))
+  const book = stored ? await repairStoredBook(stored) : null
   if (!book) {
     return c.json({ error: "书籍不存在" }, 404)
   }

@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto"
 import { repository } from "@/src/server/repositories"
-import { normalizeStoredSectionContent } from "@/src/lib/book-content"
+import {
+  buildFallbackParagraphBlocksFromContent,
+  stripSectionTitlePrefixFromContent,
+  normalizeStoredSectionContent
+} from "@/src/lib/book-content"
 import { decodeHtmlEntities } from "@/src/lib/html-entities"
 import { ensureBookSchema, getBookPool } from "@/src/server/services/books/postgres"
 import type { Book, ReaderSectionBlock } from "@/src/server/store/types"
@@ -116,16 +120,47 @@ function normalizeSectionBlocks(value: unknown) {
   return blocks.length > 0 ? blocks : undefined
 }
 
-function rowToBook(row: any): Book {
+function normalizeSynopsis(format: Book["format"], value: unknown) {
+  const synopsis = sanitizeText(value, "")
+  if (format !== "EPUB") {
+    return synopsis
+  }
+  return normalizeStoredSectionContent(synopsis) || synopsis
+}
+
+export function buildBookFromStoredRow(row: any): {
+  book: Book
+  needsEpubRepair: boolean
+} {
   const content = Array.isArray(row.content) ? row.content : []
+  let needsEpubRepair = false
   const normalizedContent = content.map((item: any) => {
     const title = sanitizeText(item?.title, "未命名章节")
+    const storedSectionContent = sanitizeText(item?.content, "")
+    const rawSectionContent = stripSectionTitlePrefixFromContent(
+      storedSectionContent,
+      title
+    )
     const normalizedSectionContent =
-      normalizeStoredSectionContent(sanitizeText(item?.content, "")) ||
+      normalizeStoredSectionContent(rawSectionContent) ||
       "当前章节暂无可渲染文本。"
+    const normalizedBlocks = normalizeSectionBlocks(item?.blocks)
+    const fallbackBlocks = row.format === "EPUB"
+      ? normalizedBlocks ?? buildFallbackParagraphBlocksFromContent(normalizedSectionContent)
+      : normalizedBlocks
+    if (row.format === "EPUB") {
+      const missingStoredBlocks = !normalizedBlocks && (fallbackBlocks?.length ?? 0) > 0
+      if (
+        storedSectionContent !== normalizedSectionContent ||
+        rawSectionContent !== storedSectionContent ||
+        missingStoredBlocks
+      ) {
+        needsEpubRepair = true
+      }
+    }
     return {
       ...item,
-      blocks: normalizeSectionBlocks(item?.blocks),
+      blocks: fallbackBlocks,
       content: normalizedSectionContent,
       title: isGenericTitle(title)
         ? inferTitleFromContent(normalizedSectionContent, title)
@@ -165,7 +200,7 @@ function rowToBook(row: any): Book {
     }
   }
 
-  return {
+  const book = {
     id: row.id,
     userId: row.user_id,
     title: sanitizeText(row.title, "未命名书籍"),
@@ -178,11 +213,49 @@ function rowToBook(row: any): Book {
     lastReadAt: row.last_read_at ? new Date(row.last_read_at).toISOString() : undefined,
     tags: Array.isArray(row.tags) ? row.tags : [],
     status: row.status,
-    synopsis: row.synopsis ?? "",
+    synopsis: normalizeSynopsis(row.format, row.synopsis),
     toc: normalizedToc,
     content: normalizedContent,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString()
+  } satisfies Book
+
+  if (row.format === "EPUB" && book.synopsis !== sanitizeText(row.synopsis ?? "", "")) {
+    needsEpubRepair = true
   }
+
+  return {
+    book,
+    needsEpubRepair
+  }
+}
+
+function rowToBook(row: any): Book {
+  return buildBookFromStoredRow(row).book
+}
+
+async function persistNormalizedBook(userId: string, bookId: string, book: Book) {
+  try {
+    await ensureBookSchema()
+    await getBookPool().query(
+      `UPDATE app_books
+       SET synopsis = $3, toc = $4::jsonb, content = $5::jsonb
+       WHERE user_id = $1 AND id = $2`,
+      [
+        userId,
+        bookId,
+        book.synopsis,
+        JSON.stringify(book.toc),
+        JSON.stringify(book.content)
+      ]
+    )
+  } catch {
+    // ignore
+  }
+  repository.updateBook(userId, bookId, {
+    synopsis: book.synopsis,
+    toc: book.toc,
+    content: book.content
+  })
 }
 
 async function seedFromRepositoryIfNeeded(userId: string) {
@@ -256,7 +329,14 @@ export async function getBookFromStore(userId: string, bookId: string) {
       [userId, bookId]
     )
     const row = result.rows[0]
-    return row ? rowToBook(row) : null
+    if (!row) {
+      return null
+    }
+    const built = buildBookFromStoredRow(row)
+    if (built.needsEpubRepair) {
+      await persistNormalizedBook(userId, bookId, built.book)
+    }
+    return built.book
   } catch {
     return repository.getBook(userId, bookId) ?? null
   }

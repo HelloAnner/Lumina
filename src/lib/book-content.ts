@@ -40,6 +40,8 @@ const BLOCK_TAGS = new Set([
   "td",
   "th"
 ])
+const METADATA_FIELD_PATTERN =
+  /(书名：|作者：|出版社：|ISBN：|定价：|译者：|责任编辑：|出版时间：|版权所有(?:·侵权必究)?)/g
 
 function collapseInlineSpaces(value: string) {
   return value.replace(/[ \t\f\v]+/g, " ").trim()
@@ -75,20 +77,31 @@ function splitDenseParagraph(paragraph: string) {
     return compact ? [compact] : []
   }
 
+  const metadataBlocks = splitMetadataParagraph(compact)
+  if (metadataBlocks.length > 1) {
+    return metadataBlocks
+  }
+
+  const headingBlocks = splitHeadingParagraph(compact)
+  if (headingBlocks.length > 1) {
+    return headingBlocks
+  }
+
   const sentences =
     compact.match(/[^。！？!?；;]+[。！？!?；;]?/g)?.map((item) => item.trim()).filter(Boolean) ??
     []
-  if (sentences.length < 4) {
+  if (sentences.length < 4 && compact.length < 80) {
     return [compact]
   }
 
   const chunks: string[] = []
   let buffer = ""
   let sentenceCount = 0
+  const targetSentenceCount = sentences.length >= 4 ? 2 : 1
   sentences.forEach((sentence) => {
     buffer += sentence
     sentenceCount += 1
-    if ((buffer.length >= 32 && sentenceCount >= 2) || buffer.length >= 60) {
+    if ((buffer.length >= 32 && sentenceCount >= targetSentenceCount) || buffer.length >= 60) {
       chunks.push(buffer)
       buffer = ""
       sentenceCount = 0
@@ -98,6 +111,51 @@ function splitDenseParagraph(paragraph: string) {
     chunks.push(buffer)
   }
   return chunks.length > 1 ? chunks : [compact]
+}
+
+function splitMetadataParagraph(paragraph: string) {
+  const matches = paragraph.match(METADATA_FIELD_PATTERN) ?? []
+  if (matches.length < 3 && !paragraph.startsWith("版权信息 ")) {
+    return [paragraph]
+  }
+
+  const normalized = paragraph
+    .replace(/^版权信息\s+/, "版权信息\n\n")
+    .replace(/\s+(?=书名：|作者：|出版社：|ISBN：|定价：|译者：|责任编辑：|出版时间：|版权所有(?:·侵权必究)?)/g, "\n\n")
+
+  const blocks = normalized
+    .split(/\n{2,}/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  return blocks.length > 1 ? blocks : [paragraph]
+}
+
+function splitHeadingParagraph(paragraph: string) {
+  const matched = paragraph.match(
+    /^(第[0-9一二三四五六七八九十零百]+章(?:\s+[^\s。！？!?]{1,30})?|[0-9]+(?:\.[0-9]+)+\s*[^\s。！？!?]{1,40}|(?:版权信息|专家力荐|推荐序|再版序|自序|后记|尾声[^\s。！？!?]{0,20}|附录[^\s。！？!?]{0,30}))\s+(.+)$/
+  )
+  if (!matched) {
+    return [paragraph]
+  }
+
+  const heading = matched[1].trim()
+  const body = matched[2].trim()
+  if (!body || body.length < 20) {
+    return [paragraph]
+  }
+
+  const sentences =
+    body.match(/[^。！？!?；;]+[。！？!?；;]?/g)?.map((item) => item.trim()).filter(Boolean) ?? []
+  if (sentences.length === 0) {
+    return [paragraph]
+  }
+
+  return [heading, ...sentences]
+}
+
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
 function normalizeBlock(block: string) {
@@ -330,6 +388,27 @@ export function normalizeStoredSectionContent(content: string) {
     .flatMap((block) => normalizeBlock(block))
 
   return blocks.join("\n\n").trim()
+}
+
+export function buildFallbackParagraphBlocksFromContent(content: string): ReaderSectionBlock[] {
+  return normalizeStoredSectionContent(content)
+    .split(/\n{2,}/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((text) => ({
+      type: "paragraph" as const,
+      text
+    }))
+}
+
+export function stripSectionTitlePrefixFromContent(content: string, title: string) {
+  if (!content || !title) {
+    return content
+  }
+
+  const pattern = new RegExp(`^(?:未知\\s+)?${escapeRegex(title)}(?:\\s+|[:：])?`)
+  const stripped = content.replace(pattern, "").trim()
+  return stripped || content
 }
 
 export function extractReadableTextFromHtml(html: string) {

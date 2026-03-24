@@ -9,6 +9,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { decodeHtmlEntities } from "@/src/lib/html-entities"
 import {
+  buildFallbackParagraphBlocksFromContent,
   extractReadableTextFromHtml,
   extractStructuredContentFromHtml,
   normalizeStoredSectionContent
@@ -78,5 +79,37 @@ test("extractStructuredContentFromHtml 会保留图片块与前后文本顺序",
       type: "paragraph",
       text: "第二段"
     }
+  ])
+})
+
+test("normalizeStoredSectionContent 会把章节标题与正文拆开", () => {
+  const text = normalizeStoredSectionContent(
+    "第1章 运营是什么 很多运营从业者之所以会迷茫的很大一个原因，就是互联网公司内的运营岗位和运营工作的职责是高度不标准的。 在互联网行业中，“运营”这个职能的诞生，来源于互联网时代的产品价值构成发生的部分改变。 产品负责界定和提供长期用户价值，运营负责创造短期用户价值+协助产品完善长期价值。"
+  )
+
+  assert.match(text, /第1章 运营是什么\n\n很多运营从业者/)
+  assert.match(text, /互联网时代的产品价值构成发生的部分改变。\n\n产品负责界定/)
+})
+
+test("normalizeStoredSectionContent 会把版权元数据字段拆成多段", () => {
+  const text = normalizeStoredSectionContent(
+    "版权信息 书名：运营之光：我的互联网运营方法论与自白2.0 作者：黄有璨 出版社：电子工业出版社 ISBN：978-7-121-31154-3 定价：99.00 版权所有·侵权必究"
+  )
+
+  assert.match(text, /版权信息\n\n书名：运营之光：我的互联网运营方法论与自白2.0/)
+  assert.match(text, /作者：黄有璨\n\n出版社：电子工业出版社/)
+  assert.match(text, /ISBN：978-7-121-31154-3\n\n定价：99.00\n\n版权所有·侵权必究/)
+})
+
+test("buildFallbackParagraphBlocksFromContent 会为旧 EPUB 生成段落块", () => {
+  const blocks = buildFallbackParagraphBlocksFromContent(
+    "第1章 运营是什么 很多运营从业者之所以会迷茫。 在互联网行业中，“运营”这个职能的诞生。 产品负责界定和提供长期用户价值。"
+  )
+
+  assert.deepEqual(blocks, [
+    { type: "paragraph", text: "第1章 运营是什么" },
+    { type: "paragraph", text: "很多运营从业者之所以会迷茫。" },
+    { type: "paragraph", text: "在互联网行业中，“运营”这个职能的诞生。" },
+    { type: "paragraph", text: "产品负责界定和提供长期用户价值。" }
   ])
 })

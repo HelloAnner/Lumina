@@ -126,6 +126,24 @@ export async function getBookObjectUrl(
   return getClient(runtimeConfig).presignedGetObject(bucket, objectName, 60 * 15)
 }
 
+export async function getBookObjectBuffer(
+  bucket: string,
+  objectName: string,
+  runtimeConfig?: StorageRuntimeConfig
+) {
+  if (!bucket || !objectName) {
+    return null
+  }
+  const stream = await getClient(runtimeConfig).getObject(bucket, objectName)
+  const chunks: Buffer[] = []
+  await new Promise<void>((resolve, reject) => {
+    stream.on("data", (chunk) => chunks.push(Buffer.from(chunk)))
+    stream.on("end", () => resolve())
+    stream.on("error", reject)
+  })
+  return Buffer.concat(chunks)
+}
+
 export async function getStoredObjectUrl(
   storedPath?: string,
   runtimeConfig?: StorageRuntimeConfig
@@ -135,6 +153,17 @@ export async function getStoredObjectUrl(
     return ""
   }
   return getBookObjectUrl(parsed.bucket, parsed.objectName, runtimeConfig)
+}
+
+export async function getStoredObjectBuffer(
+  storedPath?: string,
+  runtimeConfig?: StorageRuntimeConfig
+) {
+  const parsed = parseMinioPath(storedPath)
+  if (!parsed) {
+    return null
+  }
+  return getBookObjectBuffer(parsed.bucket, parsed.objectName, runtimeConfig)
 }
 
 export async function uploadCoverImage(params: {

@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Toast } from "@/components/ui/toast"
 import { Badge } from "@/components/ui/badge"
-import type { BookFormat } from "@/src/server/store/types"
+import type { BookFormat, ReaderSection } from "@/src/server/store/types"
 
 interface UploadResult {
   item: {
@@ -21,6 +21,7 @@ interface UploadResult {
   }
   parseMode: "llm" | "hard"
   toastMessage?: string
+  previewSections?: ReaderSection[]
 }
 
 export function UploadPageClient() {
@@ -51,6 +52,7 @@ export function UploadPageClient() {
         : [],
     [result]
   )
+  const previewSections = result?.previewSections?.filter((section) => section.content.trim()) ?? []
 
   async function handleSubmit() {
     if (!file) {
@@ -207,7 +209,7 @@ export function UploadPageClient() {
             <div className="space-y-2">
               <div className="text-lg font-medium text-white">解析预览</div>
               <div className="text-sm text-secondary">
-                上传成功后，这里会展示系统为你提取出的书籍信息。
+                上传成功后，这里会直接展示系统提取的书籍信息和正文片段。
               </div>
             </div>
 
@@ -240,7 +242,31 @@ export function UploadPageClient() {
                   <p className="mt-2 text-sm leading-6 text-secondary">{result.item.synopsis}</p>
                 </div>
 
+                {previewSections.length > 0 ? (
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div className="mb-3 text-sm font-medium text-white">已解析正文</div>
+                    <div className="space-y-3">
+                      {previewSections.slice(0, 2).map((section) => (
+                        <div
+                          key={section.id}
+                          className="rounded-xl border border-white/10 bg-black/20 px-4 py-3"
+                        >
+                          <div className="mb-2 text-xs text-muted">
+                            {section.title || `第 ${section.pageIndex} 段`}
+                          </div>
+                          <div className="line-clamp-6 whitespace-pre-wrap text-sm leading-6 text-secondary">
+                            {section.content}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="flex justify-end gap-2 pt-2">
+                  <Button onClick={() => router.push(`/reader/${result.item.id}`)}>
+                    继续阅读
+                  </Button>
                   <Button variant="secondary" onClick={() => router.push("/library")}>
                     返回书库
                   </Button>
@@ -333,7 +359,7 @@ export function UploadPageClient() {
               </div>
             ) : (
               <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5 text-sm leading-7 text-secondary">
-                尚未开始导入。完成上传后，这里会展示名称、作者、类型、标签以及解析模式。
+                尚未开始导入。完成上传后，这里会展示名称、作者、类型、标签、解析模式和正文片段。
               </div>
             )}
           </Card>

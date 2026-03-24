@@ -67,6 +67,13 @@ function cleanupPunctuationSpacing(text: string) {
     .replace(/([（《「『【])\s+/g, "$1")
 }
 
+function normalizeHeadingWordSpacing(text: string) {
+  if (countUppercaseLetters(text) < 0.7) {
+    return text
+  }
+  return text.replace(/\b([A-Z]{4,})\s+([A-Z])\b/g, "$1$2")
+}
+
 function mergeStandalonePunctuationLines(lines: string[]) {
   const merged: string[] = []
 
@@ -78,7 +85,7 @@ function mergeStandalonePunctuationLines(lines: string[]) {
     merged.push(line)
   })
 
-  return merged.map((line) => cleanupPunctuationSpacing(line))
+  return merged.map((line) => normalizeHeadingWordSpacing(cleanupPunctuationSpacing(line)))
 }
 
 function countUppercaseLetters(text: string) {
@@ -129,11 +136,18 @@ function collapseWrappedLines(lines: string[]) {
 
     const previous = paragraphs[paragraphs.length - 1]
     const currentIsBullet = /^([-*•]\s|\d+[.)]\s)/.test(line)
+    const currentStartsReference = /^\d+[A-Za-z\u4e00-\u9fff@{(<]/.test(line)
     const previousEndsSentence = /[。！？.!?…]$/.test(previous)
     const previousIsHeading = isLikelyShortHeading(previous)
     const currentIsHeading = isLikelyShortHeading(line)
 
-    if (currentIsBullet || previousEndsSentence || previousIsHeading || currentIsHeading) {
+    if (
+      currentIsBullet ||
+      currentStartsReference ||
+      previousEndsSentence ||
+      previousIsHeading ||
+      currentIsHeading
+    ) {
       paragraphs.push(line)
       return
     }
