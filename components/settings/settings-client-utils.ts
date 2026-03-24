@@ -8,7 +8,7 @@
 export interface SettingsToastState {
   title: string
   description?: string
-  tone?: "default" | "warning" | "success"
+  tone?: "default" | "warning" | "success" | "error"
 }
 
 export function buildModelTestToast(
@@ -24,6 +24,6 @@ export function buildModelTestToast(
   return {
     title: "测试失败",
     description: data.error?.trim() || "请检查配置",
-    tone: "warning"
+    tone: "error"
   }
 }

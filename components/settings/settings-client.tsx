@@ -91,8 +91,9 @@ const sceneFeatures: SceneFeature[] = [
   { key: "section_translate", label: "翻译", desc: "文本翻译与语言转换", icon: Languages, category: "language" },
   { key: "article_generate", label: "文章生成", desc: "根据主题或提纲生成完整文章", icon: PenLine, category: "language" },
   { key: "aggregation_analyze", label: "摘要提取", desc: "自动提炼内容核心摘要", icon: FileText, category: "language" },
+  { key: "annotation_rewrite", label: "批注编辑", desc: "根据批注指令智能修改笔记内容", icon: Pencil, category: "language" },
   { key: "voice_read", label: "语音朗读", desc: "将文本转换为语音播放", icon: Volume2, category: "speech" },
-  { key: "embedding_index", label: "索引构建", desc: "从内容中提炼知识向量索引", icon: Sparkles, category: "embedding" }
+  { key: "embedding_index", label: "索引构建", desc: "向量索引，用于划线智能匹配主题", icon: Sparkles, category: "embedding" }
 ]
 
 const fontSizeOptions = [14, 16, 18, 20, 22] as const

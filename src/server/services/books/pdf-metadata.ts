@@ -127,6 +127,10 @@ function chooseInlineSeparator(previous: string, current: string) {
 
 function collapseWrappedLines(lines: string[]) {
   const paragraphs: string[] = []
+  // 计算行长中位数，用于判断段尾短行
+  const lengths = lines.map((line) => line.length).filter((length) => length > 0)
+  const sortedLengths = lengths.slice().sort((a, b) => a - b)
+  const medianLength = sortedLengths[Math.floor(sortedLengths.length / 2)] ?? 40
 
   lines.forEach((line) => {
     if (paragraphs.length === 0) {
@@ -140,11 +144,13 @@ function collapseWrappedLines(lines: string[]) {
     const previousEndsSentence = /[。！？.!?…]$/.test(previous)
     const previousIsHeading = isLikelyShortHeading(previous)
     const currentIsHeading = isLikelyShortHeading(line)
+    // 句号结尾且该行明显短于中位长度，说明是段落末尾
+    const previousIsShortEndLine = previousEndsSentence && previous.length < medianLength * 0.7
 
     if (
       currentIsBullet ||
       currentStartsReference ||
-      previousEndsSentence ||
+      previousIsShortEndLine ||
       previousIsHeading ||
       currentIsHeading
     ) {

@@ -4,6 +4,7 @@ export interface ReaderProgressRecord {
   progress: number
   currentSectionIndex: number
   currentParagraphIndex: number
+  targetLanguage?: string
 }
 
 const DEFAULT_PROGRESS: ReaderProgressRecord = {
@@ -25,10 +26,16 @@ async function ensureProgressSchema() {
           progress REAL NOT NULL DEFAULT 0,
           current_section_index INTEGER NOT NULL DEFAULT 0,
           current_paragraph_index INTEGER NOT NULL DEFAULT 0,
+          target_language TEXT,
           updated_at TIMESTAMPTZ DEFAULT NOW(),
           PRIMARY KEY (user_id, book_id)
         )
       `)
+      .then(() =>
+        getBookPool().query(
+          `ALTER TABLE app_reader_progress ADD COLUMN IF NOT EXISTS target_language TEXT`
+        )
+      )
       .then(() => undefined)
   }
   return progressSchemaReady
@@ -38,7 +45,7 @@ export async function getReaderProgress(userId: string, bookId: string) {
   try {
     await ensureProgressSchema()
     const result = await getBookPool().query(
-      `SELECT progress, current_section_index, current_paragraph_index
+      `SELECT progress, current_section_index, current_paragraph_index, target_language
        FROM app_reader_progress
        WHERE user_id = $1 AND book_id = $2 LIMIT 1`,
       [userId, bookId]
@@ -50,7 +57,8 @@ export async function getReaderProgress(userId: string, bookId: string) {
     return {
       progress: Number(row.progress ?? 0),
       currentSectionIndex: row.current_section_index ?? 0,
-      currentParagraphIndex: row.current_paragraph_index ?? 0
+      currentParagraphIndex: row.current_paragraph_index ?? 0,
+      targetLanguage: row.target_language ?? undefined
     }
   } catch {
     return DEFAULT_PROGRESS
@@ -67,21 +75,23 @@ export async function saveReaderProgress(
     progress: progress.progress ?? current.progress,
     currentSectionIndex: progress.currentSectionIndex ?? current.currentSectionIndex,
     currentParagraphIndex:
-      progress.currentParagraphIndex ?? current.currentParagraphIndex
+      progress.currentParagraphIndex ?? current.currentParagraphIndex,
+    targetLanguage: progress.targetLanguage ?? current.targetLanguage
   }
   try {
     await ensureProgressSchema()
     await getBookPool().query(
       `INSERT INTO app_reader_progress
-        (user_id, book_id, progress, current_section_index, current_paragraph_index, updated_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())
+        (user_id, book_id, progress, current_section_index, current_paragraph_index, target_language, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
        ON CONFLICT (user_id, book_id)
        DO UPDATE SET
          progress = EXCLUDED.progress,
          current_section_index = EXCLUDED.current_section_index,
          current_paragraph_index = EXCLUDED.current_paragraph_index,
+         target_language = EXCLUDED.target_language,
          updated_at = NOW()`,
-      [userId, bookId, next.progress, next.currentSectionIndex, next.currentParagraphIndex]
+      [userId, bookId, next.progress, next.currentSectionIndex, next.currentParagraphIndex, next.targetLanguage ?? null]
     )
   } catch {
     return next

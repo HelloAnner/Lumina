@@ -365,7 +365,8 @@ app.put("/:id/progress", async (c) => {
     .object({
       progress: z.number().min(0).max(1),
       currentSectionIndex: z.number().min(0).optional(),
-      currentParagraphIndex: z.number().min(0).optional()
+      currentParagraphIndex: z.number().min(0).optional(),
+      targetLanguage: z.string().optional()
     })
     .parse(await c.req.json())
   const book = await updateBookInStore(c.get("userId"), c.req.param("id"), {
@@ -375,7 +376,8 @@ app.put("/:id/progress", async (c) => {
   const readerProgress = await saveReaderProgress(c.get("userId"), c.req.param("id"), {
     progress: payload.progress,
     currentSectionIndex: payload.currentSectionIndex,
-    currentParagraphIndex: payload.currentParagraphIndex
+    currentParagraphIndex: payload.currentParagraphIndex,
+    targetLanguage: payload.targetLanguage
   })
   return c.json({ item: book, readerProgress })
 })

@@ -3,6 +3,8 @@ import { readDatabase, mutateDatabase } from "@/src/server/store/db"
 import { encryptValue } from "@/src/server/lib/crypto"
 import type {
   AggregateJob,
+  Annotation,
+  AnnotationConfig,
   Book,
   BookTocTranslation,
   BookTranslation,
@@ -10,6 +12,7 @@ import type {
   HighlightViewpoint,
   ModelBinding,
   ModelConfig,
+  NoteBlock,
   PublishRecord,
   PublishTarget,
   PublishTask,
@@ -640,6 +643,84 @@ export const repository = {
         (item) => !viewpointIds.has(item.sourceId) && !viewpointIds.has(item.targetId)
       )
       database.relations.push(...relations)
+    })
+  },
+
+  // ---- 批注相关 ----
+
+  listAnnotations(userId: string, viewpointId: string) {
+    return sortByDate(
+      (readDatabase().annotations || []).filter(
+        (item) => item.userId === userId && item.viewpointId === viewpointId
+      )
+    ) as Annotation[]
+  },
+  createAnnotation(input: Omit<Annotation, "id" | "createdAt" | "status">) {
+    return mutateDatabase((database) => {
+      if (!database.annotations) {
+        database.annotations = []
+      }
+      const annotation: Annotation = {
+        ...input,
+        id: randomUUID(),
+        status: "pending",
+        createdAt: now()
+      }
+      database.annotations.push(annotation)
+      return annotation
+    })
+  },
+  updateAnnotation(userId: string, annotationId: string, updates: Partial<Annotation>) {
+    return mutateDatabase((database) => {
+      const annotation = (database.annotations || []).find(
+        (item) => item.id === annotationId && item.userId === userId
+      )
+      if (!annotation) {
+        return null
+      }
+      Object.assign(annotation, updates)
+      return annotation
+    })
+  },
+  listPendingAnnotations(userId: string) {
+    return (readDatabase().annotations || []).filter(
+      (item) => item.userId === userId && (item.status === "pending" || item.status === "processing")
+    )
+  },
+  getAnnotationConfig(userId: string) {
+    return (readDatabase().annotationConfigs || []).find(
+      (item) => item.userId === userId
+    )
+  },
+  saveAnnotationConfig(userId: string, input: Omit<AnnotationConfig, "userId">) {
+    return mutateDatabase((database) => {
+      if (!database.annotationConfigs) {
+        database.annotationConfigs = []
+      }
+      const existing = database.annotationConfigs.find(
+        (item) => item.userId === userId
+      )
+      if (existing) {
+        Object.assign(existing, input)
+        return existing
+      }
+      const config: AnnotationConfig = { ...input, userId }
+      database.annotationConfigs.push(config)
+      return config
+    })
+  },
+
+  /** 更新观点的 articleBlocks */
+  updateViewpointBlocks(userId: string, viewpointId: string, blocks: NoteBlock[]) {
+    return mutateDatabase((database) => {
+      const viewpoint = database.viewpoints.find(
+        (item) => item.id === viewpointId && item.userId === userId
+      )
+      if (!viewpoint) {
+        return null
+      }
+      viewpoint.articleBlocks = blocks
+      return viewpoint
     })
   }
 }

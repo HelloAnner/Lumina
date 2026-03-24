@@ -2,12 +2,15 @@ import { hashSync } from "bcryptjs"
 import { randomUUID } from "node:crypto"
 import type {
   AggregateJob,
+  Annotation,
+  AnnotationConfig,
   Book,
   Database,
   Highlight,
   HighlightViewpoint,
   ModelConfig,
   ModelBinding,
+  NoteBlock,
   PublishRecord,
   PublishTarget,
   PublishTask,
@@ -170,6 +173,25 @@ export function buildSeedDatabase(): Database {
   const books = createDemoBooks(userId)
   const highlights = createDemoHighlights(userId, books)
 
+  const vpBlocksFirst: NoteBlock[] = [
+    { id: randomUUID(), type: "heading", sortOrder: 0, level: 1, text: "核心论点" },
+    { id: randomUUID(), type: "paragraph", sortOrder: 1, text: "第一性原理要求我们回归事物最基本的假设，打破类比思维的局限，从物理定律出发重新构建解决方案。这种思维方式是突破性创新的核心，而非边际改进的工具。" },
+    { id: randomUUID(), type: "highlight", sortOrder: 2, text: "真正的创新不是在已有框架内做优化，而是质疑框架本身。第一性原理思维让我们能够从零开始构建新的可能性。", label: "关键洞察", sourceBookTitle: "创新者的窘境", sourceLocation: "P.127", highlightId: highlights[0].id },
+    { id: randomUUID(), type: "heading", sortOrder: 3, level: 1, text: "论据与展开" },
+    { id: randomUUID(), type: "paragraph", sortOrder: 4, text: "在物理学中，第一性原理指的是不能从其他假设推导出来的基本命题。将这种思维应用到商业领域，意味着我们需要抛弃行业惯例和类比推理，从最根本的事实出发思考问题。" },
+    { id: randomUUID(), type: "quote", sortOrder: 5, text: "大多数创新者并不是从无到有创造出新事物，而是将已有的元素以前所未有的方式组合在一起。真正的原创，是在最基础的层面重新思考。", sourceBookTitle: "从0到1", sourceLocation: "P.45", highlightId: highlights[1].id },
+    { id: randomUUID(), type: "paragraph", sortOrder: 6, text: "SpaceX 的火箭回收技术就是第一性原理思维的经典案例。当所有人都认为火箭发射后必须丢弃时，Elon Musk 从材料成本和物理可行性出发，证明了重复使用火箭在经济上完全可行。" },
+    { id: randomUUID(), type: "insight", sortOrder: 7, text: "这一案例体现了第一性原理在工程领域的典型应用模式：分解问题→识别基本约束→绕过行业假设→构建全新方案。", label: "AI 补充说明" }
+  ]
+
+  const vpBlocksSecond: NoteBlock[] = [
+    { id: randomUUID(), type: "heading", sortOrder: 0, level: 1, text: "核心论点" },
+    { id: randomUUID(), type: "paragraph", sortOrder: 1, text: "长期主义要求把注意力投入能持续积累价值的动作。" },
+    { id: randomUUID(), type: "quote", sortOrder: 2, text: "真正值得追求的，是可被不断重复的高质量决策。", sourceBookTitle: "长期主义", sourceLocation: "P.31", highlightId: highlights[2].id },
+    { id: randomUUID(), type: "heading", sortOrder: 3, level: 1, text: "我的理解" },
+    { id: randomUUID(), type: "paragraph", sortOrder: 4, text: "所谓长期，不是等待，而是持续兑现小优势。" }
+  ]
+
   const viewpoints: Viewpoint[] = [
     {
       id: randomUUID(),
@@ -182,6 +204,7 @@ export function buildSeedDatabase(): Database {
       relatedBookIds: [books[0].id, books[1].id],
       articleContent:
         "# 第一性原理\n\n## 核心论点\n我越来越确认，真正能提升判断质量的，不是更快做决定，而是先回到问题的第一约束。\n\n## 论据与展开\n> 《第一性原理》\n> 把复杂系统拆成可验证的最小单元，再分别求解。\n\n我的批注：先拆解再求解，是我做架构设计时最稳定的路径。\n\n## 我的理解\n第一性原理不是推翻一切，而是拒绝在未经验证的共识上继续堆方案。",
+      articleBlocks: vpBlocksFirst,
       lastSynthesizedAt: createdAt,
       createdAt
     },
@@ -196,6 +219,7 @@ export function buildSeedDatabase(): Database {
       relatedBookIds: [books[1].id],
       articleContent:
         "# 长期主义\n\n## 核心论点\n长期主义要求把注意力投入能持续积累价值的动作。\n\n## 论据与展开\n> 《长期主义》\n> 真正值得追求的，是可被不断重复的高质量决策。\n\n## 我的理解\n所谓长期，不是等待，而是持续兑现小优势。",
+      articleBlocks: vpBlocksSecond,
       lastSynthesizedAt: createdAt,
       createdAt
     }
@@ -340,6 +364,14 @@ export function buildSeedDatabase(): Database {
     publishTargets,
     publishTasks,
     publishRecords,
-    aggregateJobs
+    aggregateJobs,
+    annotations: [] as Annotation[],
+    annotationConfigs: [
+      {
+        userId,
+        systemPrompt: "你是一个专业的知识笔记编辑助手。用户会对笔记中的某段文字或整篇笔记提出修改意见（批注），你需要根据批注内容重新编辑笔记的对应部分。\n\n规则：\n1. 保持笔记的整体结构和风格不变\n2. 仅修改批注指向的内容\n3. 如果批注要求补充内容，在合适的位置插入新的块\n4. 输出完整的 articleBlocks JSON 数组",
+        autoProcess: true
+      } satisfies AnnotationConfig
+    ]
   }
 }

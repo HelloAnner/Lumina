@@ -69,6 +69,26 @@ app.put("/:id/article", async (c) => {
   return c.json({ item })
 })
 
+/** 获取观点的块状笔记内容 */
+app.get("/:id/blocks", (c) => {
+  const item = repository.getViewpoint(c.get("userId"), c.req.param("id"))
+  if (!item) {
+    return c.json({ error: "观点不存在" }, 404)
+  }
+  return c.json({ blocks: item.articleBlocks ?? [] })
+})
+
+/** 更新观点的块状笔记内容 */
+app.put("/:id/blocks", async (c) => {
+  const payload = z.object({ blocks: z.array(z.any()) }).parse(await c.req.json())
+  const item = repository.updateViewpointBlocks(
+    c.get("userId"),
+    c.req.param("id"),
+    payload.blocks
+  )
+  return c.json({ item })
+})
+
 app.get("/:id/highlights", (c) => {
   const viewpointId = c.req.param("id")
   const items = repository

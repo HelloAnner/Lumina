@@ -73,8 +73,8 @@ function getTagName(node: DefaultTreeAdapterTypes.ChildNode) {
 
 function splitDenseParagraph(paragraph: string) {
   const compact = collapseInlineSpaces(paragraph)
-  if (!compact || compact.length < 30) {
-    return compact ? [compact] : []
+  if (!compact) {
+    return []
   }
 
   const metadataBlocks = splitMetadataParagraph(compact)
@@ -87,30 +87,7 @@ function splitDenseParagraph(paragraph: string) {
     return headingBlocks
   }
 
-  const sentences =
-    compact.match(/[^。！？!?；;]+[。！？!?；;]?/g)?.map((item) => item.trim()).filter(Boolean) ??
-    []
-  if (sentences.length < 4 && compact.length < 80) {
-    return [compact]
-  }
-
-  const chunks: string[] = []
-  let buffer = ""
-  let sentenceCount = 0
-  const targetSentenceCount = sentences.length >= 4 ? 2 : 1
-  sentences.forEach((sentence) => {
-    buffer += sentence
-    sentenceCount += 1
-    if ((buffer.length >= 32 && sentenceCount >= targetSentenceCount) || buffer.length >= 60) {
-      chunks.push(buffer)
-      buffer = ""
-      sentenceCount = 0
-    }
-  })
-  if (buffer) {
-    chunks.push(buffer)
-  }
-  return chunks.length > 1 ? chunks : [compact]
+  return [compact]
 }
 
 function splitMetadataParagraph(paragraph: string) {
@@ -145,13 +122,7 @@ function splitHeadingParagraph(paragraph: string) {
     return [paragraph]
   }
 
-  const sentences =
-    body.match(/[^。！？!?；;]+[。！？!?；;]?/g)?.map((item) => item.trim()).filter(Boolean) ?? []
-  if (sentences.length === 0) {
-    return [paragraph]
-  }
-
-  return [heading, ...sentences]
+  return [heading, body]
 }
 
 function escapeRegex(value: string) {

@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { z } from "zod"
 import type { AppEnv } from "@/src/server/lib/hono"
 import { repository } from "@/src/server/repositories"
+import { syncPendingHighlights } from "@/src/server/services/aggregation/highlight-sync"
 
 const app = new Hono<AppEnv>()
 const pdfRectSchema = z.object({
@@ -32,11 +33,18 @@ app.post("/", async (c) => {
       color: z.enum(["yellow", "green", "blue", "pink"])
     })
     .parse(await c.req.json())
+  const userId = c.get("userId")
   const highlight = repository.createHighlight({
-    userId: c.get("userId"),
+    userId,
     ...payload,
     contentMode: payload.contentMode ?? "original"
   })
+
+  // 后台同步划线到主题树（不阻塞响应，不弹通知）
+  void syncPendingHighlights(userId).catch((err) => {
+    console.error("highlight sync failed:", err)
+  })
+
   return c.json({ item: highlight })
 })
 

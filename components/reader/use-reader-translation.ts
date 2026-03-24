@@ -50,21 +50,27 @@ function mergeTranslationItems(
   }
 }
 
+const DEFAULT_TARGET_LANGUAGE = "zh-CN"
+
 export function useReaderTranslation({
   book,
   pageIndex,
   initialView,
+  initialTargetLanguage,
   onError
 }: {
   book: Book
   pageIndex: number
   initialView: TranslationDisplayMode
+  initialTargetLanguage?: string
   onError: (message: string) => void
 }) {
   const [translationView, setTranslationView] = useState<TranslationDisplayMode>(initialView)
+  const [targetLanguage, setTargetLanguage] = useState(initialTargetLanguage || DEFAULT_TARGET_LANGUAGE)
   const [translationItems, setTranslationItems] = useState<Record<number, BookTranslation>>({})
   const [tocTranslation, setTocTranslation] = useState<BookTocTranslation | null>(null)
   const [busyIndexes, setBusyIndexes] = useState<number[]>([])
+  const [translationError, setTranslationError] = useState<string | null>(null)
   const activeBookIdRef = useRef(book.id)
 
   useEffect(() => {
@@ -109,38 +115,56 @@ export function useReaderTranslation({
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             sectionIndexes,
-            targetLanguage: "zh-CN"
+            targetLanguage
           })
         })
         const data = await response.json()
         if (!response.ok) {
           throw new Error(data.error || "翻译失败")
         }
+        setTranslationError(null)
         setTranslationItems((current) => mergeTranslationItems(current, data.items || []))
-        setTocTranslation(data.toc ?? null)
+        // 仅在服务端返回了新的 TOC 翻译时才更新，避免覆盖已有的老翻译
+        if (data.toc) {
+          setTocTranslation(data.toc)
+        }
       } catch (error) {
+        const message = error instanceof Error ? error.message : "翻译失败"
+        setTranslationError(message)
         if (shouldFallbackToOriginal) {
           setTranslationView("original")
         }
-        onError(error instanceof Error ? error.message : "翻译失败")
+        onError(message)
       } finally {
         setBusyIndexes((current) => current.filter((item) => !sectionIndexes.includes(item)))
       }
     },
-    [book.id, onError]
+    [book.id, onError, targetLanguage]
   )
 
+  // 防抖：频繁滚动时聚合翻译请求，等待 400ms 稳定后再触发
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (translationView !== "translation") {
       return
     }
-    const plan = buildTranslationPrefetchPlan({
-      currentIndex: pageIndex,
-      totalSections: book.content.length,
-      cachedIndexes: translatedSectionIndexes,
-      busyIndexes
-    })
-    void fetchTranslations(plan.requestedSectionIndexes, plan.urgentSectionIndexes.length > 0)
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      const plan = buildTranslationPrefetchPlan({
+        currentIndex: pageIndex,
+        totalSections: book.content.length,
+        cachedIndexes: translatedSectionIndexes,
+        busyIndexes
+      })
+      void fetchTranslations(plan.requestedSectionIndexes, plan.urgentSectionIndexes.length > 0)
+    }, 400)
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
+      }
+    }
   }, [
     book.content.length,
     busyIndexes,
@@ -151,6 +175,7 @@ export function useReaderTranslation({
   ])
 
   const toggleTranslationView = useCallback(() => {
+    setTranslationError(null)
     setTranslationView((current) => {
       return current === "translation" ? "original" : "translation"
     })
@@ -159,11 +184,14 @@ export function useReaderTranslation({
   return {
     translationView,
     toggleTranslationView,
+    targetLanguage,
     displayContent,
     displayToc,
     currentTranslation,
     tocTranslation,
     translationItems,
+    translationError,
+    clearTranslationError: useCallback(() => setTranslationError(null), []),
     isCurrentSectionTranslating: busyIndexes.includes(pageIndex)
   }
 }

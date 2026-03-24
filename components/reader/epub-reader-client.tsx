@@ -8,7 +8,7 @@
 "use client"
 
 import Link from "next/link"
-import { ArrowLeft, Languages, Moon, Sun, Type } from "lucide-react"
+import { AlertTriangle, ArrowLeft, Languages, Moon, Sun, Type } from "lucide-react"
 import { Toast } from "@/components/ui/toast"
 import { ReaderSidebar } from "@/components/reader/reader-sidebar"
 import { ReaderSelectionToolbar } from "@/components/reader/reader-selection-toolbar"
@@ -35,10 +35,10 @@ export function EpubReaderClient(props: ReaderClientProps) {
 
   return (
     <div className="h-screen overflow-hidden bg-reader-sidebar">
-      {reader.toast ? (
+      {reader.toast && !/失败|错误|请检查/.test(reader.toast) ? (
         <Toast
           title={reader.toast}
-          tone={/失败|错误|请检查/.test(reader.toast) ? "warning" : "success"}
+          tone="success"
           onClose={() => reader.setToast("")}
         />
       ) : null}
@@ -152,6 +152,25 @@ export function EpubReaderClient(props: ReaderClientProps) {
             onParagraphMouseUp={reader.handleMouseUp}
             renderParagraphContent={reader.renderParagraphContent}
           />
+
+          {/* 翻译失败中间提示 */}
+          {reader.translationError ? (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/20 backdrop-blur-[2px]">
+              <div className="mx-4 flex max-w-sm flex-col items-center gap-3 rounded-xl border border-red-500/30 bg-surface p-6 shadow-xl">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10">
+                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                </div>
+                <p className="text-center text-sm font-medium text-foreground">翻译失败</p>
+                <p className="text-center text-xs leading-5 text-secondary">{reader.translationError}</p>
+                <button
+                  className="mt-1 rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-white transition hover:bg-primary/90"
+                  onClick={reader.clearTranslationError}
+                >
+                  知道了
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           <ReaderFontPanel
             open={reader.showFontPanel}

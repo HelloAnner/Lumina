@@ -14,6 +14,7 @@ import publishRoutes from "@/src/server/routes/publish"
 import settingsRoutes from "@/src/server/routes/settings"
 import preferenceRoutes from "@/src/server/routes/preferences"
 import translationRoutes from "@/src/server/routes/translations"
+import annotationRoutes from "@/src/server/routes/annotations"
 import { requireAuth } from "@/src/server/middleware/auth"
 
 const app = new Hono<AppEnv>()
@@ -44,6 +45,7 @@ app.use("/api/publish/*", requireAuth)
 app.use("/api/settings/*", requireAuth)
 app.use("/api/preferences/*", requireAuth)
 app.use("/api/translations/*", requireAuth)
+app.use("/api/annotations/*", requireAuth)
 
 app.route("/api/account", accountRoutes)
 app.route("/api/books", booksRoutes)
@@ -56,6 +58,7 @@ app.route("/api/publish", publishRoutes)
 app.route("/api/settings", settingsRoutes)
 app.route("/api/preferences", preferenceRoutes)
 app.route("/api/translations", translationRoutes)
+app.route("/api/annotations", annotationRoutes)
 
 export const GET = handle(app)
 export const HEAD = handle(app)

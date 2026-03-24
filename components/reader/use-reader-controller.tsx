@@ -89,6 +89,7 @@ export function useReaderController({
     book,
     pageIndex,
     initialView: settings?.translationView ?? "original",
+    initialTargetLanguage: initialProgress.targetLanguage,
     onError: setToast
   })
 
@@ -182,13 +183,14 @@ export function useReaderController({
           body: JSON.stringify({
             progress: (sectionIndex + 1) / Math.max(book.content.length, 1),
             currentSectionIndex: sectionIndex,
-            currentParagraphIndex: paraIndex
+            currentParagraphIndex: paraIndex,
+            targetLanguage: translation.targetLanguage
           })
         }).catch(() => undefined)
       }, 120)
       return () => clearTimeout(timer)
     },
-    [book.content.length, book.id]
+    [book.content.length, book.id, translation.targetLanguage]
   )
 
   useEffect(() => persistProgress(pageIndex, safeParagraphIndex), [
@@ -487,7 +489,7 @@ export function useReaderController({
             note,
             color,
             contentMode: activeContentMode,
-            targetLanguage: activeContentMode === "translation" ? "zh-CN" : undefined
+            targetLanguage: activeContentMode === "translation" ? translation.targetLanguage : undefined
           })
         )
       })
@@ -632,6 +634,8 @@ export function useReaderController({
     composerOpen,
     toast,
     translationView: translation.translationView,
+    translationError: translation.translationError,
+    clearTranslationError: translation.clearTranslationError,
     hasCurrentTranslation: Boolean(translation.currentTranslation),
     isCurrentSectionTranslating: translation.isCurrentSectionTranslating,
     fontSize,

@@ -10,6 +10,7 @@
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import {
+  AlertTriangle,
   ArrowLeft,
   Languages,
   Loader2,
@@ -146,10 +147,10 @@ export function PdfReaderClient(props: ReaderClientProps) {
 
   return (
     <div className="h-screen overflow-hidden bg-reader-sidebar">
-      {activeToast ? (
+      {activeToast && !/失败|错误|请检查/.test(activeToast) ? (
         <Toast
           title={activeToast}
-          tone={/失败|错误|请检查/.test(activeToast) ? "warning" : "success"}
+          tone="success"
           onClose={() => {
             if (isSourceMode) {
               sourceReader.setToast("")
@@ -319,6 +320,25 @@ export function PdfReaderClient(props: ReaderClientProps) {
                 onParagraphMouseUp={parsedReader.handleMouseUp}
                 renderParagraphContent={parsedReader.renderParagraphContent}
               />
+
+              {/* 翻译失败中间提示 */}
+              {parsedReader.translationError ? (
+                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/20 backdrop-blur-[2px]">
+                  <div className="mx-4 flex max-w-sm flex-col items-center gap-3 rounded-xl border border-red-500/30 bg-surface p-6 shadow-xl">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10">
+                      <AlertTriangle className="h-5 w-5 text-red-500" />
+                    </div>
+                    <p className="text-center text-sm font-medium text-foreground">翻译失败</p>
+                    <p className="text-center text-xs leading-5 text-secondary">{parsedReader.translationError}</p>
+                    <button
+                      className="mt-1 rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-white transition hover:bg-primary/90"
+                      onClick={parsedReader.clearTranslationError}
+                    >
+                      知道了
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               <ReaderFontPanel
                 open={parsedReader.showFontPanel}
                 fontPanelRef={parsedReader.fontPanelRef}

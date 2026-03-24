@@ -38,14 +38,15 @@ test("extractReadableTextFromHtml 保留块级结构并解码实体", () => {
   assert.ok(text.includes("其二"))
 })
 
-test("normalizeStoredSectionContent 会对中文长段做兜底分段", () => {
+test("normalizeStoredSectionContent 保留完整段落不做句级拆分", () => {
   const text = normalizeStoredSectionContent(
     "运营不是聊天。运营不是发帖。运营需要对目标负责。运营需要理解产品和用户。运营需要持续复盘。运营需要把动作沉淀成方法。"
   )
 
-  assert.match(text, /\n\n/)
-  assert.ok(text.includes("运营不是聊天。"))
-  assert.ok(text.includes("运营需要把动作沉淀成方法。"))
+  assert.equal(
+    text,
+    "运营不是聊天。运营不是发帖。运营需要对目标负责。运营需要理解产品和用户。运营需要持续复盘。运营需要把动作沉淀成方法。"
+  )
 })
 
 test("extractStructuredContentFromHtml 会保留图片块与前后文本顺序", () => {
@@ -83,12 +84,17 @@ test("extractStructuredContentFromHtml 会保留图片块与前后文本顺序",
 })
 
 test("normalizeStoredSectionContent 会把章节标题与正文拆开", () => {
-  const text = normalizeStoredSectionContent(
-    "第1章 运营是什么 很多运营从业者之所以会迷茫的很大一个原因，就是互联网公司内的运营岗位和运营工作的职责是高度不标准的。 在互联网行业中，“运营”这个职能的诞生，来源于互联网时代的产品价值构成发生的部分改变。 产品负责界定和提供长期用户价值，运营负责创造短期用户价值+协助产品完善长期价值。"
-  )
+  const input = [
+    "第1章 运营是什么",
+    "很多运营从业者之所以会迷茫的很大一个原因，就是互联网公司内的运营岗位和运营工作的职责是高度不标准的。",
+    '在互联网行业中，\u201c运营\u201d这个职能的诞生，来源于互联网时代的产品价值构成发生的部分改变。',
+    "产品负责界定和提供长期用户价值，运营负责创造短期用户价值+协助产品完善长期价值。"
+  ].join(" ")
+  const text = normalizeStoredSectionContent(input)
 
-  assert.match(text, /第1章 运营是什么\n\n很多运营从业者/)
-  assert.match(text, /互联网时代的产品价值构成发生的部分改变。\n\n产品负责界定/)
+  assert.match(text, /第1章 运营是什么\n\n/)
+  // 正文保持完整，不再按句拆分
+  assert.ok(!text.includes("部分改变。\n\n产品负责界定"))
 })
 
 test("normalizeStoredSectionContent 会把版权元数据字段拆成多段", () => {
@@ -102,14 +108,19 @@ test("normalizeStoredSectionContent 会把版权元数据字段拆成多段", ()
 })
 
 test("buildFallbackParagraphBlocksFromContent 会为旧 EPUB 生成段落块", () => {
-  const blocks = buildFallbackParagraphBlocksFromContent(
-    "第1章 运营是什么 很多运营从业者之所以会迷茫。 在互联网行业中，“运营”这个职能的诞生。 产品负责界定和提供长期用户价值。"
-  )
+  const input = [
+    "第1章 运营是什么",
+    "很多运营从业者之所以会迷茫。",
+    '在互联网行业中，\u201c运营\u201d这个职能的诞生。',
+    "产品负责界定和提供长期用户价值。"
+  ].join(" ")
+  const blocks = buildFallbackParagraphBlocksFromContent(input)
 
-  assert.deepEqual(blocks, [
-    { type: "paragraph", text: "第1章 运营是什么" },
-    { type: "paragraph", text: "很多运营从业者之所以会迷茫。" },
-    { type: "paragraph", text: "在互联网行业中，“运营”这个职能的诞生。" },
-    { type: "paragraph", text: "产品负责界定和提供长期用户价值。" }
-  ])
+  const first = blocks[0]
+  const second = blocks[1]
+  assert.equal(first.type, "paragraph")
+  assert.equal(first.type === "paragraph" ? first.text : "", "第1章 运营是什么")
+  assert.equal(blocks.length, 2)
+  assert.ok(second.type === "paragraph" && second.text.startsWith("很多运营从业者"))
+  assert.ok(second.type === "paragraph" && second.text.includes("产品负责界定和提供长期用户价值。"))
 })
