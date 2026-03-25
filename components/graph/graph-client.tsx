@@ -20,14 +20,14 @@ interface GraphLink {
   weight: number
 }
 
-// 颜色配置 - 使用与主题一致的值
+// 颜色配置 - Swan Song 设计系统
 const colors = {
-  node: "#A1A1AA",
-  nodeStroke: "#111113",
-  link: "#27272A",
-  label: "#FAFAFA",
-  labelMuted: "#71717A",
-  highlight: "#E4E4E7"
+  node: "#9898A0",
+  nodeStroke: "#0F0F14",
+  link: "#222228",
+  label: "#F5F5F5",
+  labelMuted: "#6B6B75",
+  highlight: "#E0E0E4"
 }
 
 export function GraphClient({

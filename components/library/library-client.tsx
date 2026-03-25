@@ -32,14 +32,14 @@ type LibraryBook = Book & {
  * 每组：背景色、装饰线色、文字色
  */
 const COVER_PALETTES = [
-  { bg: "#1A1B2E", accent: "#6366F1", text: "#C7D2FE" },
-  { bg: "#1E2A2A", accent: "#2DD4BF", text: "#CCFBF1" },
-  { bg: "#2A1F1E", accent: "#F97316", text: "#FED7AA" },
-  { bg: "#1E1E2E", accent: "#A78BFA", text: "#DDD6FE" },
-  { bg: "#1F2937", accent: "#3B82F6", text: "#BFDBFE" },
-  { bg: "#27201A", accent: "#D97706", text: "#FDE68A" },
-  { bg: "#1A2E1A", accent: "#22C55E", text: "#BBF7D0" },
-  { bg: "#2E1A2A", accent: "#EC4899", text: "#FBCFE8" },
+  { bg: "#13131A", accent: "#6C8EEF", text: "#BFC8F5" },
+  { bg: "#131E1E", accent: "#4EB5A8", text: "#B8E8E4" },
+  { bg: "#201916", accent: "#C87D50", text: "#E8C4A0" },
+  { bg: "#17141F", accent: "#9B8EC4", text: "#CCC5E8" },
+  { bg: "#131820", accent: "#5B8FD4", text: "#B0CDF0" },
+  { bg: "#1E1910", accent: "#C4943A", text: "#E8D0A0" },
+  { bg: "#121B14", accent: "#6BC89B", text: "#B4E4C8" },
+  { bg: "#1C1318", accent: "#C47090", text: "#E8B8CC" },
 ]
 
 function hashTitle(title: string): number {

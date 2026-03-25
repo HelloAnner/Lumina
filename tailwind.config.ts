@@ -18,9 +18,10 @@ const config: Config = {
         border: "var(--color-border)",
         "border-subtle": "var(--color-border-subtle)",
         "border-hover": "var(--color-border-hover)",
-        primary: "#3B82F6",
-        "primary-dark": "#2563EB",
-        "primary-soft": "#3B82F620",
+        "border-active": "var(--color-border-active)",
+        primary: "var(--color-accent-blue)",
+        "primary-dark": "#3D6BD9",
+        "primary-soft": "rgba(108,142,239,0.08)",
         foreground: "var(--color-foreground)",
         secondary: "var(--color-secondary)",
         muted: "var(--color-muted)",
@@ -28,6 +29,7 @@ const config: Config = {
         "prose-body": "var(--color-prose-body)",
         selected: "var(--color-selected)",
         "accent-blue": "var(--color-accent-blue)",
+        "accent-warm": "var(--color-accent-warm)",
         "accent-purple": "var(--color-accent-purple)",
         "accent-magenta": "var(--color-accent-magenta)",
         success: "var(--color-success)",
@@ -51,15 +53,15 @@ const config: Config = {
         ]
       },
       borderRadius: {
-        "2xl": "20px",
-        xl: "16px",
-        lg: "12px",
+        "2xl": "22px",
+        xl: "18px",
+        lg: "14px",
         md: "10px",
         sm: "8px"
       },
       boxShadow: {
-        panel: "0 4px 16px rgba(0,0,0,0.30), 0 8px 32px rgba(0,0,0,0.20)",
-        "panel-light": "0 1px 3px rgba(0,0,0,0.02), 0 4px 12px rgba(0,0,0,0.015)"
+        panel: "0 2px 8px rgba(0,0,0,0.25), 0 8px 24px rgba(0,0,0,0.15)",
+        "panel-light": "0 1px 2px rgba(0,0,0,0.02), 0 4px 12px rgba(0,0,0,0.012)"
       }
     }
   },

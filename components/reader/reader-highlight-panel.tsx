@@ -20,10 +20,10 @@ import { cn } from "@/src/lib/utils"
 
 /** 高亮颜色对应的左侧彩色边条颜色 */
 const STRIPE_COLORS: Record<string, string> = {
-  yellow: "#F59E0B",
-  green: "#34D399",
-  blue: "#60A5FA",
-  pink: "#F472B6"
+  yellow: "#E4B866",
+  green: "#6BC89B",
+  blue: "#6C8EEF",
+  pink: "#C47090"
 }
 
 function HighlightCard({

@@ -647,7 +647,7 @@ export function SettingsClient({
   // ————— 渲染 —————
 
   return (
-    <div className="grid min-h-screen grid-cols-[200px_minmax(0,1fr)] bg-base">
+    <div className="flex h-screen overflow-hidden bg-base">
       {toast ? (
         <Toast
           title={toast.title}
@@ -689,8 +689,8 @@ export function SettingsClient({
         />
       )}
 
-      {/* 侧边栏 */}
-      <aside className="sticky top-0 h-screen border-r border-border/60 bg-surface">
+      {/* 侧边栏 - 固定，不随内容滚动 */}
+      <aside className="h-screen w-[200px] shrink-0 overflow-hidden border-r border-border/60 bg-surface">
         <div className="px-3 pb-3 pt-6">
           <div className="mb-3 px-2.5 text-[15px] font-semibold text-foreground">设置</div>
           <nav className="space-y-0.5">
@@ -735,12 +735,13 @@ export function SettingsClient({
         </div>
       </aside>
 
-      {/* 内容区 */}
-      <div className="overflow-y-auto px-10 py-10">
+      {/* 内容区 - 可滚动，内容居中 2/3 宽度 */}
+      <div className="flex-1 overflow-y-auto py-10">
+        <div className="mx-auto w-2/3">
 
         {/* ——— 模型配置 ——— */}
         {activeSection === "model" && (
-          <div className="max-w-5xl space-y-6">
+          <div className="w-full space-y-6">
             <div className="flex items-start justify-between">
               <div>
                 <h1 className="text-xl font-semibold">模型配置</h1>
@@ -844,7 +845,7 @@ export function SettingsClient({
 
         {/* ——— 场景配置 ——— */}
         {activeSection === "scene" && (
-          <div className="max-w-4xl space-y-6">
+          <div className="w-full space-y-6">
             <div>
               <h1 className="text-xl font-semibold">场景配置</h1>
               <p className="mt-1 text-sm text-muted">
@@ -898,7 +899,7 @@ export function SettingsClient({
 
         {/* ——— Embedding 配置 ——— */}
         {activeSection === "embedding" && (
-          <div className="max-w-2xl space-y-6">
+          <div className="w-full space-y-6">
             <div>
               <h1 className="text-xl font-semibold">Embedding 配置</h1>
               <p className="mt-1 text-sm text-muted">配置用于语义检索和知识提炼的向量模型</p>
@@ -938,7 +939,7 @@ export function SettingsClient({
 
         {/* ——— 同步与存储 ——— */}
         {activeSection === "sync" && (
-          <div className="max-w-2xl space-y-6">
+          <div className="w-full space-y-6">
             <div>
               <h1 className="text-xl font-semibold">同步与存储</h1>
               <p className="mt-1 text-sm text-muted">管理书库同步频率和本地存储策略</p>
@@ -1011,7 +1012,7 @@ export function SettingsClient({
 
         {/* ——— 账户 ——— */}
         {activeSection === "account" && (
-          <div className="max-w-2xl space-y-6">
+          <div className="w-full space-y-6">
             <div>
               <h1 className="text-xl font-semibold">账户</h1>
               <p className="mt-1 text-sm text-muted">管理账户信息和安全设置</p>
@@ -1094,7 +1095,7 @@ export function SettingsClient({
 
         {/* ——— 阅读设置 ——— */}
         {activeSection === "reader" && (
-          <div className="max-w-2xl space-y-6">
+          <div className="w-full space-y-6">
             <div>
               <h1 className="text-xl font-semibold">阅读设置</h1>
               <p className="mt-1 text-sm text-muted">自定义阅读器的外观和行为</p>
@@ -1256,7 +1257,7 @@ export function SettingsClient({
 
         {/* ——— 外观设置 ——— */}
         {activeSection === "appearance" && (
-          <div className="max-w-2xl space-y-6">
+          <div className="w-full space-y-6">
             <div>
               <h1 className="text-xl font-semibold">外观设置</h1>
               <p className="mt-1 text-sm text-muted">自定义界面主题和显示效果</p>
@@ -1287,6 +1288,7 @@ export function SettingsClient({
             </Card>
           </div>
         )}
+        </div>{/* /mx-auto w-2/3 */}
       </div>
     </div>
   )
