@@ -17,6 +17,7 @@ import {
   Languages,
   Layers,
   LayoutGrid,
+  MessageSquare,
   Moon,
   Monitor,
   Palette,
@@ -98,7 +99,8 @@ const sceneFeatures: SceneFeature[] = [
   { key: "voice_read", label: "语音朗读", desc: "将文本转换为语音播放", icon: Volume2, category: "speech" },
   { key: "embedding_index", label: "索引构建", desc: "向量索引，用于划线智能匹配主题", icon: Sparkles, category: "embedding" },
   { key: "scout_analyze", label: "搜寻分析", desc: "分析抓取内容与知识库的相关性", icon: Radar, category: "language" },
-  { key: "scout_expand", label: "搜寻展开", desc: "基于追问展开 Patch 内容", icon: Radar, category: "language" }
+  { key: "scout_expand", label: "搜寻展开", desc: "基于追问展开 Patch 内容", icon: Radar, category: "language" },
+  { key: "note_chat", label: "笔记对话", desc: "通过对话优化笔记块或生成新内容", icon: MessageSquare, category: "language" }
 ]
 
 const fontSizeOptions = [14, 16, 18, 20, 22] as const

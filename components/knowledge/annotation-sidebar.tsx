@@ -137,31 +137,28 @@ export function AnnotationSidebar({
 
   return (
     <div className="flex h-full flex-col">
-      {/* 头部 */}
-      <div className="flex h-11 shrink-0 items-center justify-between border-b border-border/40 px-4">
-        <span className="text-[11px] font-medium uppercase tracking-widest text-secondary">
-          批注
-        </span>
+      {/* 工具栏 */}
+      <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-4 py-1.5">
         <div className="flex items-center gap-2">
           {pendingCount > 0 && (
             <span className="rounded-full bg-warning/20 px-2 py-0.5 text-[10px] font-medium text-warning">
               {pendingCount} 待处理
             </span>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0 text-muted hover:text-foreground"
-            onClick={() => {
-              setComposerMode(composerMode ? null : "chat")
-              setComment("")
-              onClearSelection()
-            }}
-            title="新增对话批注"
-          >
-            <MessageSquarePlus className="h-3.5 w-3.5" />
-          </Button>
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 p-0 text-muted hover:text-foreground"
+          onClick={() => {
+            setComposerMode(composerMode ? null : "chat")
+            setComment("")
+            onClearSelection()
+          }}
+          title="新增对话批注"
+        >
+          <MessageSquarePlus className="h-3.5 w-3.5" />
+        </Button>
       </div>
 
       {/* 批注输入区 */}

@@ -13,6 +13,7 @@ export type ModelFeature =
   | "annotation_rewrite"
   | "scout_analyze"
   | "scout_expand"
+  | "note_chat"
 
 // ─── Scout 类型 ───
 export type ScoutChannelProtocol = "rss" | "x_api" | "webpage" | "newsletter"
@@ -248,6 +249,23 @@ export interface AnnotationConfig {
   /** 是否自动处理（否则需手动触发） */
   autoProcess: boolean
 }
+/**
+ * 笔记对话消息（前端状态，不持久化）
+ */
+export interface NoteChatMessage {
+  id: string
+  role: "user" | "assistant"
+  content: string
+  /** AI 建议的操作 */
+  action?: NoteChatAction
+  createdAt: string
+}
+
+/** AI 对话操作建议 */
+export type NoteChatAction =
+  | { type: "modify"; targetBlockId: string; block: NoteBlock }
+  | { type: "insert"; blocks: NoteBlock[]; afterBlockId?: string }
+
 export type TriggerType = "manual" | "cron" | "on_change"
 
 export interface User {

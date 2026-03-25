@@ -1,22 +1,14 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
   BookOpen,
   Check,
-  ChevronDown,
-  ChevronRight,
   Download,
-  FilePlus,
-  FileText,
-  FolderOpen,
-  GripVertical,
   Import,
   Loader2,
   MessageSquare,
   Pencil,
-  Trash2,
-  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Toast } from "@/components/ui/toast"
@@ -24,23 +16,21 @@ import { NoteBlockList } from "@/components/knowledge/note-block-renderer"
 import { ImportedNotesTree } from "@/components/import/imported-notes-tree"
 import { ImportedNoteViewer } from "@/components/import/imported-note-viewer"
 import { AddSourceDialog } from "@/components/import/add-source-dialog"
+import { type SelectionContext } from "@/components/knowledge/annotation-sidebar"
+import { RightSidebar, type RightSidebarTab } from "@/components/knowledge/right-sidebar"
+import { ViewpointTree } from "@/components/knowledge/viewpoint-tree"
 import {
-  AnnotationSidebar,
-  type SelectionContext
-} from "@/components/knowledge/annotation-sidebar"
-import {
-  buildViewpointTree,
   collectViewpointSubtreeIds,
   moveViewpointNode,
   serializeViewpointOrder,
   type ViewpointDropTarget,
-  type ViewpointTreeNode
 } from "@/components/knowledge/viewpoint-tree-utils"
-import { cn } from "@/src/lib/utils"
+import { BLOCK_TYPE_REGISTRY } from "@/components/knowledge/block-type-registry"
 import type {
   Annotation,
   Highlight,
   NoteBlock,
+  NoteBlockType,
   Viewpoint
 } from "@/src/server/store/types"
 
@@ -81,19 +71,8 @@ export function KnowledgeClient({
   )
   const [treeWidth, setTreeWidth] = useState(initialWidths.knowledgeTreeWidth)
   const [annoWidth, setAnnoWidth] = useState(initialWidths.knowledgeListWidth)
-  const [expanded, setExpanded] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(initialViewpoints.map((v) => [v.id, true]))
-  )
-  const [focusedParentId, setFocusedParentId] = useState<string | null>(
-    initialSelected?.id ?? null
-  )
   const [draftNode, setDraftNode] = useState<DraftNode | null>(null)
   const [draftTitle, setDraftTitle] = useState("")
-  const [draggingId, setDraggingId] = useState<string | null>(null)
-  const [dropTarget, setDropTarget] = useState<ViewpointDropTarget | null>(null)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [renamingId, setRenamingId] = useState<string | null>(null)
-  const [renameTitle, setRenameTitle] = useState("")
   const [editingHeaderTitle, setEditingHeaderTitle] = useState(false)
   const [headerTitleDraft, setHeaderTitleDraft] = useState("")
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle")
@@ -101,6 +80,8 @@ export function KnowledgeClient({
   const [annotatedBlockIds, setAnnotatedBlockIds] = useState<Set<string>>(
     new Set()
   )
+  const [activeRightTab, setActiveRightTab] = useState<RightSidebarTab>("annotations")
+  const [selectedBlockForChat, setSelectedBlockForChat] = useState<NoteBlock | null>(null)
   const [importedNoteId, setImportedNoteId] = useState<string | null>(null)
   const [showImportDialog, setShowImportDialog] = useState(false)
 
@@ -113,10 +94,8 @@ export function KnowledgeClient({
   blocksRef.current = blocks
   const selectedIdRef = useRef(selectedId)
   selectedIdRef.current = selectedId
-  const renameInputRef = useRef<HTMLInputElement>(null)
   const headerInputRef = useRef<HTMLInputElement>(null)
   const selected = viewpoints.find((v) => v.id === selectedId)
-  const tree = useMemo(() => buildViewpointTree(viewpoints), [viewpoints])
 
   // 加载笔记块
   useEffect(() => {
@@ -182,6 +161,7 @@ export function KnowledgeClient({
     []
   )
 
+  /** 持久化排序 */
   const persistViewpointOrder = useCallback(async (items: Viewpoint[]) => {
     const updates = serializeViewpointOrder(items)
     const results = await Promise.all(
@@ -198,32 +178,31 @@ export function KnowledgeClient({
     }
   }, [])
 
-  const applyDrop = useCallback(
-    async (target: ViewpointDropTarget) => {
-      if (!draggingId) {
-        return
-      }
+  /** 拖拽排序回调 */
+  const handleReorder = useCallback(
+    async (target: ViewpointDropTarget, sourceId: string) => {
       const prev = viewpoints
-      const next = moveViewpointNode(prev, { sourceId: draggingId, target })
+      const next = moveViewpointNode(prev, { sourceId, target })
       const prevOrder = JSON.stringify(serializeViewpointOrder(prev))
       const nextOrder = JSON.stringify(serializeViewpointOrder(next))
-      setDraggingId(null)
-      setDropTarget(null)
       if (prevOrder === nextOrder) {
         return
       }
       setViewpoints(next)
-      if (target.type === "inside") {
-        setExpanded((c) => ({ ...c, [target.targetId]: true }))
-      }
       try {
         await persistViewpointOrder(next)
       } catch {
         setViewpoints(prev)
       }
     },
-    [draggingId, persistViewpointOrder, viewpoints]
+    [persistViewpointOrder, viewpoints]
   )
+
+  /** 新建主题 */
+  function openDraft(parentId: string | undefined) {
+    setDraftNode({ parentId, placement: parentId ? "child" : "root" })
+    setDraftTitle("")
+  }
 
   async function submitDraft() {
     if (!draftNode || !draftTitle.trim()) {
@@ -243,25 +222,14 @@ export function KnowledgeClient({
     const data = await res.json()
     if (res.ok) {
       setViewpoints((c) => [...c, data.item])
-      if (draftNode.parentId) {
-        setExpanded((c) => ({ ...c, [draftNode.parentId!]: true }))
-      }
       setSelectedId(data.item.id)
-      setFocusedParentId(data.item.id)
       setBlocks(data.item.articleBlocks ?? [])
     }
     setDraftNode(null)
     setDraftTitle("")
   }
 
-  function openDraft(parentId: string | undefined) {
-    setDraftNode({ parentId, placement: parentId ? "child" : "root" })
-    setDraftTitle("")
-    if (parentId) {
-      setExpanded((c) => ({ ...c, [parentId]: true }))
-    }
-  }
-
+  /** 删除主题 */
   async function deleteViewpoint(viewpointId: string) {
     const subtreeIds = collectViewpointSubtreeIds(viewpoints, viewpointId)
     if (!subtreeIds.length) {
@@ -275,17 +243,10 @@ export function KnowledgeClient({
     )
     const nextVps = viewpoints.filter((v) => !subtreeIds.includes(v.id))
     const nextSelected = nextVps[0]
-    setDeletingId(viewpointId)
     setViewpoints(nextVps)
     if (selectedId && subtreeIds.includes(selectedId)) {
       setSelectedId(nextSelected?.id)
       setBlocks(nextSelected?.articleBlocks ?? [])
-    }
-    if (
-      focusedParentId &&
-      subtreeIds.includes(focusedParentId)
-    ) {
-      setFocusedParentId(nextSelected?.id ?? null)
     }
     try {
       await Promise.all(
@@ -295,10 +256,40 @@ export function KnowledgeClient({
       )
     } catch {
       setViewpoints(viewpoints)
-    } finally {
-      setDeletingId(null)
     }
   }
+
+  /** 重命名主题 */
+  const renameViewpoint = useCallback(
+    async (viewpointId: string, newTitle: string) => {
+      const trimmed = newTitle.trim()
+      if (!trimmed) {
+        return
+      }
+      const prev = viewpoints.find((v) => v.id === viewpointId)
+      if (!prev || prev.title === trimmed) {
+        return
+      }
+      setViewpoints((c) =>
+        c.map((v) => (v.id === viewpointId ? { ...v, title: trimmed } : v))
+      )
+      try {
+        await fetch(`/api/viewpoints/${viewpointId}`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ title: trimmed })
+        })
+      } catch {
+        setViewpoints((c) =>
+          c.map((v) =>
+            v.id === viewpointId ? { ...v, title: prev.title } : v
+          )
+        )
+        setToast("重命名失败")
+      }
+    },
+    [viewpoints]
+  )
 
   /** 划词回调 */
   const handleSelectText = useCallback(
@@ -317,8 +308,6 @@ export function KnowledgeClient({
       }
     }
     setAnnotatedBlockIds(ids)
-
-    // 如果有刚完成的批注，刷新 blocks
     const justDone = annos.some((a) => a.status === "done")
     if (justDone) {
       void refreshBlocks()
@@ -338,7 +327,7 @@ export function KnowledgeClient({
     }
   }
 
-  /** 构建保存载荷：blocks state + editsRef 覆盖 */
+  /** 构建保存载荷 */
   const buildSavePayload = useCallback(() => {
     if (editsRef.current.size === 0) {
       return blocksRef.current
@@ -358,7 +347,7 @@ export function KnowledgeClient({
     })
   }, [])
 
-  /** 将 editsRef 合并入 blocks state，用于保存成功后或切换主题前 */
+  /** 合并编辑到 state */
   const flushEditsToState = useCallback(() => {
     if (editsRef.current.size === 0) {
       return
@@ -399,21 +388,19 @@ export function KnowledgeClient({
             body: JSON.stringify({ blocks: payload })
           })
         } catch {
-          /* 静默失败，不阻塞切换 */
+          /* 静默失败 */
         }
       }
       setSaveStatus("idle")
       setSelectedId(viewpointId)
       setImportedNoteId(null)
-      setFocusedParentId(viewpointId)
       setSelectionCtx(null)
-      setRenamingId(null)
       setEditingHeaderTitle(false)
     },
     [buildSavePayload, flushEditsToState]
   )
 
-  /** 块文本编辑 → 仅记录到 ref + debounce 自动保存（不触发 re-render） */
+  /** 块文本编辑 */
   const handleBlockTextChange = useCallback(
     (blockId: string, text: string) => {
       editsRef.current.set(blockId, text)
@@ -456,20 +443,15 @@ export function KnowledgeClient({
       if (!vid) {
         return
       }
-      // 取消正在排队的 debounce 保存，防止旧数据覆盖
       if (saveTimer.current) {
         clearTimeout(saveTimer.current)
         saveTimer.current = null
       }
-      // 合并未落盘的编辑
       flushEditsToState()
-      // 从 editsRef 中移除该块的未保存编辑
       editsRef.current.delete(blockId)
-      // 同步计算删除后的 blocks，确保持久化使用同一份数据
       const next = blocksRef.current.filter((b) => b.id !== blockId)
       blocksRef.current = next
       setBlocks(next)
-      // 立即持久化
       setSaveStatus("saving")
       try {
         await fetch(`/api/viewpoints/${vid}/blocks`, {
@@ -490,37 +472,218 @@ export function KnowledgeClient({
     [flushEditsToState]
   )
 
-  /** 重命名主题 */
-  const renameViewpoint = useCallback(
-    async (viewpointId: string, newTitle: string) => {
-      const trimmed = newTitle.trim()
-      if (!trimmed) {
+  /** 插入新笔记块 */
+  const handleBlockInsert = useCallback(
+    async (afterBlockId: string | null, type: NoteBlockType) => {
+      const vid = selectedIdRef.current
+      if (!vid) {
         return
       }
-      const prev = viewpoints.find((v) => v.id === viewpointId)
-      if (!prev || prev.title === trimmed) {
-        return
+      // 先 flush 待保存的编辑
+      flushEditsToState()
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current)
+        saveTimer.current = null
       }
-      setViewpoints((c) =>
-        c.map((v) => (v.id === viewpointId ? { ...v, title: trimmed } : v))
-      )
+
+      const sorted = [...blocksRef.current].sort((a, b) => a.sortOrder - b.sortOrder)
+      let newSortOrder: number
+      if (afterBlockId === null) {
+        // 插入开头
+        newSortOrder = sorted.length > 0 ? sorted[0].sortOrder - 1 : 0
+      } else {
+        const idx = sorted.findIndex((b) => b.id === afterBlockId)
+        if (idx >= 0 && idx < sorted.length - 1) {
+          newSortOrder = (sorted[idx].sortOrder + sorted[idx + 1].sortOrder) / 2
+        } else {
+          newSortOrder = (sorted[sorted.length - 1]?.sortOrder ?? 0) + 1
+        }
+      }
+
+      const entry = BLOCK_TYPE_REGISTRY.find((e) => e.type === type)
+      const defaults = entry?.createDefault() ?? { type: "paragraph", text: "" }
+      const newBlock = {
+        ...defaults,
+        id: crypto.randomUUID(),
+        sortOrder: newSortOrder,
+      } as NoteBlock
+
+      const next = [...blocksRef.current, newBlock]
+      blocksRef.current = next
+      setBlocks(next)
+
+      // 立即保存
+      setSaveStatus("saving")
       try {
-        await fetch(`/api/viewpoints/${viewpointId}`, {
+        await fetch(`/api/viewpoints/${vid}/blocks`, {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ title: trimmed })
+          body: JSON.stringify({ blocks: next })
         })
+        setSaveStatus("saved")
+        if (savedStatusTimer.current) {
+          clearTimeout(savedStatusTimer.current)
+        }
+        savedStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 2000)
       } catch {
-        setViewpoints((c) =>
-          c.map((v) =>
-            v.id === viewpointId ? { ...v, title: prev.title } : v
-          )
-        )
-        setToast("重命名失败")
+        setToast("插入失败，请重试")
+        setSaveStatus("idle")
       }
     },
-    [viewpoints]
+    [flushEditsToState]
   )
+
+  /** Enter 新建段落（返回新块 ID 用于聚焦） */
+  const [focusBlockId, setFocusBlockId] = useState<string>()
+  const handleEnterNewBlock = useCallback(
+    (blockId: string) => {
+      const vid = selectedIdRef.current
+      if (!vid) {
+        return
+      }
+      flushEditsToState()
+
+      const sorted = [...blocksRef.current].sort((a, b) => a.sortOrder - b.sortOrder)
+      const idx = sorted.findIndex((b) => b.id === blockId)
+      let newSortOrder: number
+      if (idx >= 0 && idx < sorted.length - 1) {
+        newSortOrder = (sorted[idx].sortOrder + sorted[idx + 1].sortOrder) / 2
+      } else {
+        newSortOrder = (sorted[sorted.length - 1]?.sortOrder ?? 0) + 1
+      }
+
+      const newId = crypto.randomUUID()
+      const newBlock = { type: "paragraph", text: "", id: newId, sortOrder: newSortOrder } as NoteBlock
+      const next = [...blocksRef.current, newBlock]
+      blocksRef.current = next
+      setBlocks(next)
+      setFocusBlockId(newId)
+
+      // 延迟保存
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current)
+      }
+      saveTimer.current = setTimeout(async () => {
+        setSaveStatus("saving")
+        try {
+          await fetch(`/api/viewpoints/${vid}/blocks`, {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ blocks: blocksRef.current })
+          })
+          setSaveStatus("saved")
+          savedStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 2000)
+        } catch {
+          setSaveStatus("idle")
+        }
+      }, 400)
+    },
+    [flushEditsToState]
+  )
+
+  /** Backspace 删除空块并聚焦上一块 */
+  const handleBackspaceEmpty = useCallback(
+    (blockId: string) => {
+      const vid = selectedIdRef.current
+      if (!vid) {
+        return
+      }
+      const sorted = [...blocksRef.current].sort((a, b) => a.sortOrder - b.sortOrder)
+      // 只剩一个块时不删
+      if (sorted.length <= 1) {
+        return
+      }
+      const idx = sorted.findIndex((b) => b.id === blockId)
+      // 聚焦上一块（如果是第一块则聚焦下一块）
+      const prevBlock = idx > 0 ? sorted[idx - 1] : sorted[1]
+      if (prevBlock) {
+        setFocusBlockId(prevBlock.id)
+      }
+
+      flushEditsToState()
+      editsRef.current.delete(blockId)
+      const next = blocksRef.current.filter((b) => b.id !== blockId)
+      blocksRef.current = next
+      setBlocks(next)
+
+      // 延迟保存
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current)
+      }
+      saveTimer.current = setTimeout(async () => {
+        setSaveStatus("saving")
+        try {
+          await fetch(`/api/viewpoints/${vid}/blocks`, {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ blocks: blocksRef.current })
+          })
+          setSaveStatus("saved")
+          savedStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 2000)
+        } catch {
+          setSaveStatus("idle")
+        }
+      }, 400)
+    },
+    [flushEditsToState]
+  )
+
+  /** / 选择后替换块类型 */
+  const handleBlockTypeChange = useCallback(
+    (blockId: string, type: NoteBlockType) => {
+      const vid = selectedIdRef.current
+      if (!vid) {
+        return
+      }
+      flushEditsToState()
+
+      const entry = BLOCK_TYPE_REGISTRY.find((e) => e.type === type)
+      if (!entry) {
+        return
+      }
+      const defaults = entry.createDefault()
+      const next = blocksRef.current.map((b) => {
+        if (b.id !== blockId) {
+          return b
+        }
+        return { ...defaults, id: b.id, sortOrder: b.sortOrder } as NoteBlock
+      })
+      blocksRef.current = next
+      setBlocks(next)
+      setFocusBlockId(blockId)
+
+      // 延迟保存
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current)
+      }
+      saveTimer.current = setTimeout(async () => {
+        setSaveStatus("saving")
+        try {
+          await fetch(`/api/viewpoints/${vid}/blocks`, {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ blocks: blocksRef.current })
+          })
+          setSaveStatus("saved")
+          savedStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 2000)
+        } catch {
+          setSaveStatus("idle")
+        }
+      }, 400)
+    },
+    [flushEditsToState]
+  )
+
+  /** 空页面自动初始化一个空段落 */
+  useEffect(() => {
+    if (selectedId && blocks.length === 0) {
+      const newId = crypto.randomUUID()
+      const initBlock = { type: "paragraph", text: "", id: newId, sortOrder: 0 } as NoteBlock
+      blocksRef.current = [initBlock]
+      setBlocks([initBlock])
+      setFocusBlockId(newId)
+    }
+  }, [selectedId, blocks.length])
 
   // ---- 元信息 ----
   const blockCount = blocks.length
@@ -535,203 +698,6 @@ export function KnowledgeClient({
   }, 0)
   const pendingAnnoCount = [...annotatedBlockIds].length
 
-  // ---- 渲染辅助 ----
-  function renderDraft(depth: number) {
-    if (!draftNode) {
-      return null
-    }
-    return (
-      <div className="py-0.5" style={{ paddingLeft: 8 + depth * 16 }}>
-        <input
-          autoFocus
-          className="h-7 w-full rounded border border-primary/40 bg-elevated px-2 text-[13px] text-foreground outline-none focus:border-primary"
-          placeholder="输入主题名称"
-          value={draftTitle}
-          onChange={(e) => setDraftTitle(e.target.value)}
-          onBlur={submitDraft}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              void submitDraft()
-            }
-            if (e.key === "Escape") {
-              setDraftNode(null)
-              setDraftTitle("")
-            }
-          }}
-        />
-      </div>
-    )
-  }
-
-  function renderDropZone(
-    depth: number,
-    target: ViewpointDropTarget,
-    className = ""
-  ) {
-    const active =
-      dropTarget?.type === target.type &&
-      (dropTarget.type === "root" ||
-        (target.type !== "root" &&
-          dropTarget.targetId === target.targetId))
-    return (
-      <div
-        className={cn(
-          "h-0.5 rounded-full transition-all",
-          draggingId ? "opacity-100" : "opacity-0",
-          active
-            ? "bg-primary/60"
-            : "bg-transparent hover:bg-primary/30",
-          className
-        )}
-        style={{ marginLeft: 8 + depth * 16 }}
-        onDragOver={(e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          setDropTarget(target)
-        }}
-        onDrop={(e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          void applyDrop(target)
-        }}
-      />
-    )
-  }
-
-  function renderNode(node: ViewpointTreeNode, depth = 0): React.ReactNode {
-    const isExpanded = expanded[node.id] ?? true
-    const active = selectedId === node.id
-    const hasChildren = node.children.length > 0
-    const showDraft =
-      draftNode?.parentId === node.id && draftNode.placement === "child"
-    const insideActive =
-      dropTarget?.type === "inside" && dropTarget.targetId === node.id
-    const indentLeft = 8 + depth * 16
-
-    return (
-      <div key={node.id} className="relative">
-        {depth > 0 && (
-          <div
-            className="pointer-events-none absolute top-0 bottom-0 w-px bg-border/25"
-            style={{ left: indentLeft - 8 }}
-          />
-        )}
-        {renderDropZone(depth, { type: "before", targetId: node.id })}
-        <button
-          draggable
-          className={cn(
-            "group relative flex w-full items-center gap-1 rounded-sm py-[3px] pr-2 text-left text-[13px] transition-colors",
-            active
-              ? "bg-overlay/80 text-foreground before:absolute before:left-0 before:top-0.5 before:bottom-0.5 before:w-[2px] before:rounded-full before:bg-primary/80 before:content-['']"
-              : insideActive
-                ? "bg-primary/8 text-foreground"
-                : "text-secondary hover:bg-overlay/50 hover:text-foreground"
-          )}
-          style={{ paddingLeft: indentLeft }}
-          onClick={() => selectViewpoint(node.id)}
-          onDragStart={() => {
-            setDraggingId(node.id)
-            setDropTarget(null)
-          }}
-          onDragEnd={() => {
-            setDraggingId(null)
-            setDropTarget(null)
-          }}
-          onDragOver={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            setDropTarget({ type: "inside", targetId: node.id })
-          }}
-          onDrop={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            void applyDrop({ type: "inside", targetId: node.id })
-          }}
-        >
-          <GripVertical className="h-3 w-3 shrink-0 text-muted opacity-0 transition-opacity group-hover:opacity-60" />
-          {hasChildren ? (
-            <span
-              className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted transition-colors hover:text-foreground"
-              onClick={(e) => {
-                e.stopPropagation()
-                setExpanded((c) => ({ ...c, [node.id]: !isExpanded }))
-              }}
-            >
-              {isExpanded ? (
-                <ChevronDown className="h-3 w-3" />
-              ) : (
-                <ChevronRight className="h-3 w-3" />
-              )}
-            </span>
-          ) : (
-            <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted/50">
-              <FileText className="h-3 w-3" />
-            </span>
-          )}
-          {renamingId === node.id ? (
-            <input
-              ref={renameInputRef}
-              autoFocus
-              className="min-w-0 flex-1 rounded-sm bg-elevated/80 px-1.5 py-0.5 text-[13px] text-foreground outline-none ring-1 ring-primary/30 transition-shadow focus:ring-primary/50"
-              value={renameTitle}
-              onChange={(e) => setRenameTitle(e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-              onFocus={(e) => e.target.select()}
-              onBlur={() => {
-                void renameViewpoint(node.id, renameTitle)
-                setRenamingId(null)
-              }}
-              onKeyDown={(e) => {
-                e.stopPropagation()
-                if (e.key === "Enter") {
-                  void renameViewpoint(node.id, renameTitle)
-                  setRenamingId(null)
-                }
-                if (e.key === "Escape") {
-                  setRenamingId(null)
-                }
-              }}
-            />
-          ) : (
-            <span
-              className="min-w-0 flex-1 truncate"
-              onDoubleClick={(e) => {
-                e.stopPropagation()
-                setRenamingId(node.id)
-                setRenameTitle(node.title)
-              }}
-            >
-              {node.title}
-            </span>
-          )}
-          {node.highlightCount > 0 && (
-            <span className="shrink-0 rounded px-1 text-[10px] tabular-nums text-muted/60">
-              {node.highlightCount}
-            </span>
-          )}
-          <span
-            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted opacity-0 transition-opacity hover:text-error group-hover:opacity-100"
-            onClick={(e) => {
-              e.stopPropagation()
-              void deleteViewpoint(node.id)
-            }}
-          >
-            {deletingId === node.id ? (
-              <X className="h-3 w-3 animate-pulse" />
-            ) : (
-              <Trash2 className="h-3 w-3" />
-            )}
-          </span>
-        </button>
-        {showDraft ? renderDraft(depth + 1) : null}
-        {hasChildren && isExpanded
-          ? node.children.map((c) => renderNode(c, depth + 1))
-          : null}
-        {renderDropZone(depth, { type: "after", targetId: node.id })}
-      </div>
-    )
-  }
-
   return (
     <>
       {toast ? <Toast title={toast} onClose={() => setToast("")} /> : null}
@@ -741,60 +707,38 @@ export function KnowledgeClient({
           className="relative flex shrink-0 flex-col border-r border-border/50 bg-surface"
           style={{ width: treeWidth }}
         >
-          <div className="flex h-11 items-center justify-between px-3 border-b border-border/40">
-            <span className="text-[11px] font-medium uppercase tracking-widest text-secondary">
-              主题树
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => openDraft(focusedParentId ?? undefined)}
-              className="h-6 w-6 p-0 text-muted hover:text-foreground"
-              title="新建主题"
-            >
-              <FilePlus className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-          <div className="flex-1 overflow-y-auto py-1 px-1">
-            <button
-              className={cn(
-                "flex w-full items-center gap-1.5 rounded-sm px-2 py-[3px] text-left text-[13px] transition-colors",
-                focusedParentId === null
-                  ? "text-foreground bg-overlay/60"
-                  : "text-muted hover:bg-overlay/40 hover:text-secondary"
-              )}
-              onClick={() => {
-                setFocusedParentId(null)
-                setDraftNode(null)
-              }}
-            >
-              <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted/60" />
-              <span className="truncate">全部主题</span>
-            </button>
-            {draftNode?.placement === "root" ? renderDraft(0) : null}
-            {tree.map((node) => renderNode(node))}
-            {draggingId ? (
-              <div className="mt-2 px-2">
-                {renderDropZone(
-                  0,
-                  { type: "root" },
-                  "h-6 border border-dashed border-border/40 rounded"
-                )}
-                <p className="mt-1 px-1 text-[11px] text-muted">
-                  拖到这里放到根目录
-                </p>
-              </div>
-            ) : null}
-
-            {/* 导入笔记 */}
-            <ImportedNotesTree
-              selectedNoteId={importedNoteId}
-              onSelectNote={(id) => {
-                setImportedNoteId(id)
-                setSelectedId("")
-              }}
-            />
-          </div>
+          <ViewpointTree
+            viewpoints={viewpoints}
+            selectedId={selectedId}
+            onSelect={selectViewpoint}
+            onReorder={handleReorder}
+            onCreate={openDraft}
+            onRename={renameViewpoint}
+            onDelete={deleteViewpoint}
+            draftParentId={
+              draftNode
+                ? draftNode.placement === "root"
+                  ? null
+                  : draftNode.parentId
+                : undefined
+            }
+            draftTitle={draftTitle}
+            onDraftTitleChange={setDraftTitle}
+            onDraftSubmit={submitDraft}
+            onDraftCancel={() => {
+              setDraftNode(null)
+              setDraftTitle("")
+            }}
+            importedNotesSlot={
+              <ImportedNotesTree
+                selectedNoteId={importedNoteId}
+                onSelectNote={(id) => {
+                  setImportedNoteId(id)
+                  setSelectedId("")
+                }}
+              />
+            }
+          />
           <div
             className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/20"
             onMouseDown={createResizeHandler(treeWidth, setTreeWidth)}
@@ -814,7 +758,7 @@ export function KnowledgeClient({
                 <input
                   ref={headerInputRef}
                   autoFocus
-                  className="min-w-0 flex-1 rounded-sm bg-elevated/60 px-2 py-0.5 text-[15px] font-semibold text-foreground outline-none ring-1 ring-primary/30 transition-shadow focus:ring-primary/50"
+                  className="min-w-0 flex-1 rounded-md bg-elevated/60 px-2 py-0.5 text-[15px] font-semibold text-foreground outline-none ring-1 ring-primary/30 transition-shadow focus:ring-primary/50"
                   value={headerTitleDraft}
                   onChange={(e) => setHeaderTitleDraft(e.target.value)}
                   onFocus={(e) => e.target.select()}
@@ -834,7 +778,7 @@ export function KnowledgeClient({
                 />
               ) : (
                 <span
-                  className="group/title flex min-w-0 items-center gap-1.5 truncate text-[15px] font-semibold text-foreground cursor-text rounded-sm px-2 py-0.5 -mx-2 transition-colors hover:bg-overlay/40"
+                  className="group/title flex min-w-0 items-center gap-1.5 truncate text-[15px] font-semibold text-foreground cursor-text rounded-md px-2 py-0.5 -mx-2 transition-colors hover:bg-overlay/40"
                   onClick={() => {
                     if (selected) {
                       setEditingHeaderTitle(true)
@@ -904,9 +848,19 @@ export function KnowledgeClient({
               <NoteBlockList
                 blocks={blocks}
                 annotatedBlockIds={annotatedBlockIds}
+                chatSelectedBlockId={activeRightTab === "chat" ? selectedBlockForChat?.id : undefined}
+                focusBlockId={focusBlockId}
                 onSelectText={handleSelectText}
                 onBlockTextChange={handleBlockTextChange}
                 onBlockDelete={handleBlockDelete}
+                onBlockInsert={handleBlockInsert}
+                onBlockTypeChange={handleBlockTypeChange}
+                onEnterNewBlock={handleEnterNewBlock}
+                onBackspaceEmpty={handleBackspaceEmpty}
+                onBlockClick={activeRightTab === "chat" ? (blockId) => {
+                  const block = blocks.find((b) => b.id === blockId)
+                  setSelectedBlockForChat(block ?? null)
+                } : undefined}
               />
             </div>
           </div>
@@ -944,7 +898,7 @@ export function KnowledgeClient({
           )}
         </main>
 
-        {/* 右侧批注侧栏 */}
+        {/* 右侧面板（批注/对话） */}
         <aside
           className="relative flex shrink-0 flex-col border-l border-border/50 bg-surface"
           style={{ width: annoWidth }}
@@ -953,11 +907,24 @@ export function KnowledgeClient({
             className="absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/20"
             onMouseDown={createResizeHandler(annoWidth, setAnnoWidth, true)}
           />
-          <AnnotationSidebar
+          <RightSidebar
             viewpointId={selectedId}
+            blocks={blocks}
             selectionContext={selectionCtx}
+            selectedBlockForChat={selectedBlockForChat}
             onClearSelection={() => setSelectionCtx(null)}
+            onClearChatBlock={() => setSelectedBlockForChat(null)}
             onAnnotationsChange={handleAnnotationsChange}
+            onBlocksUpdate={(newBlocks) => {
+              setBlocks(newBlocks)
+              void fetch(`/api/viewpoints/${selectedId}/blocks`, {
+                method: "PUT",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ blocks: newBlocks })
+              })
+            }}
+            activeTab={activeRightTab}
+            onTabChange={setActiveRightTab}
           />
         </aside>
       </div>
