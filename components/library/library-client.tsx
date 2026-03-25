@@ -27,18 +27,19 @@ type LibraryBook = Book & {
   coverUrl?: string
 }
 
-/** 封面渐变色系，根据书名哈希稳定分配 */
-const COVER_GRADIENTS = [
-  { from: "#4C1D95", to: "#1E1B4B", angle: 150 },
-  { from: "#0F2E2E", to: "#0A1A1A", angle: 150 },
-  { from: "#1A2F0F", to: "#0F1A0A", angle: 150 },
-  { from: "#2E1A0F", to: "#1A0F0A", angle: 150 },
-  { from: "#1A1A2E", to: "#0F0F1A", angle: 150 },
-  { from: "#2E0F1A", to: "#1A0A10", angle: 150 },
-  { from: "#1B2838", to: "#0D1520", angle: 150 },
-  { from: "#2D1B30", to: "#160E18", angle: 150 },
-  { from: "#0F2838", to: "#081820", angle: 150 },
-  { from: "#30251A", to: "#1A150F", angle: 150 },
+/**
+ * 封面配色方案 - 低饱和度克制色系
+ * 每组：背景色、装饰线色、文字色
+ */
+const COVER_PALETTES = [
+  { bg: "#1A1B2E", accent: "#6366F1", text: "#C7D2FE" },
+  { bg: "#1E2A2A", accent: "#2DD4BF", text: "#CCFBF1" },
+  { bg: "#2A1F1E", accent: "#F97316", text: "#FED7AA" },
+  { bg: "#1E1E2E", accent: "#A78BFA", text: "#DDD6FE" },
+  { bg: "#1F2937", accent: "#3B82F6", text: "#BFDBFE" },
+  { bg: "#27201A", accent: "#D97706", text: "#FDE68A" },
+  { bg: "#1A2E1A", accent: "#22C55E", text: "#BBF7D0" },
+  { bg: "#2E1A2A", accent: "#EC4899", text: "#FBCFE8" },
 ]
 
 function hashTitle(title: string): number {
@@ -47,6 +48,49 @@ function hashTitle(title: string): number {
     h = ((h << 5) + h) ^ title.charCodeAt(i)
   }
   return Math.abs(h)
+}
+
+/** 生成封面装饰图案（基于哈希确定性选择） */
+function CoverPattern({ hash, accent }: { hash: number; accent: string }) {
+  const variant = hash % 4
+  const accentDim = accent + "18"
+  const accentMid = accent + "30"
+
+  if (variant === 0) {
+    // 右下角大圆弧
+    return (
+      <div
+        className="absolute -bottom-12 -right-12 h-40 w-40 rounded-full"
+        style={{ border: `1.5px solid ${accentMid}`, background: accentDim }}
+      />
+    )
+  }
+  if (variant === 1) {
+    // 对角线
+    return (
+      <>
+        <div className="absolute right-5 top-5 h-px w-14" style={{ background: accentMid }} />
+        <div className="absolute right-5 top-5 h-14 w-px" style={{ background: accentMid }} />
+      </>
+    )
+  }
+  if (variant === 2) {
+    // 底部横条纹
+    return (
+      <div className="absolute bottom-6 left-5 right-5 flex flex-col gap-[5px]">
+        <div className="h-px" style={{ background: accentMid }} />
+        <div className="h-px w-3/4" style={{ background: accentDim }} />
+        <div className="h-px w-1/2" style={{ background: accentDim }} />
+      </div>
+    )
+  }
+  // 右上角小菱形
+  return (
+    <div
+      className="absolute right-5 top-6 h-8 w-8 rotate-45"
+      style={{ border: `1px solid ${accentMid}` }}
+    />
+  )
 }
 
 /** 极简书籍封面 */
@@ -61,48 +105,60 @@ function BookCover({
   progress: number
   isComplete: boolean
 }) {
-  const gradient = COVER_GRADIENTS[hashTitle(title) % COVER_GRADIENTS.length]
+  const [imgError, setImgError] = useState(false)
+  const hash = hashTitle(title)
+  const palette = COVER_PALETTES[hash % COVER_PALETTES.length]
   const normalizedProgress = normalizeLibraryProgress(progress)
+  const showCover = coverUrl && !imgError
 
   return (
     <div className="group/cover relative">
       <div
-        className="relative aspect-[3/4] w-full overflow-hidden rounded-[10px] shadow-[0_4px_20px_rgba(0,0,0,0.4)] transition-transform duration-300 ease-out group-hover/cover:-translate-y-1"
-        style={
-          coverUrl
-            ? undefined
-            : {
-                background: `linear-gradient(${gradient.angle}deg, ${gradient.from}, ${gradient.to})`
-              }
-        }
+        className="relative aspect-[3/4] w-full overflow-hidden rounded-lg shadow-panel transition-transform duration-300 ease-out group-hover/cover:-translate-y-1"
+        style={{ background: palette.bg }}
       >
-        {coverUrl ? (
+        {showCover ? (
           <Image
             src={coverUrl}
             alt={title}
             fill
             className="object-cover"
             unoptimized
+            onError={() => setImgError(true)}
           />
         ) : (
-          <div className="absolute inset-0 flex items-start p-4">
-            <span className="text-[2.5rem] font-bold leading-[0.9] tracking-tighter text-white/[0.07]">
-              {title.split("").slice(0, 6).join("\n")}
-            </span>
-          </div>
+          <>
+            {/* 装饰图案 */}
+            <CoverPattern hash={hash} accent={palette.accent} />
+            {/* 顶部装饰线 */}
+            <div
+              className="absolute left-5 top-5 h-[2px] w-8 rounded-full"
+              style={{ background: palette.accent }}
+            />
+            {/* 书名 */}
+            <div className="absolute inset-x-5 bottom-5 top-10 flex flex-col justify-end">
+              <p
+                className="line-clamp-4 text-[15px] font-semibold leading-[1.4]"
+                style={{ color: palette.text }}
+              >
+                {title}
+              </p>
+            </div>
+          </>
         )}
 
         {/* 已读完标记 */}
         {isComplete && (
-          <div className="absolute left-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500">
+          <div className="absolute left-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-success">
             <Check className="h-3 w-3 text-white" strokeWidth={3} />
           </div>
         )}
 
         {/* 底部进度条 */}
         {normalizedProgress > 0 && !isComplete && (
-          <div className="absolute bottom-0 left-0 h-[2px] bg-violet-500/50"
-            style={{ width: `${normalizedProgress}%` }}
+          <div
+            className="absolute bottom-0 left-0 h-[2px]"
+            style={{ width: `${normalizedProgress}%`, background: palette.accent }}
           />
         )}
       </div>
@@ -118,74 +174,82 @@ function ContinueReadingCard({
   book: LibraryBook
   onClick: () => void
 }) {
-  const gradient = COVER_GRADIENTS[hashTitle(book.title) % COVER_GRADIENTS.length]
+  const [imgError, setImgError] = useState(false)
+  const hash = hashTitle(book.title)
+  const palette = COVER_PALETTES[hash % COVER_PALETTES.length]
   const normalizedProgress = normalizeLibraryProgress(book.readProgress)
+  const showCover = book.coverUrl && !imgError
 
   return (
     <button
       onClick={onClick}
-      className="group flex w-full overflow-hidden rounded-2xl bg-[#111113] transition-colors hover:bg-[#161618]"
+      className="group flex w-full overflow-hidden rounded-2xl bg-surface transition-colors hover:bg-elevated"
     >
       {/* 封面 */}
       <div
-        className="h-[180px] w-[130px] flex-shrink-0"
-        style={
-          book.coverUrl
-            ? undefined
-            : {
-                background: `linear-gradient(${gradient.angle}deg, ${gradient.from}, ${gradient.to})`
-              }
-        }
+        className="relative h-[180px] w-[130px] flex-shrink-0 overflow-hidden"
+        style={{ background: palette.bg }}
       >
-        {book.coverUrl ? (
+        {showCover ? (
           <Image
-            src={book.coverUrl}
+            src={book.coverUrl!}
             alt={book.title}
             width={130}
             height={180}
             className="h-full w-full object-cover"
             unoptimized
+            onError={() => setImgError(true)}
           />
         ) : (
-          <div className="flex h-full items-start p-4">
-            <span className="text-2xl font-bold leading-tight tracking-tighter text-white/[0.12]">
-              {book.title}
-            </span>
-          </div>
+          <>
+            <CoverPattern hash={hash} accent={palette.accent} />
+            <div
+              className="absolute left-4 top-4 h-[2px] w-6 rounded-full"
+              style={{ background: palette.accent }}
+            />
+            <div className="absolute inset-x-4 bottom-4 top-8 flex flex-col justify-end">
+              <p
+                className="line-clamp-3 text-[13px] font-semibold leading-[1.4]"
+                style={{ color: palette.text }}
+              >
+                {book.title}
+              </p>
+            </div>
+          </>
         )}
       </div>
 
       {/* 信息 */}
       <div className="flex flex-1 flex-col justify-center gap-3 px-7 py-6">
         <div>
-          <h3 className="text-xl font-semibold tracking-tight text-zinc-100">
+          <h3 className="text-xl font-semibold tracking-tight text-foreground">
             {book.title}
           </h3>
-          <p className="mt-1 text-[13px] text-zinc-500">
+          <p className="mt-1 text-[13px] text-secondary">
             {book.author || "未知作者"}
           </p>
         </div>
 
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <div className="h-[3px] w-[120px] overflow-hidden rounded-full bg-[#1E1E2E]">
+            <div className="h-[3px] w-[120px] overflow-hidden rounded-full bg-elevated">
               <div
-                className="h-full rounded-full bg-violet-500"
+                className="h-full rounded-full bg-primary"
                 style={{ width: `${normalizedProgress}%` }}
               />
             </div>
-            <span className="text-xs font-medium text-violet-500">
+            <span className="text-xs font-medium text-primary">
               {normalizedProgress}%
             </span>
           </div>
           {book.lastReadAt && (
-            <span className="text-xs text-zinc-700">
+            <span className="text-xs text-muted">
               {formatLastRead(book.lastReadAt)}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs text-zinc-500 transition-colors group-hover:text-zinc-400">
+        <div className="flex items-center gap-1.5 text-xs text-secondary transition-colors group-hover:text-foreground">
           继续阅读
           <ArrowRight className="h-3.5 w-3.5" />
         </div>
@@ -408,14 +472,14 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
   ]
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#09090B]">
+    <div className="flex min-h-screen flex-col bg-base">
       {/* 简洁头部 */}
       <header className="flex items-center justify-between px-8 py-5">
         <div className="flex items-end gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             书库
           </h1>
-          <span className="mb-0.5 text-sm text-zinc-700">
+          <span className="mb-0.5 text-sm text-muted">
             {books.length}
           </span>
         </div>
@@ -425,10 +489,10 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
           {showSearch ? (
             <div className="flex items-center gap-2">
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-600" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
                 <input
                   autoFocus
-                  className="h-9 w-64 rounded-lg border border-zinc-800 bg-zinc-900/50 pl-9 pr-3 text-sm text-zinc-300 outline-none placeholder:text-zinc-600 focus:border-zinc-700"
+                  className="h-9 w-64 rounded-lg border border-border bg-surface/50 pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted focus:border-secondary"
                   placeholder="搜索书名、作者..."
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -436,7 +500,7 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
               </div>
               <button
                 onClick={() => { setShowSearch(false); setQuery("") }}
-                className="rounded-lg p-2 text-zinc-600 hover:text-zinc-400"
+                className="rounded-lg p-2 text-muted hover:text-secondary"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -444,19 +508,19 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
           ) : (
             <button
               onClick={() => setShowSearch(true)}
-              className="rounded-lg p-2 text-zinc-600 hover:text-zinc-400"
+              className="rounded-lg p-2 text-muted hover:text-secondary"
             >
               <Search className="h-[18px] w-[18px]" />
             </button>
           )}
 
-          <button className="rounded-lg p-2 text-zinc-600 hover:text-zinc-400">
+          <button className="rounded-lg p-2 text-muted hover:text-secondary">
             <LayoutGrid className="h-[18px] w-[18px]" />
           </button>
 
           <Button
             onClick={() => router.push("/library/upload")}
-            className="ml-1 h-[34px] gap-1.5 rounded-lg bg-violet-600 px-4 text-[13px] font-medium text-white hover:bg-violet-500"
+            className="ml-1 h-[34px] gap-1.5 rounded-lg bg-primary px-4 text-[13px] font-medium text-white hover:bg-primary-dark"
           >
             <Plus className="h-3.5 w-3.5" />
             上传
@@ -469,7 +533,7 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
         {/* 继续阅读 */}
         {lastReadBook && !query && tab === "all" && (
           <section className="mb-8">
-            <h2 className="mb-4 text-[11px] font-semibold uppercase tracking-[1.5px] text-zinc-600">
+            <h2 className="mb-4 text-[11px] font-semibold uppercase tracking-[1.5px] text-muted">
               继续阅读
             </h2>
             <ContinueReadingCard
@@ -491,15 +555,15 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
                 onClick={() => setTab(t.key)}
                 className={`rounded-md px-3 py-1.5 text-xs transition-colors ${
                   tab === t.key
-                    ? "bg-zinc-800 font-medium text-zinc-200"
-                    : "text-zinc-600 hover:text-zinc-400"
+                    ? "bg-overlay font-medium text-foreground"
+                    : "text-muted hover:text-secondary"
                 }`}
               >
                 {t.label}
               </button>
             ))}
           </div>
-          <button className="flex items-center gap-1 text-xs text-zinc-700 hover:text-zinc-500">
+          <button className="flex items-center gap-1 text-xs text-muted hover:text-secondary">
             最近阅读
             <ChevronDown className="h-3.5 w-3.5" />
           </button>
@@ -526,13 +590,13 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
               <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                 <button
                   onClick={() => { setEditingBook(book); setIsEditOpen(true) }}
-                  className="rounded-md bg-black/60 p-1.5 text-zinc-400 backdrop-blur-sm hover:text-zinc-200"
+                  className="rounded-md bg-black/60 p-1.5 text-secondary backdrop-blur-sm hover:text-foreground"
                 >
                   <Edit3 className="h-3 w-3" />
                 </button>
                 <button
                   onClick={() => removeBook(book.id)}
-                  className="rounded-md bg-black/60 p-1.5 text-zinc-400 backdrop-blur-sm hover:text-red-400"
+                  className="rounded-md bg-black/60 p-1.5 text-secondary backdrop-blur-sm hover:text-red-400"
                 >
                   <Trash2 className="h-3 w-3" />
                 </button>
@@ -540,10 +604,10 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
 
               {/* 书名和作者 */}
               <div className="mt-2.5 space-y-0.5">
-                <p className="line-clamp-1 text-[13px] font-medium text-zinc-300">
+                <p className="line-clamp-1 text-[13px] font-medium text-foreground">
                   {book.title}
                 </p>
-                <p className="text-[11px] text-zinc-600">
+                <p className="text-[11px] text-muted">
                   {book.author || "未知作者"}
                 </p>
               </div>
@@ -554,7 +618,7 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
         {/* 空状态 */}
         {filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center py-32 text-center">
-            <p className="text-sm text-zinc-600">
+            <p className="text-sm text-muted">
               {query ? "没有找到匹配的书籍" : "书库为空"}
             </p>
             {!query && (

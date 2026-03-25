@@ -389,7 +389,7 @@ export function PublishClient({
   // 触发类型标签
   function getTriggerBadge(triggerType: TriggerType) {
     const config = {
-      manual: { icon: Zap, color: "text-violet-400", bg: "bg-violet-500/10", border: "border-violet-500/20" },
+      manual: { icon: Zap, color: "text-accent-purple", bg: "bg-accent-purple/10", border: "border-accent-purple/20" },
       cron: { icon: Calendar, color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20" },
       on_change: { icon: RefreshCw, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20" }
     }

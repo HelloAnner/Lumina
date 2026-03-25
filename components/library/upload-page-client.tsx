@@ -146,16 +146,16 @@ export function UploadPageClient() {
           <div className="flex h-[52px] w-[52px] items-center justify-center rounded-full bg-emerald-500/10">
             <Check className="h-6 w-6 text-emerald-500" />
           </div>
-          <h2 className="text-lg font-semibold text-white">导入成功</h2>
+          <h2 className="text-lg font-semibold text-foreground">导入成功</h2>
 
-          <div className="w-[480px] overflow-hidden rounded-xl border border-border/50 bg-[#18181B]">
+          <div className="w-[480px] overflow-hidden rounded-xl border border-border/50 bg-surface">
             {/* 书籍头部 */}
             <div className="flex items-center gap-3.5 px-5 py-4">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-primary/10">
                 <BookOpen className="h-[22px] w-[22px] text-primary" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[15px] font-semibold text-white">
+                <div className="truncate text-[15px] font-semibold text-foreground">
                   {result.item.title}
                 </div>
                 <div className="mt-0.5 text-[13px] text-muted">
@@ -175,25 +175,25 @@ export function UploadPageClient() {
             {/* 元数据 */}
             <div className="space-y-2.5 px-5 py-3">
               <div className="flex items-center justify-between">
-                <span className="text-[13px] text-muted-foreground/50">格式</span>
-                <span className="text-[13px] font-medium text-muted-foreground">
+                <span className="text-[13px] text-muted">格式</span>
+                <span className="text-[13px] font-medium text-secondary">
                   {result.item.format}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[13px] text-muted-foreground/50">标签</span>
+                <span className="text-[13px] text-muted">标签</span>
                 <div className="flex gap-1.5">
                   {result.item.tags.length > 0 ? (
                     result.item.tags.map((tag) => (
                       <span
                         key={tag}
-                        className="rounded bg-[#27272A] px-2 py-0.5 text-[11px] text-muted-foreground"
+                        className="rounded bg-overlay px-2 py-0.5 text-[11px] text-secondary"
                       >
                         {tag}
                       </span>
                     ))
                   ) : (
-                    <span className="text-[13px] text-muted-foreground">未生成</span>
+                    <span className="text-[13px] text-secondary">未生成</span>
                   )}
                 </div>
               </div>
@@ -205,7 +205,7 @@ export function UploadPageClient() {
             <div className="flex justify-end gap-2.5 px-5 py-3">
               <button
                 onClick={() => setIsEditing(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 px-4 py-2 text-[13px] text-muted-foreground transition hover:bg-white/5"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 px-4 py-2 text-[13px] text-secondary transition hover:bg-white/5"
               >
                 <Pencil className="h-3.5 w-3.5" />
                 编辑
@@ -224,8 +224,8 @@ export function UploadPageClient() {
     if (result && isEditing) {
       return (
         <div className="flex flex-col items-center gap-6">
-          <h2 className="text-lg font-semibold text-white">编辑书籍信息</h2>
-          <div className="w-[480px] space-y-4 rounded-xl border border-border/50 bg-[#18181B] p-5">
+          <h2 className="text-lg font-semibold text-foreground">编辑书籍信息</h2>
+          <div className="w-[480px] space-y-4 rounded-xl border border-border/50 bg-surface p-5">
             <div>
               <label className="mb-1.5 block text-xs text-muted">书名</label>
               <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
@@ -301,19 +301,19 @@ export function UploadPageClient() {
     if (file) {
       return (
         <div className="flex flex-col items-center gap-7">
-          <div className="flex w-[420px] items-center gap-3.5 rounded-xl border border-border/50 bg-[#18181B] px-5 py-4">
+          <div className="flex w-[420px] items-center gap-3.5 rounded-xl border border-border/50 bg-surface px-5 py-4">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-primary/10">
               <FileText className="h-[22px] w-[22px] text-primary" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium text-white">{file.name}</div>
-              <div className="mt-0.5 text-xs text-muted-foreground/50">
+              <div className="truncate text-sm font-medium text-foreground">{file.name}</div>
+              <div className="mt-0.5 text-xs text-muted">
                 {(file.size / 1024 / 1024).toFixed(2)} MB
               </div>
             </div>
             <button
               onClick={() => setFile(null)}
-              className="rounded-md p-1 text-muted-foreground/50 transition hover:bg-white/5 hover:text-muted-foreground"
+              className="rounded-md p-1 text-muted transition hover:bg-white/5 hover:text-secondary"
             >
               <X className="h-4 w-4" />
             </button>
@@ -354,7 +354,7 @@ export function UploadPageClient() {
 
         {/* 文案 */}
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-white">上传书籍</h2>
+          <h2 className="text-xl font-semibold text-foreground">上传书籍</h2>
           <p className="mt-2 text-sm text-muted">拖拽文件到此处，或点击选择</p>
         </div>
 
@@ -370,11 +370,11 @@ export function UploadPageClient() {
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
         >
-          <FileUp className="h-8 w-8 text-[#3F3F46]" />
-          <span className="text-[13px] font-medium tracking-wider text-muted-foreground/50">
+          <FileUp className="h-8 w-8 text-muted" />
+          <span className="text-[13px] font-medium tracking-wider text-muted">
             EPUB / PDF
           </span>
-          <span className="text-xs text-[#3F3F46]">文件大小不超过 200MB</span>
+          <span className="text-xs text-muted">文件大小不超过 200MB</span>
         </button>
 
         <Button onClick={() => inputRef.current?.click()}>
@@ -386,7 +386,7 @@ export function UploadPageClient() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
+    <div className="flex min-h-screen items-center justify-center bg-base">
       {toast ? (
         <Toast
           title={toast}

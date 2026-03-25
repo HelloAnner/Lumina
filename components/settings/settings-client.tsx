@@ -754,7 +754,7 @@ export function SettingsClient({
 
             <Card>
               {/* 表头 */}
-              <div className="grid items-center gap-4 border-b border-border/60 bg-[#F9F9F9] px-5 text-xs font-medium text-muted [grid-template-columns:220px_120px_1fr_80px_80px_140px] dark:bg-elevated/50" style={{ height: 44 }}>
+              <div className="grid items-center gap-4 border-b border-border/60 bg-elevated/50 px-5 text-xs font-medium text-muted [grid-template-columns:220px_120px_1fr_80px_80px_140px]" style={{ height: 44 }}>
                 <span>模型名称</span>
                 <span>提供商</span>
                 <span>接入地址</span>
@@ -787,14 +787,14 @@ export function SettingsClient({
                       {/* 接入地址 */}
                       <span className="truncate text-xs text-muted">{model.baseUrl || "—"}</span>
                       {/* 类型 */}
-                      <span className="inline-flex items-center rounded-[5px] bg-[#F3F4F6] px-2 py-0.5 text-xs text-secondary dark:bg-elevated">
+                      <span className="inline-flex items-center rounded-[5px] bg-elevated px-2 py-0.5 text-xs text-secondary">
                         {inferModelType(model)}
                       </span>
                       {/* 状态 */}
                       <div>
                         {result === "ok" ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-[5px] bg-[#F0FDF4] px-2 py-0.5 text-xs font-medium text-green-600 dark:bg-green-500/10 dark:text-green-500">
-                            <span className="h-1.5 w-1.5 rounded-full bg-green-600 dark:bg-green-500" />
+                          <span className="inline-flex items-center gap-1.5 rounded-[5px] bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-500">
+                            <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
                             已连接
                           </span>
                         ) : result === "error" ? (

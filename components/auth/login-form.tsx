@@ -72,7 +72,7 @@ export function LoginForm({
           placeholder="输入您的密码"
         />
       </div>
-      {error ? <div className="text-sm text-red-400">{error}</div> : null}
+      {error ? <div className="text-sm text-error">{error}</div> : null}
       <Button className="w-full mt-2" disabled={loading} type="submit">
         {loading ? "请稍候..." : type === "login" ? "登录" : "创建账号"}
       </Button>

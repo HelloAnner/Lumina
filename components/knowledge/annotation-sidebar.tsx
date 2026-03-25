@@ -275,10 +275,10 @@ export function AnnotationSidebar({
 function AnnotationCard({ annotation }: { annotation: Annotation }) {
   const statusConfig = {
     pending: {
-      bg: "bg-zinc-500/20",
-      text: "text-zinc-400",
+      bg: "bg-muted/20",
+      text: "text-secondary",
       label: "等待中",
-      dot: "bg-zinc-400"
+      dot: "bg-secondary"
     },
     processing: {
       bg: "bg-amber-500/20",

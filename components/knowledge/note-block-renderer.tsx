@@ -127,12 +127,12 @@ function QuoteBlockView({ block }: { block: Extract<NoteBlock, { type: "quote" }
 
 function HighlightBlockView({ block }: { block: Extract<NoteBlock, { type: "highlight" }> }) {
   return (
-    <div className="flex overflow-hidden rounded-lg border border-violet-500/20 bg-violet-500/5">
-      <div className="w-[3px] shrink-0 bg-violet-500" />
+    <div className="flex overflow-hidden rounded-lg border border-primary/20 bg-primary/5">
+      <div className="w-[3px] shrink-0 bg-primary" />
       <div className="flex flex-col gap-2 px-4 py-3">
         <div className="flex items-center gap-1.5">
-          <Highlighter className="h-3 w-3 text-violet-500" />
-          <span className="text-[11px] font-semibold tracking-wide text-violet-500">
+          <Highlighter className="h-3 w-3 text-primary" />
+          <span className="text-[11px] font-semibold tracking-wide text-primary">
             {block.label ?? "关键洞察"}
           </span>
         </div>
