@@ -8,7 +8,7 @@ const buttonVariants = {
     "bg-surface border border-border text-secondary shadow-sm hover:bg-elevated hover:text-foreground hover:border-secondary/50 active:scale-[0.98]",
   ghost: "bg-transparent text-secondary hover:bg-overlay/60 hover:text-foreground active:scale-[0.98]",
   destructive:
-    "bg-red-500/90 text-white shadow-sm hover:bg-red-500 hover:shadow-md active:scale-[0.98]"
+    "bg-error/90 text-white shadow-sm hover:bg-error hover:shadow-md active:scale-[0.98]"
 }
 
 const buttonSizes = {

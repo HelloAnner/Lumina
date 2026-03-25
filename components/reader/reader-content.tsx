@@ -169,7 +169,7 @@ export function ReaderContent({
                   ) : null}
                   <h2 className="mb-8 text-lg font-medium text-foreground">{section.title}</h2>
                   <div
-                    className="text-reader-text selection:bg-amber-300/40"
+                    className="text-reader-text selection:bg-[rgba(108,142,239,0.3)]"
                     style={{ fontSize, lineHeight, letterSpacing: `${letterSpacing}em` }}
                   >
                     {blocks.map((block) => renderBlock(block, sectionIndex))}
@@ -192,7 +192,7 @@ export function ReaderContent({
             {currentSection?.title ?? book.title}
           </h1>
           <div
-            className="text-reader-text selection:bg-amber-300/40"
+            className="text-reader-text selection:bg-[rgba(108,142,239,0.3)]"
             style={{ fontSize, lineHeight, letterSpacing: `${letterSpacing}em` }}
           >
             {currentSection.blocks?.length

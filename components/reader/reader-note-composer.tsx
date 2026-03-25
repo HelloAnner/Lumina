@@ -30,7 +30,7 @@ export function ReaderNoteComposer({
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/45">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-base/60 backdrop-blur-sm">
       <Card className="w-full max-w-xl space-y-4 p-6">
         <div className="text-lg font-medium">记录想法</div>
         <div className="rounded-xl bg-elevated px-4 py-3 text-sm leading-6 text-foreground">

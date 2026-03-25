@@ -25,11 +25,11 @@ export function Toast({
 
   const toneClass =
     tone === "warning"
-      ? "border-amber-500/40 bg-amber-500/15 shadow-lg"
+      ? "border-warning/30 bg-warning/10 shadow-lg"
       : tone === "error"
-        ? "border-red-500/40 bg-red-500/15 shadow-lg"
+        ? "border-error/30 bg-error/10 shadow-lg"
         : tone === "success"
-          ? "border-emerald-500/40 bg-emerald-500/15 shadow-lg"
+          ? "border-success/30 bg-success/10 shadow-lg"
           : "border-border bg-surface shadow-lg"
 
   return (

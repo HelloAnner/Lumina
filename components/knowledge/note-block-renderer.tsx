@@ -47,8 +47,8 @@ export function NoteBlockItem({
       onMouseUp={handleMouseUp}
     >
       {hasAnnotation && (
-        <div className="absolute -left-6 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500/20 border border-amber-500/40">
-          <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+        <div className="absolute -left-6 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-warning/20 border border-warning/40">
+          <div className="h-1.5 w-1.5 rounded-full bg-warning" />
         </div>
       )}
       {renderBlock(block)}
@@ -100,11 +100,11 @@ function ParagraphBlockView({ block }: { block: Extract<NoteBlock, { type: "para
 function QuoteBlockView({ block }: { block: Extract<NoteBlock, { type: "quote" }> }) {
   return (
     <div className="flex overflow-hidden rounded-lg border border-border/40 bg-surface">
-      <div className="w-[3px] shrink-0 bg-blue-500" />
+      <div className="w-[3px] shrink-0 bg-accent-blue" />
       <div className="flex flex-col gap-2 px-4 py-3">
         <div className="flex items-center gap-1.5">
-          <Quote className="h-3 w-3 text-blue-500" />
-          <span className="text-[11px] font-semibold tracking-wide text-blue-500">
+          <Quote className="h-3 w-3 text-accent-blue" />
+          <span className="text-[11px] font-semibold tracking-wide text-accent-blue">
             原文引用
           </span>
         </div>
@@ -155,12 +155,12 @@ function HighlightBlockView({ block }: { block: Extract<NoteBlock, { type: "high
 
 function InsightBlockView({ block }: { block: Extract<NoteBlock, { type: "insight" }> }) {
   return (
-    <div className="flex overflow-hidden rounded-lg border border-emerald-500/20 bg-emerald-500/5">
-      <div className="w-[3px] shrink-0 bg-emerald-500" />
+    <div className="flex overflow-hidden rounded-lg border border-success/20 bg-success/5">
+      <div className="w-[3px] shrink-0 bg-success" />
       <div className="flex flex-col gap-1.5 px-4 py-3">
         <div className="flex items-center gap-1.5">
-          <Lightbulb className="h-3 w-3 text-emerald-500" />
-          <span className="text-[11px] font-semibold tracking-wide text-emerald-500">
+          <Lightbulb className="h-3 w-3 text-success" />
+          <span className="text-[11px] font-semibold tracking-wide text-success">
             {block.label ?? "AI 补充说明"}
           </span>
         </div>

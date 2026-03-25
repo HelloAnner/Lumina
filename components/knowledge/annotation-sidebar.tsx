@@ -144,7 +144,7 @@ export function AnnotationSidebar({
         </span>
         <div className="flex items-center gap-2">
           {pendingCount > 0 && (
-            <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-500">
+            <span className="rounded-full bg-warning/20 px-2 py-0.5 text-[10px] font-medium text-warning">
               {pendingCount} 待处理
             </span>
           )}
@@ -281,22 +281,22 @@ function AnnotationCard({ annotation }: { annotation: Annotation }) {
       dot: "bg-secondary"
     },
     processing: {
-      bg: "bg-amber-500/20",
-      text: "text-amber-500",
+      bg: "bg-warning/20",
+      text: "text-warning",
       label: "处理中",
-      dot: "bg-amber-500"
+      dot: "bg-warning"
     },
     done: {
-      bg: "bg-emerald-500/20",
-      text: "text-emerald-500",
+      bg: "bg-success/20",
+      text: "text-success",
       label: "已完成",
-      dot: "bg-emerald-500"
+      dot: "bg-success"
     },
     failed: {
-      bg: "bg-red-500/20",
-      text: "text-red-400",
+      bg: "bg-error/20",
+      text: "text-error",
       label: "失败",
-      dot: "bg-red-400"
+      dot: "bg-error"
     }
   }
 
@@ -311,9 +311,9 @@ function AnnotationCard({ annotation }: { annotation: Annotation }) {
         isDone
           ? "border-border/20 bg-surface opacity-60"
           : annotation.status === "failed"
-            ? "border-red-500/20 bg-elevated/30"
+            ? "border-error/20 bg-elevated/30"
             : annotation.status === "processing"
-              ? "border-amber-500/30 bg-elevated/40"
+              ? "border-warning/30 bg-elevated/40"
               : "border-border/30 bg-elevated/30"
       )}
     >
@@ -349,7 +349,7 @@ function AnnotationCard({ annotation }: { annotation: Annotation }) {
 
       {/* 错误信息 */}
       {annotation.errorMessage && (
-        <p className="mt-1.5 text-[11px] text-red-400/80">
+        <p className="mt-1.5 text-[11px] text-error/80">
           {annotation.errorMessage}
         </p>
       )}

@@ -143,8 +143,8 @@ export function UploadPageClient() {
     if (result && !isEditing) {
       return (
         <div className="flex flex-col items-center gap-6">
-          <div className="flex h-[52px] w-[52px] items-center justify-center rounded-full bg-emerald-500/10">
-            <Check className="h-6 w-6 text-emerald-500" />
+          <div className="flex h-[52px] w-[52px] items-center justify-center rounded-full bg-success/10">
+            <Check className="h-6 w-6 text-success" />
           </div>
           <h2 className="text-lg font-semibold text-foreground">导入成功</h2>
 
@@ -205,7 +205,7 @@ export function UploadPageClient() {
             <div className="flex justify-end gap-2.5 px-5 py-3">
               <button
                 onClick={() => setIsEditing(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 px-4 py-2 text-[13px] text-secondary transition hover:bg-white/5"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 px-4 py-2 text-[13px] text-secondary transition hover:bg-elevated"
               >
                 <Pencil className="h-3.5 w-3.5" />
                 编辑
@@ -244,7 +244,7 @@ export function UploadPageClient() {
                     className={`rounded-lg px-4 py-2 text-sm transition-all ${
                       editFormat === f
                         ? "bg-primary text-white"
-                        : "bg-white/5 text-secondary hover:text-foreground"
+                        : "bg-elevated text-secondary hover:text-foreground"
                     }`}
                   >
                     {f}
@@ -277,7 +277,7 @@ export function UploadPageClient() {
                       {tag}
                       <button
                         onClick={() => handleRemoveTag(tag)}
-                        className="ml-1 rounded-full p-0.5 hover:bg-white/10"
+                        className="ml-1 rounded-full p-0.5 hover:bg-overlay"
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -313,7 +313,7 @@ export function UploadPageClient() {
             </div>
             <button
               onClick={() => setFile(null)}
-              className="rounded-md p-1 text-muted transition hover:bg-white/5 hover:text-secondary"
+              className="rounded-md p-1 text-muted transition hover:bg-elevated hover:text-secondary"
             >
               <X className="h-4 w-4" />
             </button>
@@ -335,7 +335,7 @@ export function UploadPageClient() {
             </Button>
             <button
               onClick={() => inputRef.current?.click()}
-              className="rounded-lg border border-border/50 px-5 py-2.5 text-sm text-muted transition hover:bg-white/5 hover:text-foreground"
+              className="rounded-lg border border-border/50 px-5 py-2.5 text-sm text-muted transition hover:bg-elevated hover:text-foreground"
             >
               重新选择
             </button>
@@ -363,7 +363,7 @@ export function UploadPageClient() {
           className={`flex h-[200px] w-[420px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed transition ${
             dragOver
               ? "border-primary/50 bg-primary/5"
-              : "border-border/50 hover:border-border hover:bg-white/[0.02]"
+              : "border-border/50 hover:border-border hover:bg-surface/50"
           }`}
           onClick={() => inputRef.current?.click()}
           onDrop={handleDrop}

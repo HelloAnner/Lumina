@@ -25,7 +25,7 @@ export function ReaderSelectionToolbar({
   return (
     <div
       data-reader-selection-toolbar
-      className="absolute z-30 flex items-center gap-2 rounded-full border border-white/10 bg-black/80 px-3 py-2 shadow-panel"
+      className="absolute z-30 flex items-center gap-2 rounded-full border border-border/40 bg-surface/95 px-3 py-2 shadow-panel backdrop-blur-sm"
       style={{ top: selectionRect.top, left: selectionRect.left }}
     >
       <button

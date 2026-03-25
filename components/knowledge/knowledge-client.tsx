@@ -473,7 +473,7 @@ export function KnowledgeClient({
             </span>
           )}
           <span
-            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
+            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted opacity-0 transition-opacity hover:text-error group-hover:opacity-100"
             onClick={(e) => {
               e.stopPropagation()
               void deleteViewpoint(node.id)
@@ -620,7 +620,7 @@ export function KnowledgeClient({
             <div className="flex items-center gap-2">
               {pendingAnnoCount > 0 && (
                 <>
-                  <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                  <div className="h-1.5 w-1.5 rounded-full bg-warning" />
                   <span className="text-[11px] text-secondary">
                     {pendingAnnoCount} 条批注排队中
                   </span>

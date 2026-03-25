@@ -390,14 +390,14 @@ function ModelDialog({
 
           {/* 内联测试结果 */}
           {testState.status === "success" && (
-            <span className="flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            <span className="flex items-center gap-1.5 rounded-md bg-success/10 px-2.5 py-1 text-xs font-medium text-success">
+              <span className="h-1.5 w-1.5 rounded-full bg-success" />
               连接成功&nbsp;&nbsp;·&nbsp;&nbsp;{testState.latency}ms
             </span>
           )}
           {testState.status === "error" && (
-            <span className="flex max-w-[200px] items-center gap-1.5 rounded-md bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-600">
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+            <span className="flex max-w-[200px] items-center gap-1.5 rounded-md bg-error/10 px-2.5 py-1 text-xs font-medium text-error">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-error" />
               <span className="truncate">{testState.message}</span>
             </span>
           )}
@@ -794,13 +794,13 @@ export function SettingsClient({
                       {/* 状态 */}
                       <div>
                         {result === "ok" ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-[5px] bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-500">
-                            <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                          <span className="inline-flex items-center gap-1.5 rounded-[5px] bg-success/10 px-2 py-0.5 text-xs font-medium text-success">
+                            <span className="h-1.5 w-1.5 rounded-full bg-success" />
                             已连接
                           </span>
                         ) : result === "error" ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-[5px] bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-500">
-                            <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                          <span className="inline-flex items-center gap-1.5 rounded-[5px] bg-error/10 px-2 py-0.5 text-xs font-medium text-error">
+                            <span className="h-1.5 w-1.5 rounded-full bg-error" />
                             离线
                           </span>
                         ) : result === "testing" ? (

@@ -350,28 +350,28 @@ export function PublishClient({
       case "SUCCESS":
         return {
           icon: CheckCircle2,
-          color: "text-emerald-400",
-          bgColor: "bg-emerald-500/10",
-          borderColor: "border-emerald-500/20",
-          glowColor: "shadow-emerald-500/20",
+          color: "text-success",
+          bgColor: "bg-success/10",
+          borderColor: "border-success/20",
+          glowColor: "shadow-success/20",
           label: "成功"
         }
       case "FAILED":
         return {
           icon: XCircle,
-          color: "text-red-400",
-          bgColor: "bg-red-500/10",
-          borderColor: "border-red-500/20",
-          glowColor: "shadow-red-500/20",
+          color: "text-error",
+          bgColor: "bg-error/10",
+          borderColor: "border-error/20",
+          glowColor: "shadow-error/20",
           label: "失败"
         }
       case "RUNNING":
         return {
           icon: RefreshCw,
-          color: "text-amber-400",
-          bgColor: "bg-amber-500/10",
-          borderColor: "border-amber-500/20",
-          glowColor: "shadow-amber-500/20",
+          color: "text-warning",
+          bgColor: "bg-warning/10",
+          borderColor: "border-warning/20",
+          glowColor: "shadow-warning/20",
           label: "运行中"
         }
       default:
@@ -390,8 +390,8 @@ export function PublishClient({
   function getTriggerBadge(triggerType: TriggerType) {
     const config = {
       manual: { icon: Zap, color: "text-accent-purple", bg: "bg-accent-purple/10", border: "border-accent-purple/20" },
-      cron: { icon: Calendar, color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20" },
-      on_change: { icon: RefreshCw, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20" }
+      cron: { icon: Calendar, color: "text-accent-blue", bg: "bg-accent-blue/10", border: "border-accent-blue/20" },
+      on_change: { icon: RefreshCw, color: "text-warning", bg: "bg-warning/10", border: "border-warning/20" }
     }
     const { icon: Icon, color, bg, border } = config[triggerType]
     const labels: Record<TriggerType, string> = { manual: "手动", cron: "定时", on_change: "变更" }
@@ -438,16 +438,16 @@ export function PublishClient({
               "flex items-center gap-3 rounded-xl border px-4 py-3 shadow-2xl backdrop-blur-sm",
               "transform transition-all duration-300 ease-out",
               "animate-in slide-in-from-right-2 fade-in",
-              toast.type === "success" && "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
-              toast.type === "error" && "border-red-500/20 bg-red-500/10 text-red-400",
+              toast.type === "success" && "border-success/20 bg-success/10 text-success",
+              toast.type === "error" && "border-error/20 bg-error/10 text-error",
               toast.type === "info" && "border-primary/20 bg-primary/10 text-primary"
             )}
             style={{ animationDelay: `${index * 50}ms` }}
           >
             <div className={cn(
               "flex h-6 w-6 items-center justify-center rounded-full",
-              toast.type === "success" && "bg-emerald-500/20",
-              toast.type === "error" && "bg-red-500/20",
+              toast.type === "success" && "bg-success/20",
+              toast.type === "error" && "bg-error/20",
               toast.type === "info" && "bg-primary/20"
             )}>
               {toast.type === "success" && <Check className="h-3.5 w-3.5" />}
@@ -474,13 +474,13 @@ export function PublishClient({
       {/* 左侧边栏 */}
       <aside
         className={cn(
-          "flex shrink-0 flex-col border-r border-white/[0.06] bg-surface/80 backdrop-blur-xl",
+          "flex shrink-0 flex-col border-r border-border/40 bg-surface/80 backdrop-blur-xl",
           "transition-all duration-300 ease-out",
           isSidebarCollapsed ? "w-16" : "w-[340px]"
         )}
       >
         {/* 头部标签页 */}
-        <div className="flex h-14 items-center border-b border-white/[0.06] px-3">
+        <div className="flex h-14 items-center border-b border-border/40 px-3">
           <div className="flex w-full rounded-lg bg-elevated/60 p-1">
             <button
               className={cn(
@@ -523,7 +523,7 @@ export function PublishClient({
         {activeTab === "tasks" && !isSidebarCollapsed && (
           <div className="flex flex-1 flex-col overflow-hidden">
             {/* 创建任务表单 */}
-            <div className="border-b border-white/[0.06] p-3">
+            <div className="border-b border-border/40 p-3">
               <div className="space-y-2">
                 <Input
                   placeholder="新任务名称..."
@@ -541,7 +541,7 @@ export function PublishClient({
                         "flex h-8 w-full items-center justify-between rounded-lg border px-2.5 text-xs transition-all",
                         showViewpointDropdown
                           ? "border-primary/40 bg-primary/5 ring-1 ring-primary/20"
-                          : "border-white/[0.08] bg-elevated/50 hover:border-white/[0.12]"
+                          : "border-border/50 bg-elevated/50 hover:border-border/60"
                       )}
                       onClick={() => setShowViewpointDropdown(!showViewpointDropdown)}
                     >
@@ -555,7 +555,7 @@ export function PublishClient({
                     </button>
 
                     {showViewpointDropdown && (
-                      <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-y-auto rounded-lg border border-white/[0.08] bg-surface/95 p-1 shadow-2xl backdrop-blur-xl">
+                      <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-y-auto rounded-lg border border-border/50 bg-surface/95 p-1 shadow-2xl backdrop-blur-xl">
                         {viewpoints.map((vp) => (
                           <button
                             key={vp.id}
@@ -571,7 +571,7 @@ export function PublishClient({
                               "flex h-3.5 w-3.5 items-center justify-center rounded border transition-colors",
                               selectedViewpointIds.includes(vp.id)
                                 ? "border-primary bg-primary"
-                                : "border-white/20"
+                                : "border-border/60"
                             )}>
                               {selectedViewpointIds.includes(vp.id) && <Check className="h-2.5 w-2.5 text-white" />}
                             </div>
@@ -585,7 +585,7 @@ export function PublishClient({
 
                 <div className="flex gap-2">
                   <select
-                    className="h-8 flex-1 rounded-lg border border-white/[0.08] bg-elevated/50 px-2.5 text-xs text-secondary outline-none transition-all hover:border-white/[0.12] focus:border-primary/40 focus:ring-1 focus:ring-primary/20"
+                    className="h-8 flex-1 rounded-lg border border-border/50 bg-elevated/50 px-2.5 text-xs text-secondary outline-none transition-all hover:border-border/60 focus:border-primary/40 focus:ring-1 focus:ring-primary/20"
                     value={selectedFormat}
                     onChange={(e) => setSelectedFormat(e.target.value as PublishFormat)}
                   >
@@ -594,7 +594,7 @@ export function PublishClient({
                     <option value="pdf">PDF</option>
                   </select>
                   <select
-                    className="h-8 flex-1 rounded-lg border border-white/[0.08] bg-elevated/50 px-2.5 text-xs text-secondary outline-none transition-all hover:border-white/[0.12] focus:border-primary/40 focus:ring-1 focus:ring-primary/20"
+                    className="h-8 flex-1 rounded-lg border border-border/50 bg-elevated/50 px-2.5 text-xs text-secondary outline-none transition-all hover:border-border/60 focus:border-primary/40 focus:ring-1 focus:ring-primary/20"
                     value={selectedTrigger}
                     onChange={(e) => setSelectedTrigger(e.target.value as TriggerType)}
                   >
@@ -623,7 +623,7 @@ export function PublishClient({
             <div className="flex-1 overflow-y-auto p-2">
               <div className="space-y-1">
                 {tasks.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-white/[0.08] py-10">
+                  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/50 py-10">
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-elevated/50">
                       <Layers className="h-5 w-5 text-muted/50" />
                     </div>
@@ -638,7 +638,7 @@ export function PublishClient({
                         "group relative rounded-xl border p-2.5 transition-all duration-200",
                         activeTask?.id === task.id
                           ? "border-primary/30 bg-primary/[0.04] shadow-sm shadow-primary/5"
-                          : "border-transparent bg-elevated/30 hover:border-white/[0.08] hover:bg-elevated/50"
+                          : "border-transparent bg-elevated/30 hover:border-border/50 hover:bg-elevated/50"
                       )}
                     >
                       <button
@@ -649,7 +649,7 @@ export function PublishClient({
                           <span className="truncate text-sm font-medium">{task.name}</span>
                           <div className={cn(
                             "h-1.5 w-1.5 shrink-0 rounded-full",
-                            task.enabled ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]" : "bg-muted/50"
+                            task.enabled ? "bg-success shadow-[0_0_6px_rgba(107,200,155,0.4)]" : "bg-muted/50"
                           )} />
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -671,7 +671,7 @@ export function PublishClient({
                           <Edit3 className="h-3 w-3" />
                         </button>
                         <button
-                          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-all hover:bg-red-500/10 hover:text-red-400"
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-all hover:bg-error/10 hover:text-error"
                           onClick={(e) => { e.stopPropagation(); void deleteTask(task.id) }}
                           disabled={deletingId === task.id}
                         >
@@ -694,7 +694,7 @@ export function PublishClient({
         {activeTab === "targets" && !isSidebarCollapsed && (
           <div className="flex flex-1 flex-col overflow-hidden">
             {/* 创建目标表单 */}
-            <div className="border-b border-white/[0.06] p-3">
+            <div className="border-b border-border/40 p-3">
               <div className="space-y-2">
                 <Input
                   placeholder="目标名称..."
@@ -729,7 +729,7 @@ export function PublishClient({
             <div className="flex-1 overflow-y-auto p-2">
               <div className="space-y-1">
                 {targets.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-white/[0.08] py-10">
+                  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/50 py-10">
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-elevated/50">
                       <Target className="h-5 w-5 text-muted/50" />
                     </div>
@@ -742,7 +742,7 @@ export function PublishClient({
                     return (
                       <div
                         key={target.id}
-                        className="group relative rounded-xl border border-transparent bg-elevated/30 p-2.5 transition-all duration-200 hover:border-white/[0.08] hover:bg-elevated/50"
+                        className="group relative rounded-xl border border-transparent bg-elevated/30 p-2.5 transition-all duration-200 hover:border-border/50 hover:bg-elevated/50"
                       >
                         <div className="flex items-start gap-2.5">
                           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary/20 to-primary/5">
@@ -763,7 +763,7 @@ export function PublishClient({
                             <Edit3 className="h-3 w-3" />
                           </button>
                           <button
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-all hover:bg-red-500/10 hover:text-red-400"
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-all hover:bg-error/10 hover:text-error"
                             onClick={() => void deleteTarget(target.id)}
                             disabled={deletingId === target.id}
                           >
@@ -784,7 +784,7 @@ export function PublishClient({
         )}
 
         {/* 折叠按钮 */}
-        <div className="border-t border-white/[0.06] p-2">
+        <div className="border-t border-border/40 p-2">
           <button
             className="flex h-8 w-full items-center justify-center rounded-lg text-muted transition-all hover:bg-elevated hover:text-secondary"
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -799,18 +799,18 @@ export function PublishClient({
         {activeTask ? (
           <>
             {/* 任务详情头部 */}
-            <div className="border-b border-white/[0.06] bg-surface/30 px-8 py-6 backdrop-blur-sm">
+            <div className="border-b border-border/40 bg-surface/30 px-8 py-6 backdrop-blur-sm">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-3">
                     <h1 className="text-lg font-semibold tracking-tight">{activeTask.name}</h1>
                     {activeTask.enabled ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400">
-                        <span className="h-1 w-1 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]" />
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-success/20 bg-success/10 px-2.5 py-0.5 text-[11px] font-medium text-success">
+                        <span className="h-1 w-1 rounded-full bg-success shadow-[0_0_6px_rgba(107,200,155,0.4)]" />
                         已启用
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-elevated/50 px-2.5 py-0.5 text-[11px] font-medium text-muted">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-elevated/50 px-2.5 py-0.5 text-[11px] font-medium text-muted">
                         <span className="h-1 w-1 rounded-full bg-muted/50" />
                         已禁用
                       </span>
@@ -846,8 +846,8 @@ export function PublishClient({
 
             {/* 发布历史 */}
             <div className="flex-1 overflow-y-auto px-8 py-6">
-              <Card className="overflow-hidden border-white/[0.06] bg-surface/30 backdrop-blur-sm">
-                <CardHeader className="flex flex-row items-center justify-between border-b border-white/[0.06] bg-surface/50 px-5 py-3.5">
+              <Card className="overflow-hidden border-border/40 bg-surface/30 backdrop-blur-sm">
+                <CardHeader className="flex flex-row items-center justify-between border-b border-border/40 bg-surface/50 px-5 py-3.5">
                   <div className="flex items-center gap-2.5">
                     <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-elevated/50">
                       <Clock className="h-3.5 w-3.5 text-muted" />
@@ -860,7 +860,7 @@ export function PublishClient({
                   <div className="flex items-center gap-2">
                     <Filter className="h-3.5 w-3.5 text-muted" />
                     <select
-                      className="h-8 rounded-lg border border-white/[0.08] bg-elevated/50 px-2.5 text-xs text-secondary outline-none transition-all hover:border-white/[0.12] focus:border-primary/40"
+                      className="h-8 rounded-lg border border-border/50 bg-elevated/50 px-2.5 text-xs text-secondary outline-none transition-all hover:border-border/60 focus:border-primary/40"
                       value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
                     >
@@ -881,7 +881,7 @@ export function PublishClient({
                       <p className="mt-1 text-xs text-muted/60">点击「立即发布」来触发第一次发布</p>
                     </div>
                   ) : (
-                    <div className="divide-y divide-white/[0.04]">
+                    <div className="divide-y divide-border/30">
                       {records.map((record, index) => {
                         const config = getStatusConfig(record.status)
                         const StatusIcon = config.icon
@@ -890,8 +890,8 @@ export function PublishClient({
                             key={record.id}
                             className={cn(
                               "group flex items-center gap-4 px-5 py-4 transition-all duration-200",
-                              "hover:bg-white/[0.02]",
-                              record.status === "RUNNING" && "bg-amber-500/[0.02]"
+                              "hover:bg-surface/50",
+                              record.status === "RUNNING" && "bg-warning/[0.02]"
                             )}
                             style={{ animationDelay: `${index * 30}ms` }}
                           >
@@ -913,7 +913,7 @@ export function PublishClient({
                                 </span>
                               </div>
                               {record.errorMsg && (
-                                <p className="mt-1 text-xs text-red-400/90">{record.errorMsg}</p>
+                                <p className="mt-1 text-xs text-error/90">{record.errorMsg}</p>
                               )}
                               <div className="mt-1.5 flex items-center gap-3 text-[11px] text-muted/60">
                                 <span>触发: <span className="text-muted">{record.triggeredBy}</span></span>
@@ -954,10 +954,10 @@ export function PublishClient({
       {/* 编辑任务弹窗 */}
       {editingTask && (
         <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-40 flex items-center justify-center bg-base/60 backdrop-blur-sm"
           onClick={(e) => { if (e.target === e.currentTarget) setEditingTask(null) }}
         >
-          <div className="w-full max-w-sm scale-100 rounded-2xl border border-white/[0.08] bg-surface p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="w-full max-w-sm scale-100 rounded-2xl border border-border/50 bg-surface p-6 shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
@@ -981,10 +981,10 @@ export function PublishClient({
                   className="h-9"
                 />
               </div>
-              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-white/[0.06] bg-elevated/30 p-3 transition-all hover:bg-elevated/50">
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border/40 bg-elevated/30 p-3 transition-all hover:bg-elevated/50">
                 <div className={cn(
                   "flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors",
-                  editingTask.enabled ? "bg-emerald-500/80" : "bg-muted/30"
+                  editingTask.enabled ? "bg-success/80" : "bg-muted/30"
                 )}>
                   <div className={cn(
                     "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
@@ -1022,10 +1022,10 @@ export function PublishClient({
       {/* 编辑目标弹窗 */}
       {editingTarget && (
         <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-40 flex items-center justify-center bg-base/60 backdrop-blur-sm"
           onClick={(e) => { if (e.target === e.currentTarget) setEditingTarget(null) }}
         >
-          <div className="w-full max-w-sm scale-100 rounded-2xl border border-white/[0.08] bg-surface p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="w-full max-w-sm scale-100 rounded-2xl border border-border/50 bg-surface p-6 shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">

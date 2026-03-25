@@ -387,7 +387,7 @@ function EditBookDialog({
               {tags.map((t) => (
                 <Badge key={t} className="flex items-center gap-1 pr-1">
                   {t}
-                  <button onClick={() => handleRemoveTag(t)} className="ml-1 rounded-full p-0.5 hover:bg-white/10">
+                  <button onClick={() => handleRemoveTag(t)} className="ml-1 rounded-full p-0.5 hover:bg-overlay">
                     <X className="h-3 w-3" />
                   </button>
                 </Badge>
@@ -590,13 +590,13 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
               <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                 <button
                   onClick={() => { setEditingBook(book); setIsEditOpen(true) }}
-                  className="rounded-md bg-black/60 p-1.5 text-secondary backdrop-blur-sm hover:text-foreground"
+                  className="rounded-md bg-surface/80 p-1.5 text-secondary backdrop-blur-sm hover:text-foreground"
                 >
                   <Edit3 className="h-3 w-3" />
                 </button>
                 <button
                   onClick={() => removeBook(book.id)}
-                  className="rounded-md bg-black/60 p-1.5 text-secondary backdrop-blur-sm hover:text-red-400"
+                  className="rounded-md bg-surface/80 p-1.5 text-secondary backdrop-blur-sm hover:text-error"
                 >
                   <Trash2 className="h-3 w-3" />
                 </button>

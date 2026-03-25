@@ -181,9 +181,9 @@ export function EpubReaderClient(props: ReaderClientProps) {
           {/* 翻译失败中间提示 */}
           {reader.translationError ? (
             <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/20 backdrop-blur-[2px]">
-              <div className="mx-4 flex max-w-sm flex-col items-center gap-3 rounded-xl border border-red-500/30 bg-surface p-6 shadow-xl">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10">
-                  <AlertTriangle className="h-5 w-5 text-red-500" />
+              <div className="mx-4 flex max-w-sm flex-col items-center gap-3 rounded-xl border border-error/30 bg-surface p-6 shadow-xl">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-error/10">
+                  <AlertTriangle className="h-5 w-5 text-error" />
                 </div>
                 <p className="text-center text-sm font-medium text-foreground">翻译失败</p>
                 <p className="text-center text-xs leading-5 text-secondary">{reader.translationError}</p>
