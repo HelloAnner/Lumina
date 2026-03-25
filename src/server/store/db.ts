@@ -18,9 +18,23 @@ function ensureDbFile() {
   }
 }
 
+/** 读取数据库，自动补齐缺失的数组字段（兼容旧版数据） */
 export function readDatabase(): Database {
   ensureDbFile()
-  return JSON.parse(readFileSync(DB_PATH, "utf-8")) as Database
+  const raw = JSON.parse(readFileSync(DB_PATH, "utf-8"))
+  return {
+    scoutArticles: [],
+    articleTopics: [],
+    scoutChannels: [],
+    scoutCredentials: [],
+    scoutSources: [],
+    scoutTasks: [],
+    scoutEntries: [],
+    scoutPatches: [],
+    scoutJobs: [],
+    scoutConfigs: [],
+    ...raw
+  } as Database
 }
 
 export function writeDatabase(database: Database) {

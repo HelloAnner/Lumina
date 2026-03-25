@@ -372,6 +372,25 @@ export function buildSeedDatabase(): Database {
         systemPrompt: "你是一个专业的知识笔记编辑助手。用户会对笔记中的某段文字或整篇笔记提出修改意见（批注），你需要根据批注内容重新编辑笔记的对应部分。\n\n规则：\n1. 保持笔记的整体结构和风格不变\n2. 仅修改批注指向的内容\n3. 如果批注要求补充内容，在合适的位置插入新的块\n4. 输出完整的 articleBlocks JSON 数组",
         autoProcess: true
       } satisfies AnnotationConfig
+    ],
+    // Scout 模块
+    scoutArticles: [],
+    articleTopics: [],
+    scoutChannels: [],
+    scoutCredentials: [],
+    scoutSources: [],
+    scoutTasks: [],
+    scoutEntries: [],
+    scoutPatches: [],
+    scoutJobs: [],
+    scoutConfigs: [
+      {
+        userId,
+        enabled: false,
+        defaultRelevanceThreshold: 0.6,
+        dailyPatchLimit: 50,
+        entryRetentionDays: 30
+      }
     ]
   }
 }

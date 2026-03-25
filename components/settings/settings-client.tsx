@@ -23,6 +23,7 @@ import {
   Pencil,
   PenLine,
   Plus,
+  Radar,
   RefreshCw,
   Settings2,
   Sparkles,
@@ -93,7 +94,9 @@ const sceneFeatures: SceneFeature[] = [
   { key: "aggregation_analyze", label: "摘要提取", desc: "自动提炼内容核心摘要", icon: FileText, category: "language" },
   { key: "annotation_rewrite", label: "批注编辑", desc: "根据批注指令智能修改笔记内容", icon: Pencil, category: "language" },
   { key: "voice_read", label: "语音朗读", desc: "将文本转换为语音播放", icon: Volume2, category: "speech" },
-  { key: "embedding_index", label: "索引构建", desc: "向量索引，用于划线智能匹配主题", icon: Sparkles, category: "embedding" }
+  { key: "embedding_index", label: "索引构建", desc: "向量索引，用于划线智能匹配主题", icon: Sparkles, category: "embedding" },
+  { key: "scout_analyze", label: "搜寻分析", desc: "分析抓取内容与知识库的相关性", icon: Radar, category: "language" },
+  { key: "scout_expand", label: "搜寻展开", desc: "基于追问展开 Patch 内容", icon: Radar, category: "language" }
 ]
 
 const fontSizeOptions = [14, 16, 18, 20, 22] as const
@@ -1336,7 +1339,7 @@ function EmbeddingForm({ initial, saving, testing, onSave, onTest }: EmbeddingFo
         <label className="mb-1.5 block text-xs font-medium text-muted">
           API Key
           {initial && (
-            <span className="ml-2 font-normal text-muted/60">（留空保留现有密钥）</span>
+            <span className="ml-2 font-normal text-muted">（留空保留现有密钥）</span>
           )}
         </label>
         <Input

@@ -11,6 +11,16 @@ export type ModelFeature =
   | "embedding_index"
   | "section_translate"
   | "annotation_rewrite"
+  | "scout_analyze"
+  | "scout_expand"
+
+// ─── Scout 类型 ───
+export type ScoutChannelProtocol = "rss" | "x_api" | "webpage" | "newsletter"
+export type ScoutChannelOrigin = "builtin" | "user"
+export type ScoutSourceStatus = "active" | "paused" | "error"
+export type ScoutTaskStatus = "active" | "paused"
+export type ScoutPatchStatus = "pending" | "approved" | "merged" | "rejected" | "expanding"
+export type ScoutEntryStatus = "raw" | "analyzing" | "matched" | "discarded"
 export type PublishFormat = "markdown" | "html" | "pdf"
 export type AnnotationStatus = "pending" | "processing" | "done" | "failed"
 
@@ -36,6 +46,14 @@ export interface NoteBlockBase {
   type: NoteBlockType
   /** 块排序序号 */
   sortOrder: number
+  /** Scout 来源引用 */
+  sourceRef?: {
+    type: "scout"
+    patchId: string
+    sourceUrl: string
+    author?: string
+    fetchedAt: string
+  }
 }
 
 /** 标题块 */
@@ -228,6 +246,10 @@ export interface Highlight {
   userId: string
   bookId: string
   format: BookFormat
+  /** 来源类型：书籍或文章 */
+  sourceType?: "book" | "article"
+  /** 关联的文章 ID（sourceType=article 时有效） */
+  articleId?: string
   contentMode: TranslationDisplayMode
   targetLanguage?: string
   counterpartContent?: string
@@ -388,6 +410,222 @@ export interface AggregateJob {
   updatedAt: string
 }
 
+// ─── Scout 数据模型 ───
+
+/** 文章内容段落 */
+export interface ArticleSection {
+  id: string
+  type: "heading" | "paragraph" | "image" | "code" | "blockquote" | "list"
+  level?: 1 | 2 | 3
+  text?: string
+  src?: string
+  alt?: string
+  language?: string
+  items?: string[]
+}
+
+/** 互联网文章 */
+export interface ScoutArticle {
+  id: string
+  userId: string
+  entryId: string
+  sourceId: string
+  title: string
+  author?: string
+  sourceUrl: string
+  channelName: string
+  channelIcon: string
+  publishedAt?: string
+  topics: string[]
+  summary: string
+  content: ArticleSection[]
+  readProgress: number
+  lastReadPosition?: string
+  lastReadAt?: string
+  highlightCount: number
+  language?: string
+  status: "ready" | "processing" | "failed"
+  createdAt: string
+}
+
+/** 文章主题分类 */
+export interface ArticleTopic {
+  id: string
+  userId: string
+  name: string
+  description?: string
+  articleCount: number
+  sortOrder: number
+  createdAt: string
+}
+
+/** 渠道参数定义 */
+export interface ScoutChannelParam {
+  name: string
+  label: string
+  placeholder: string
+  required: boolean
+  inputType: "text" | "select"
+  options?: { label: string; value: string }[]
+}
+
+/** 渠道模板 */
+export interface ScoutChannel {
+  id: string
+  userId?: string
+  name: string
+  description: string
+  icon: string
+  protocol: ScoutChannelProtocol
+  origin: ScoutChannelOrigin
+  tags: string[]
+  endpointTemplate: string
+  params: ScoutChannelParam[]
+  defaultFetchCron: string
+  requiresCredential: boolean
+  credentialType?: string
+  createdAt: string
+}
+
+/** 用户凭证 */
+export interface ScoutCredential {
+  id: string
+  userId: string
+  type: string
+  name: string
+  credentials: Record<string, string>
+  verified: boolean
+  lastVerifiedAt?: string
+  createdAt: string
+}
+
+/** 信息源 */
+export interface ScoutSource {
+  id: string
+  userId: string
+  name: string
+  channelId: string
+  protocol: ScoutChannelProtocol
+  endpoint: string
+  paramValues: Record<string, string>
+  status: ScoutSourceStatus
+  includeKeywords: string[]
+  excludeKeywords: string[]
+  language?: string
+  lastFetchedAt?: string
+  lastError?: string
+  totalFetched: number
+  totalPatches: number
+  createdAt: string
+}
+
+/** 搜寻任务 */
+export interface ScoutTask {
+  id: string
+  userId: string
+  name: string
+  description?: string
+  status: ScoutTaskStatus
+  sourceIds: string[]
+  scheduleCron?: string
+  scopeViewpointIds: string[]
+  relevanceThreshold: number
+  maxPatchesPerRun: number
+  lastRunAt?: string
+  nextRunAt?: string
+  totalRuns: number
+  createdAt: string
+  updatedAt: string
+}
+
+/** 抓取条目 */
+export interface ScoutEntry {
+  id: string
+  userId: string
+  sourceId: string
+  taskId: string
+  sourceUrl: string
+  normalizedUrl: string
+  contentHash: string
+  status: ScoutEntryStatus
+  title?: string
+  content: string
+  summary?: string
+  author?: string
+  publishedAt?: string
+  extractedTags?: string[]
+  matchedViewpoints?: { viewpointId: string; relevanceScore: number }[]
+  articleId?: string
+  fetchedAt: string
+  analyzedAt?: string
+}
+
+/** 追问消息 */
+export interface PatchThreadMessage {
+  id: string
+  role: "user" | "assistant"
+  content: string
+  updatedBlocks?: NoteBlock[]
+  createdAt: string
+}
+
+/** 知识 Patch */
+export interface ScoutPatch {
+  id: string
+  userId: string
+  entryId: string
+  sourceId: string
+  taskId: string
+  targetViewpointId: string
+  targetViewpointTitle: string
+  status: ScoutPatchStatus
+  relevanceScore: number
+  title: string
+  rationale: string
+  suggestedBlocks: NoteBlock[]
+  insertAfterBlockId?: string
+  sourceSnapshot: {
+    url: string
+    title?: string
+    author?: string
+    publishedAt?: string
+    excerpt: string
+  }
+  thread?: PatchThreadMessage[]
+  reviewNote?: string
+  mergedAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** 搜寻执行记录 */
+export interface ScoutJob {
+  id: string
+  userId: string
+  taskId: string
+  sourceIds: string[]
+  triggeredBy: "cron" | "manual"
+  status: "running" | "completed" | "failed"
+  stages: {
+    fetch: { total: number; completed: number; errors: number }
+    analyze: { total: number; completed: number; errors: number }
+    patch: { total: number; generated: number }
+  }
+  errorMessage?: string
+  startedAt: string
+  completedAt?: string
+}
+
+/** 搜寻全局配置 */
+export interface ScoutConfig {
+  userId: string
+  enabled: boolean
+  defaultRelevanceThreshold: number
+  dailyPatchLimit: number
+  entryRetentionDays: number
+  rsshubBaseUrl?: string
+}
+
 export interface Database {
   users: User[]
   books: Book[]
@@ -407,4 +645,15 @@ export interface Database {
   aggregateJobs: AggregateJob[]
   annotations: Annotation[]
   annotationConfigs: AnnotationConfig[]
+  // Scout 模块
+  scoutArticles: ScoutArticle[]
+  articleTopics: ArticleTopic[]
+  scoutChannels: ScoutChannel[]
+  scoutCredentials: ScoutCredential[]
+  scoutSources: ScoutSource[]
+  scoutTasks: ScoutTask[]
+  scoutEntries: ScoutEntry[]
+  scoutPatches: ScoutPatch[]
+  scoutJobs: ScoutJob[]
+  scoutConfigs: ScoutConfig[]
 }

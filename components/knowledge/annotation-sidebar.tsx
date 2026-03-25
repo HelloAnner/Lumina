@@ -139,7 +139,7 @@ export function AnnotationSidebar({
     <div className="flex h-full flex-col">
       {/* 头部 */}
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-border/40 px-4">
-        <span className="text-[11px] font-medium uppercase tracking-widest text-muted/70">
+        <span className="text-[11px] font-medium uppercase tracking-widest text-secondary">
           批注
         </span>
         <div className="flex items-center gap-2">
@@ -206,7 +206,7 @@ export function AnnotationSidebar({
             }}
           />
           <div className="mt-2 flex items-center justify-between">
-            <span className="text-[10px] text-muted/40">
+            <span className="text-[10px] text-muted">
               {composerMode === "selection" ? "划词批注" : "对话批注"} · Cmd+Enter 发送
             </span>
             <Button
@@ -230,13 +230,13 @@ export function AnnotationSidebar({
       <div className="flex-1 space-y-2.5 overflow-y-auto p-3">
         {loading ? (
           <div className="flex items-center justify-center py-8">
-            <p className="text-[12px] text-muted/50">加载中…</p>
+            <p className="text-[12px] text-muted">加载中…</p>
           </div>
         ) : annotations.length === 0 && !composerMode ? (
           <div className="flex flex-col items-center justify-center py-12">
             <MessageSquare className="mb-2 h-6 w-6 text-muted/20" />
-            <p className="text-[12px] text-muted/40">暂无批注</p>
-            <p className="mt-1 text-[11px] text-muted/30">
+            <p className="text-[12px] text-muted">暂无批注</p>
+            <p className="mt-1 text-[11px] text-muted">
               选中文字或点击右上角添加
             </p>
           </div>
@@ -254,8 +254,8 @@ export function AnnotationSidebar({
             {doneAnnotations.length > 0 && (
               <>
                 <div className="flex items-center gap-2 pt-2">
-                  <CheckCircle className="h-3 w-3 text-muted/30" />
-                  <span className="text-[11px] text-muted/30">已完成</span>
+                  <CheckCircle className="h-3 w-3 text-muted" />
+                  <span className="text-[11px] text-muted">已完成</span>
                 </div>
                 {doneAnnotations.map((annotation) => (
                   <AnnotationCard
@@ -330,13 +330,13 @@ function AnnotationCard({ annotation }: { annotation: Annotation }) {
             {config.label}
           </span>
         </div>
-        <span className="text-[10px] text-muted/50">{timeAgo}</span>
+        <span className="text-[10px] text-muted">{timeAgo}</span>
       </div>
 
       {/* 选中原文 */}
       {annotation.targetText && (
         <div className="mb-2 rounded bg-elevated/60 px-2 py-1">
-          <p className="text-[11px] leading-relaxed text-muted/60 line-clamp-2">
+          <p className="text-[11px] leading-relaxed text-muted line-clamp-2">
             &ldquo;{annotation.targetText}&rdquo;
           </p>
         </div>

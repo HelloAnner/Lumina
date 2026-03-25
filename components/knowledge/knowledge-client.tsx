@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   BookOpen,
+  Check,
   ChevronDown,
   ChevronRight,
   Download,
@@ -10,7 +11,9 @@ import {
   FileText,
   FolderOpen,
   GripVertical,
+  Loader2,
   MessageSquare,
+  Pencil,
   Trash2,
   X,
 } from "lucide-react"
@@ -44,7 +47,7 @@ type DraftNode = {
 
 /**
  * 知识库页面客户端容器
- * 主题树 + 只读笔记面板 + 批注侧栏
+ * 主题树 + 可编辑笔记面板 + 批注侧栏
  *
  * @author Anner
  * @since 0.2.0
@@ -85,12 +88,27 @@ export function KnowledgeClient({
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<ViewpointDropTarget | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameTitle, setRenameTitle] = useState("")
+  const [editingHeaderTitle, setEditingHeaderTitle] = useState(false)
+  const [headerTitleDraft, setHeaderTitleDraft] = useState("")
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle")
   const [selectionCtx, setSelectionCtx] = useState<SelectionContext | null>(null)
   const [annotatedBlockIds, setAnnotatedBlockIds] = useState<Set<string>>(
     new Set()
   )
 
   const prefTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const savedStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** 编辑中的文本变更，不触发 React 重渲染 */
+  const editsRef = useRef<Map<string, string>>(new Map())
+  const blocksRef = useRef(blocks)
+  blocksRef.current = blocks
+  const selectedIdRef = useRef(selectedId)
+  selectedIdRef.current = selectedId
+  const renameInputRef = useRef<HTMLInputElement>(null)
+  const headerInputRef = useRef<HTMLInputElement>(null)
   const selected = viewpoints.find((v) => v.id === selectedId)
   const tree = useMemo(() => buildViewpointTree(viewpoints), [viewpoints])
 
@@ -110,12 +128,6 @@ export function KnowledgeClient({
       }
     })()
   }, [selectedId])
-
-  const selectViewpoint = useCallback((viewpointId: string) => {
-    setSelectedId(viewpointId)
-    setFocusedParentId(viewpointId)
-    setSelectionCtx(null)
-  }, [])
 
   // 保存宽度偏好
   useEffect(() => {
@@ -320,6 +332,148 @@ export function KnowledgeClient({
     }
   }
 
+  /** 构建保存载荷：blocks state + editsRef 覆盖 */
+  const buildSavePayload = useCallback(() => {
+    if (editsRef.current.size === 0) {
+      return blocksRef.current
+    }
+    return blocksRef.current.map((b) => {
+      const edited = editsRef.current.get(b.id)
+      if (edited === undefined) {
+        return b
+      }
+      if ("code" in b && b.type === "code") {
+        return { ...b, code: edited }
+      }
+      if ("text" in b) {
+        return { ...b, text: edited }
+      }
+      return b
+    })
+  }, [])
+
+  /** 将 editsRef 合并入 blocks state，用于保存成功后或切换主题前 */
+  const flushEditsToState = useCallback(() => {
+    if (editsRef.current.size === 0) {
+      return
+    }
+    const snapshot = new Map(editsRef.current)
+    editsRef.current.clear()
+    setBlocks((prev) =>
+      prev.map((b) => {
+        const edited = snapshot.get(b.id)
+        if (edited === undefined) {
+          return b
+        }
+        if ("code" in b && b.type === "code") {
+          return { ...b, code: edited } as typeof b
+        }
+        if ("text" in b) {
+          return { ...b, text: edited } as typeof b
+        }
+        return b
+      })
+    )
+  }, [])
+
+  /** 切换主题前刷新未保存的编辑 */
+  const selectViewpoint = useCallback(
+    async (viewpointId: string) => {
+      if (editsRef.current.size > 0 && selectedIdRef.current) {
+        if (saveTimer.current) {
+          clearTimeout(saveTimer.current)
+          saveTimer.current = null
+        }
+        const payload = buildSavePayload()
+        flushEditsToState()
+        try {
+          await fetch(`/api/viewpoints/${selectedIdRef.current}/blocks`, {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ blocks: payload })
+          })
+        } catch {
+          /* 静默失败，不阻塞切换 */
+        }
+      }
+      setSaveStatus("idle")
+      setSelectedId(viewpointId)
+      setFocusedParentId(viewpointId)
+      setSelectionCtx(null)
+      setRenamingId(null)
+      setEditingHeaderTitle(false)
+    },
+    [buildSavePayload, flushEditsToState]
+  )
+
+  /** 块文本编辑 → 仅记录到 ref + debounce 自动保存（不触发 re-render） */
+  const handleBlockTextChange = useCallback(
+    (blockId: string, text: string) => {
+      editsRef.current.set(blockId, text)
+      setSaveStatus("idle")
+      if (savedStatusTimer.current) {
+        clearTimeout(savedStatusTimer.current)
+      }
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current)
+      }
+      saveTimer.current = setTimeout(async () => {
+        const vid = selectedIdRef.current
+        if (!vid) {
+          return
+        }
+        setSaveStatus("saving")
+        try {
+          const payload = buildSavePayload()
+          await fetch(`/api/viewpoints/${vid}/blocks`, {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ blocks: payload })
+          })
+          flushEditsToState()
+          setSaveStatus("saved")
+          savedStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 2000)
+        } catch {
+          setToast("保存失败，请重试")
+          setSaveStatus("idle")
+        }
+      }, 800)
+    },
+    [buildSavePayload, flushEditsToState]
+  )
+
+  /** 重命名主题 */
+  const renameViewpoint = useCallback(
+    async (viewpointId: string, newTitle: string) => {
+      const trimmed = newTitle.trim()
+      if (!trimmed) {
+        return
+      }
+      const prev = viewpoints.find((v) => v.id === viewpointId)
+      if (!prev || prev.title === trimmed) {
+        return
+      }
+      setViewpoints((c) =>
+        c.map((v) => (v.id === viewpointId ? { ...v, title: trimmed } : v))
+      )
+      try {
+        await fetch(`/api/viewpoints/${viewpointId}`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ title: trimmed })
+        })
+      } catch {
+        setViewpoints((c) =>
+          c.map((v) =>
+            v.id === viewpointId ? { ...v, title: prev.title } : v
+          )
+        )
+        setToast("重命名失败")
+      }
+    },
+    [viewpoints]
+  )
+
   // ---- 元信息 ----
   const blockCount = blocks.length
   const charCount = blocks.reduce((sum, b) => {
@@ -466,7 +620,42 @@ export function KnowledgeClient({
               <FileText className="h-3 w-3" />
             </span>
           )}
-          <span className="min-w-0 flex-1 truncate">{node.title}</span>
+          {renamingId === node.id ? (
+            <input
+              ref={renameInputRef}
+              autoFocus
+              className="min-w-0 flex-1 rounded-sm bg-elevated/80 px-1.5 py-0.5 text-[13px] text-foreground outline-none ring-1 ring-primary/30 transition-shadow focus:ring-primary/50"
+              value={renameTitle}
+              onChange={(e) => setRenameTitle(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              onFocus={(e) => e.target.select()}
+              onBlur={() => {
+                void renameViewpoint(node.id, renameTitle)
+                setRenamingId(null)
+              }}
+              onKeyDown={(e) => {
+                e.stopPropagation()
+                if (e.key === "Enter") {
+                  void renameViewpoint(node.id, renameTitle)
+                  setRenamingId(null)
+                }
+                if (e.key === "Escape") {
+                  setRenamingId(null)
+                }
+              }}
+            />
+          ) : (
+            <span
+              className="min-w-0 flex-1 truncate"
+              onDoubleClick={(e) => {
+                e.stopPropagation()
+                setRenamingId(node.id)
+                setRenameTitle(node.title)
+              }}
+            >
+              {node.title}
+            </span>
+          )}
           {node.highlightCount > 0 && (
             <span className="shrink-0 rounded px-1 text-[10px] tabular-nums text-muted/60">
               {node.highlightCount}
@@ -505,7 +694,7 @@ export function KnowledgeClient({
           style={{ width: treeWidth }}
         >
           <div className="flex h-11 items-center justify-between px-3 border-b border-border/40">
-            <span className="text-[11px] font-medium uppercase tracking-widest text-muted/70">
+            <span className="text-[11px] font-medium uppercase tracking-widest text-secondary">
               主题树
             </span>
             <Button
@@ -543,7 +732,7 @@ export function KnowledgeClient({
                   { type: "root" },
                   "h-6 border border-dashed border-border/40 rounded"
                 )}
-                <p className="mt-1 px-1 text-[11px] text-muted/50">
+                <p className="mt-1 px-1 text-[11px] text-muted">
                   拖到这里放到根目录
                 </p>
               </div>
@@ -555,14 +744,49 @@ export function KnowledgeClient({
           />
         </aside>
 
-        {/* 中央笔记面板 - 只读展示 */}
+        {/* 中央笔记面板 */}
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {/* 顶部标题栏 */}
           <div className="flex h-11 shrink-0 items-center justify-between border-b border-border/40 bg-surface px-6">
             <div className="flex min-w-0 items-center gap-2.5">
-              <span className="truncate text-[15px] font-semibold text-foreground">
-                {selected?.title ?? "未选择主题"}
-              </span>
+              {editingHeaderTitle && selected ? (
+                <input
+                  ref={headerInputRef}
+                  autoFocus
+                  className="min-w-0 flex-1 rounded-sm bg-elevated/60 px-2 py-0.5 text-[15px] font-semibold text-foreground outline-none ring-1 ring-primary/30 transition-shadow focus:ring-primary/50"
+                  value={headerTitleDraft}
+                  onChange={(e) => setHeaderTitleDraft(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  onBlur={() => {
+                    void renameViewpoint(selected.id, headerTitleDraft)
+                    setEditingHeaderTitle(false)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      void renameViewpoint(selected.id, headerTitleDraft)
+                      setEditingHeaderTitle(false)
+                    }
+                    if (e.key === "Escape") {
+                      setEditingHeaderTitle(false)
+                    }
+                  }}
+                />
+              ) : (
+                <span
+                  className="group/title flex min-w-0 items-center gap-1.5 truncate text-[15px] font-semibold text-foreground cursor-text rounded-sm px-2 py-0.5 -mx-2 transition-colors hover:bg-overlay/40"
+                  onClick={() => {
+                    if (selected) {
+                      setEditingHeaderTitle(true)
+                      setHeaderTitleDraft(selected.title)
+                    }
+                  }}
+                >
+                  <span className="truncate">{selected?.title ?? "未选择主题"}</span>
+                  {selected && (
+                    <Pencil className="h-3 w-3 shrink-0 text-muted/30 opacity-0 transition-opacity group-hover/title:opacity-100" />
+                  )}
+                </span>
+              )}
               {selected?.lastSynthesizedAt && (
                 <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
                   AI 生成
@@ -592,7 +816,7 @@ export function KnowledgeClient({
               </div>
               {pendingAnnoCount > 0 && (
                 <>
-                  <span className="text-[11px] text-muted/30">·</span>
+                  <span className="text-[11px] text-muted">·</span>
                   <div className="flex items-center gap-1.5">
                     <MessageSquare className="h-3 w-3 text-primary" />
                     <span className="text-[11px] font-medium text-primary">
@@ -611,6 +835,7 @@ export function KnowledgeClient({
                 blocks={blocks}
                 annotatedBlockIds={annotatedBlockIds}
                 onSelectText={handleSelectText}
+                onBlockTextChange={handleBlockTextChange}
               />
             </div>
           </div>
@@ -627,7 +852,19 @@ export function KnowledgeClient({
                 </>
               )}
             </div>
-            <div className="flex items-center gap-3 text-[11px] text-muted/50">
+            <div className="flex items-center gap-3 text-[11px] text-muted">
+              {saveStatus === "saving" && (
+                <span className="flex items-center gap-1 text-muted">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  保存中
+                </span>
+              )}
+              {saveStatus === "saved" && (
+                <span className="flex items-center gap-1 text-success/60">
+                  <Check className="h-3 w-3" />
+                  已保存
+                </span>
+              )}
               <span>{charCount.toLocaleString()} 字</span>
               <span>{blockCount} 个块</span>
             </div>

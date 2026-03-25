@@ -23,7 +23,9 @@ const bindingSchema = z.object({
     "voice_read",
     "embedding_index",
     "section_translate",
-    "annotation_rewrite"
+    "annotation_rewrite",
+    "scout_analyze",
+    "scout_expand"
   ]),
   modelId: z.string()
 })

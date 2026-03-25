@@ -5,6 +5,7 @@ import type {
   AggregateJob,
   Annotation,
   AnnotationConfig,
+  ArticleTopic,
   Book,
   BookTocTranslation,
   BookTranslation,
@@ -17,6 +18,15 @@ import type {
   PublishTarget,
   PublishTask,
   ReaderSettings,
+  ScoutArticle,
+  ScoutChannel,
+  ScoutConfig,
+  ScoutCredential,
+  ScoutEntry,
+  ScoutJob,
+  ScoutPatch,
+  ScoutSource,
+  ScoutTask,
   StorageConfig,
   User,
   Viewpoint,
@@ -34,16 +44,20 @@ function normalizeHighlight<T extends Partial<Highlight>>(highlight: T): T & Pic
   }
 }
 
-function sortByDate<
-  T extends { createdAt?: string; updatedAt?: string; executedAt?: string }
->(
-  items: T[]
+function sortByDate<T>(
+  items: T[],
+  ...dateFields: string[]
 ): T[] {
-  return [...items].sort((left, right) =>
-    (right.updatedAt ?? right.executedAt ?? right.createdAt ?? "").localeCompare(
-      left.updatedAt ?? left.executedAt ?? left.createdAt ?? ""
-    )
-  )
+  const fields = dateFields.length > 0
+    ? dateFields
+    : ["updatedAt", "executedAt", "createdAt"]
+  return [...items].sort((left, right) => {
+    const l = left as Record<string, unknown>
+    const r = right as Record<string, unknown>
+    const rVal = fields.reduce<string>((acc, f) => acc || (r[f] as string) || "", "")
+    const lVal = fields.reduce<string>((acc, f) => acc || (l[f] as string) || "", "")
+    return rVal.localeCompare(lVal)
+  })
 }
 
 export const repository = {
@@ -729,6 +743,450 @@ export const repository = {
       }
       viewpoint.articleBlocks = blocks
       return viewpoint
+    })
+  },
+
+  // ─── Scout: 文章 ───
+
+  listArticles(userId: string, topicId?: string, search?: string) {
+    return sortByDate(
+      readDatabase().scoutArticles.filter((item) => {
+        if (item.userId !== userId) {
+          return false
+        }
+        if (topicId && !item.topics.includes(topicId)) {
+          return false
+        }
+        if (search && !`${item.title} ${item.author ?? ""}`.toLowerCase().includes(search.toLowerCase())) {
+          return false
+        }
+        return true
+      })
+    )
+  },
+  getArticle(userId: string, articleId: string) {
+    return readDatabase().scoutArticles.find(
+      (item) => item.userId === userId && item.id === articleId
+    )
+  },
+  createArticle(input: Omit<ScoutArticle, "id" | "createdAt">) {
+    return mutateDatabase((database) => {
+      const article: ScoutArticle = {
+        ...input,
+        id: randomUUID(),
+        createdAt: now()
+      }
+      database.scoutArticles.push(article)
+      return article
+    })
+  },
+  updateArticle(userId: string, articleId: string, updates: Partial<ScoutArticle>) {
+    return mutateDatabase((database) => {
+      const article = database.scoutArticles.find(
+        (item) => item.id === articleId && item.userId === userId
+      )
+      if (!article) {
+        return null
+      }
+      Object.assign(article, updates)
+      return article
+    })
+  },
+  deleteArticle(userId: string, articleId: string) {
+    return mutateDatabase((database) => {
+      database.scoutArticles = database.scoutArticles.filter(
+        (item) => !(item.userId === userId && item.id === articleId)
+      )
+    })
+  },
+
+  // ─── Scout: 主题 ───
+
+  listArticleTopics(userId: string) {
+    return readDatabase().articleTopics
+      .filter((item) => item.userId === userId)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+  },
+  createArticleTopic(userId: string, input: Omit<ArticleTopic, "id" | "userId" | "createdAt" | "articleCount">) {
+    return mutateDatabase((database) => {
+      const topic: ArticleTopic = {
+        ...input,
+        id: randomUUID(),
+        userId,
+        articleCount: 0,
+        createdAt: now()
+      }
+      database.articleTopics.push(topic)
+      return topic
+    })
+  },
+  updateArticleTopic(userId: string, topicId: string, updates: Partial<ArticleTopic>) {
+    return mutateDatabase((database) => {
+      const topic = database.articleTopics.find(
+        (item) => item.id === topicId && item.userId === userId
+      )
+      if (!topic) {
+        return null
+      }
+      Object.assign(topic, updates)
+      return topic
+    })
+  },
+  deleteArticleTopic(userId: string, topicId: string) {
+    return mutateDatabase((database) => {
+      database.articleTopics = database.articleTopics.filter(
+        (item) => !(item.userId === userId && item.id === topicId)
+      )
+    })
+  },
+
+  // ─── Scout: 渠道 ───
+
+  listChannels(userId: string) {
+    const db = readDatabase()
+    return db.scoutChannels.filter(
+      (item) => item.origin === "builtin" || item.userId === userId
+    )
+  },
+  getChannel(channelId: string) {
+    return readDatabase().scoutChannels.find((item) => item.id === channelId)
+  },
+  createChannel(userId: string, input: Omit<ScoutChannel, "id" | "userId" | "createdAt">) {
+    return mutateDatabase((database) => {
+      const channel: ScoutChannel = {
+        ...input,
+        id: randomUUID(),
+        userId,
+        createdAt: now()
+      }
+      database.scoutChannels.push(channel)
+      return channel
+    })
+  },
+  updateChannel(userId: string, channelId: string, updates: Partial<ScoutChannel>) {
+    return mutateDatabase((database) => {
+      const channel = database.scoutChannels.find(
+        (item) => item.id === channelId && item.userId === userId && item.origin === "user"
+      )
+      if (!channel) {
+        return null
+      }
+      Object.assign(channel, updates)
+      return channel
+    })
+  },
+  deleteChannel(userId: string, channelId: string) {
+    return mutateDatabase((database) => {
+      database.scoutChannels = database.scoutChannels.filter(
+        (item) => !(item.userId === userId && item.id === channelId && item.origin === "user")
+      )
+    })
+  },
+
+  // ─── Scout: 凭证 ───
+
+  listCredentials(userId: string) {
+    return readDatabase().scoutCredentials.filter((item) => item.userId === userId)
+  },
+  getCredential(userId: string, credentialId: string) {
+    return readDatabase().scoutCredentials.find(
+      (item) => item.id === credentialId && item.userId === userId
+    )
+  },
+  createCredential(userId: string, input: Omit<ScoutCredential, "id" | "userId" | "createdAt" | "verified">) {
+    return mutateDatabase((database) => {
+      const credential: ScoutCredential = {
+        ...input,
+        id: randomUUID(),
+        userId,
+        verified: false,
+        credentials: Object.fromEntries(
+          Object.entries(input.credentials).map(([k, v]) => [k, encryptValue(v)])
+        ),
+        createdAt: now()
+      }
+      database.scoutCredentials.push(credential)
+      return credential
+    })
+  },
+  updateCredential(userId: string, credentialId: string, updates: Partial<ScoutCredential>) {
+    return mutateDatabase((database) => {
+      const credential = database.scoutCredentials.find(
+        (item) => item.id === credentialId && item.userId === userId
+      )
+      if (!credential) {
+        return null
+      }
+      if (updates.credentials) {
+        updates.credentials = Object.fromEntries(
+          Object.entries(updates.credentials).map(([k, v]) => [k, encryptValue(v)])
+        )
+      }
+      Object.assign(credential, updates)
+      return credential
+    })
+  },
+  deleteCredential(userId: string, credentialId: string) {
+    return mutateDatabase((database) => {
+      database.scoutCredentials = database.scoutCredentials.filter(
+        (item) => !(item.userId === userId && item.id === credentialId)
+      )
+    })
+  },
+
+  // ─── Scout: 信息源 ───
+
+  listSources(userId: string) {
+    return sortByDate(
+      readDatabase().scoutSources.filter((item) => item.userId === userId)
+    )
+  },
+  getSource(userId: string, sourceId: string) {
+    return readDatabase().scoutSources.find(
+      (item) => item.id === sourceId && item.userId === userId
+    )
+  },
+  createSource(userId: string, input: Omit<ScoutSource, "id" | "userId" | "createdAt" | "totalFetched" | "totalPatches">) {
+    return mutateDatabase((database) => {
+      const source: ScoutSource = {
+        ...input,
+        id: randomUUID(),
+        userId,
+        totalFetched: 0,
+        totalPatches: 0,
+        createdAt: now()
+      }
+      database.scoutSources.push(source)
+      return source
+    })
+  },
+  updateSource(userId: string, sourceId: string, updates: Partial<ScoutSource>) {
+    return mutateDatabase((database) => {
+      const source = database.scoutSources.find(
+        (item) => item.id === sourceId && item.userId === userId
+      )
+      if (!source) {
+        return null
+      }
+      Object.assign(source, updates)
+      return source
+    })
+  },
+  deleteSource(userId: string, sourceId: string) {
+    return mutateDatabase((database) => {
+      database.scoutSources = database.scoutSources.filter(
+        (item) => !(item.userId === userId && item.id === sourceId)
+      )
+    })
+  },
+
+  // ─── Scout: 任务 ───
+
+  listTasks(userId: string) {
+    return sortByDate(
+      readDatabase().scoutTasks.filter((item) => item.userId === userId)
+    )
+  },
+  getTask(userId: string, taskId: string) {
+    return readDatabase().scoutTasks.find(
+      (item) => item.id === taskId && item.userId === userId
+    )
+  },
+  createTask(userId: string, input: Omit<ScoutTask, "id" | "userId" | "createdAt" | "updatedAt" | "totalRuns">) {
+    return mutateDatabase((database) => {
+      const task: ScoutTask = {
+        ...input,
+        id: randomUUID(),
+        userId,
+        totalRuns: 0,
+        createdAt: now(),
+        updatedAt: now()
+      }
+      database.scoutTasks.push(task)
+      return task
+    })
+  },
+  updateTask(userId: string, taskId: string, updates: Partial<ScoutTask>) {
+    return mutateDatabase((database) => {
+      const task = database.scoutTasks.find(
+        (item) => item.id === taskId && item.userId === userId
+      )
+      if (!task) {
+        return null
+      }
+      Object.assign(task, updates, { updatedAt: now() })
+      return task
+    })
+  },
+  deleteTask(userId: string, taskId: string) {
+    return mutateDatabase((database) => {
+      database.scoutTasks = database.scoutTasks.filter(
+        (item) => !(item.userId === userId && item.id === taskId)
+      )
+    })
+  },
+
+  // ─── Scout: 条目 ───
+
+  listEntries(userId: string, sourceId?: string, taskId?: string) {
+    return sortByDate(
+      readDatabase().scoutEntries.filter((item) => {
+        if (item.userId !== userId) {
+          return false
+        }
+        if (sourceId && item.sourceId !== sourceId) {
+          return false
+        }
+        if (taskId && item.taskId !== taskId) {
+          return false
+        }
+        return true
+      }),
+      "fetchedAt"
+    )
+  },
+  getEntry(userId: string, entryId: string) {
+    return readDatabase().scoutEntries.find(
+      (item) => item.id === entryId && item.userId === userId
+    )
+  },
+  createEntry(input: Omit<ScoutEntry, "id">) {
+    return mutateDatabase((database) => {
+      const entry: ScoutEntry = { ...input, id: randomUUID() }
+      database.scoutEntries.push(entry)
+      return entry
+    })
+  },
+  updateEntry(userId: string, entryId: string, updates: Partial<ScoutEntry>) {
+    return mutateDatabase((database) => {
+      const entry = database.scoutEntries.find(
+        (item) => item.id === entryId && item.userId === userId
+      )
+      if (!entry) {
+        return null
+      }
+      Object.assign(entry, updates)
+      return entry
+    })
+  },
+  deleteEntry(userId: string, entryId: string) {
+    return mutateDatabase((database) => {
+      database.scoutEntries = database.scoutEntries.filter(
+        (item) => !(item.userId === userId && item.id === entryId)
+      )
+    })
+  },
+  /** 按 contentHash 检查去重 */
+  findEntryByHash(userId: string, contentHash: string) {
+    return readDatabase().scoutEntries.find(
+      (item) => item.userId === userId && item.contentHash === contentHash
+    )
+  },
+
+  // ─── Scout: Patch ───
+
+  listPatches(userId: string, taskId?: string, status?: ScoutPatch["status"]) {
+    return sortByDate(
+      readDatabase().scoutPatches.filter((item) => {
+        if (item.userId !== userId) {
+          return false
+        }
+        if (taskId && item.taskId !== taskId) {
+          return false
+        }
+        if (status && item.status !== status) {
+          return false
+        }
+        return true
+      })
+    )
+  },
+  getPatch(userId: string, patchId: string) {
+    return readDatabase().scoutPatches.find(
+      (item) => item.id === patchId && item.userId === userId
+    )
+  },
+  createPatch(input: Omit<ScoutPatch, "id" | "createdAt" | "updatedAt">) {
+    return mutateDatabase((database) => {
+      const patch: ScoutPatch = {
+        ...input,
+        id: randomUUID(),
+        createdAt: now(),
+        updatedAt: now()
+      }
+      database.scoutPatches.push(patch)
+      return patch
+    })
+  },
+  updatePatch(userId: string, patchId: string, updates: Partial<ScoutPatch>) {
+    return mutateDatabase((database) => {
+      const patch = database.scoutPatches.find(
+        (item) => item.id === patchId && item.userId === userId
+      )
+      if (!patch) {
+        return null
+      }
+      Object.assign(patch, updates, { updatedAt: now() })
+      return patch
+    })
+  },
+
+  // ─── Scout: Job ───
+
+  listJobs(userId: string, taskId?: string) {
+    return sortByDate(
+      readDatabase().scoutJobs.filter((item) => {
+        if (item.userId !== userId) {
+          return false
+        }
+        if (taskId && item.taskId !== taskId) {
+          return false
+        }
+        return true
+      }),
+      "startedAt"
+    )
+  },
+  getJob(userId: string, jobId: string) {
+    return readDatabase().scoutJobs.find(
+      (item) => item.id === jobId && item.userId === userId
+    )
+  },
+  createJob(input: Omit<ScoutJob, "id">) {
+    return mutateDatabase((database) => {
+      const job: ScoutJob = { ...input, id: randomUUID() }
+      database.scoutJobs.push(job)
+      return job
+    })
+  },
+  updateJob(userId: string, jobId: string, updates: Partial<ScoutJob>) {
+    return mutateDatabase((database) => {
+      const job = database.scoutJobs.find(
+        (item) => item.id === jobId && item.userId === userId
+      )
+      if (!job) {
+        return null
+      }
+      Object.assign(job, updates)
+      return job
+    })
+  },
+
+  // ─── Scout: 配置 ───
+
+  getScoutConfig(userId: string) {
+    return readDatabase().scoutConfigs.find((item) => item.userId === userId)
+  },
+  saveScoutConfig(userId: string, input: Omit<ScoutConfig, "userId">) {
+    return mutateDatabase((database) => {
+      const existing = database.scoutConfigs.find((item) => item.userId === userId)
+      if (existing) {
+        Object.assign(existing, input)
+        return existing
+      }
+      const config: ScoutConfig = { ...input, userId }
+      database.scoutConfigs.push(config)
+      return config
     })
   }
 }

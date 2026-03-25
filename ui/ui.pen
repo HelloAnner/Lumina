@@ -402,8 +402,19 @@
               "gap": 2,
               "children": [
                 {
+                  "type": "text",
+                  "id": "QB7vb",
+                  "name": "grpLabel1",
+                  "fill": "$text-muted",
+                  "content": "阅读",
+                  "fontFamily": "Inter",
+                  "fontSize": 10,
+                  "fontWeight": "500",
+                  "letterSpacing": 0.05
+                },
+                {
                   "type": "frame",
-                  "id": "0fjAS",
+                  "id": "lpyF9",
                   "name": "navLib",
                   "width": "fill_container",
                   "height": 36,
@@ -418,18 +429,18 @@
                   "children": [
                     {
                       "type": "icon_font",
-                      "id": "Ae0l9",
-                      "name": "navLibIcon",
-                      "width": 18,
-                      "height": 18,
+                      "id": "zf0Uw",
+                      "name": "libIcon",
+                      "width": 16,
+                      "height": 16,
                       "iconFontName": "library",
                       "iconFontFamily": "lucide",
                       "fill": "$text-primary"
                     },
                     {
                       "type": "text",
-                      "id": "6PEXw",
-                      "name": "navLibText",
+                      "id": "dBpSh",
+                      "name": "libText",
                       "fill": "$text-primary",
                       "content": "书库",
                       "fontFamily": "Inter",
@@ -440,7 +451,62 @@
                 },
                 {
                   "type": "frame",
-                  "id": "dinlr",
+                  "id": "Jieq6",
+                  "name": "navArticles",
+                  "width": "fill_container",
+                  "height": 36,
+                  "cornerRadius": "$radius-sm",
+                  "gap": 10,
+                  "padding": [
+                    0,
+                    10
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "wCFBy",
+                      "name": "artIcon",
+                      "width": 16,
+                      "height": 16,
+                      "iconFontName": "file-text",
+                      "iconFontFamily": "lucide",
+                      "fill": "$text-muted"
+                    },
+                    {
+                      "type": "text",
+                      "id": "msgPg",
+                      "name": "artText",
+                      "fill": "$text-muted",
+                      "content": "文章",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "51uF3",
+                  "name": "sep1",
+                  "width": "fill_container",
+                  "height": 1,
+                  "fill": "#000000"
+                },
+                {
+                  "type": "text",
+                  "id": "pA65O",
+                  "name": "grpLabel2",
+                  "fill": "$text-muted",
+                  "content": "知识",
+                  "fontFamily": "Inter",
+                  "fontSize": 10,
+                  "fontWeight": "500",
+                  "letterSpacing": 0.05
+                },
+                {
+                  "type": "frame",
+                  "id": "w1xxC",
                   "name": "navKnow",
                   "width": "fill_container",
                   "height": 36,
@@ -454,18 +520,18 @@
                   "children": [
                     {
                       "type": "icon_font",
-                      "id": "ALMAj",
-                      "name": "navKnowIcon",
-                      "width": 18,
-                      "height": 18,
-                      "iconFontName": "brain",
+                      "id": "LKr9L",
+                      "name": "knowIcon",
+                      "width": 16,
+                      "height": 16,
+                      "iconFontName": "book-open",
                       "iconFontFamily": "lucide",
                       "fill": "$text-muted"
                     },
                     {
                       "type": "text",
-                      "id": "6jMxv",
-                      "name": "navKnowText",
+                      "id": "3SCZh",
+                      "name": "knowText",
                       "fill": "$text-muted",
                       "content": "知识库",
                       "fontFamily": "Inter",
@@ -476,7 +542,7 @@
                 },
                 {
                   "type": "frame",
-                  "id": "binJI",
+                  "id": "O9U9x",
                   "name": "navGraph",
                   "width": "fill_container",
                   "height": 36,
@@ -490,20 +556,20 @@
                   "children": [
                     {
                       "type": "icon_font",
-                      "id": "QVdSJ",
-                      "name": "navGraphIcon",
-                      "width": 18,
-                      "height": 18,
-                      "iconFontName": "git-branch",
+                      "id": "cjHhh",
+                      "name": "graphIcon",
+                      "width": 16,
+                      "height": 16,
+                      "iconFontName": "network",
                       "iconFontFamily": "lucide",
                       "fill": "$text-muted"
                     },
                     {
                       "type": "text",
-                      "id": "y8Sla",
-                      "name": "navGraphText",
+                      "id": "5bVvn",
+                      "name": "graphText",
                       "fill": "$text-muted",
-                      "content": "知识图谱",
+                      "content": "图谱",
                       "fontFamily": "Inter",
                       "fontSize": 13,
                       "fontWeight": "normal"
@@ -512,7 +578,59 @@
                 },
                 {
                   "type": "frame",
-                  "id": "NOQmT",
+                  "id": "P4XDr",
+                  "name": "sep2",
+                  "width": "fill_container",
+                  "height": 1,
+                  "fill": "#000000"
+                },
+                {
+                  "type": "frame",
+                  "id": "O11qe",
+                  "name": "navScout",
+                  "width": "fill_container",
+                  "height": 36,
+                  "cornerRadius": "$radius-sm",
+                  "gap": 10,
+                  "padding": [
+                    0,
+                    10
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "PRO9i",
+                      "name": "scoutIcon",
+                      "width": 16,
+                      "height": 16,
+                      "iconFontName": "radar",
+                      "iconFontFamily": "lucide",
+                      "fill": "$text-muted"
+                    },
+                    {
+                      "type": "text",
+                      "id": "eRTIB",
+                      "name": "scoutText",
+                      "fill": "$text-muted",
+                      "content": "搜寻",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "9dxpS",
+                  "name": "sep3",
+                  "width": "fill_container",
+                  "height": 1,
+                  "fill": "#000000"
+                },
+                {
+                  "type": "frame",
+                  "id": "KD5pn",
                   "name": "navPub",
                   "width": "fill_container",
                   "height": 36,
@@ -526,18 +644,18 @@
                   "children": [
                     {
                       "type": "icon_font",
-                      "id": "8CpJf",
-                      "name": "navPubIcon",
-                      "width": 18,
-                      "height": 18,
+                      "id": "UHqGj",
+                      "name": "pubIcon",
+                      "width": 16,
+                      "height": 16,
                       "iconFontName": "send",
                       "iconFontFamily": "lucide",
                       "fill": "$text-muted"
                     },
                     {
                       "type": "text",
-                      "id": "W4366",
-                      "name": "navPubText",
+                      "id": "tzs8v",
+                      "name": "pubText",
                       "fill": "$text-muted",
                       "content": "发布",
                       "fontFamily": "Inter",
@@ -548,7 +666,14 @@
                 },
                 {
                   "type": "frame",
-                  "id": "xNVoO",
+                  "id": "NFyBv",
+                  "name": "navSpacer",
+                  "width": "fill_container",
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "BVJLU",
                   "name": "navSettings",
                   "width": "fill_container",
                   "height": 36,
@@ -562,18 +687,18 @@
                   "children": [
                     {
                       "type": "icon_font",
-                      "id": "evI54",
-                      "name": "navSetIcon",
-                      "width": 18,
-                      "height": 18,
+                      "id": "HqGwb",
+                      "name": "setIcon",
+                      "width": 16,
+                      "height": 16,
                       "iconFontName": "settings",
                       "iconFontFamily": "lucide",
                       "fill": "$text-muted"
                     },
                     {
                       "type": "text",
-                      "id": "3j0XA",
-                      "name": "navSetText",
+                      "id": "gUrA7",
+                      "name": "setText",
                       "fill": "$text-muted",
                       "content": "设置",
                       "fontFamily": "Inter",

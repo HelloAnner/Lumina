@@ -628,7 +628,7 @@ export function PublishClient({
                       <Layers className="h-5 w-5 text-muted/50" />
                     </div>
                     <p className="mt-3 text-xs font-medium text-muted">还没有发布任务</p>
-                    <p className="mt-0.5 text-[11px] text-muted/60">创建一个任务来开始自动发布</p>
+                    <p className="mt-0.5 text-[11px] text-muted">创建一个任务来开始自动发布</p>
                   </div>
                 ) : (
                   tasks.map((task) => (
@@ -734,7 +734,7 @@ export function PublishClient({
                       <Target className="h-5 w-5 text-muted/50" />
                     </div>
                     <p className="mt-3 text-xs font-medium text-muted">还没有发布目标</p>
-                    <p className="mt-0.5 text-[11px] text-muted/60">创建一个目标来接收发布内容</p>
+                    <p className="mt-0.5 text-[11px] text-muted">创建一个目标来接收发布内容</p>
                   </div>
                 ) : (
                   targets.map((target) => {
@@ -750,7 +750,7 @@ export function PublishClient({
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-medium">{target.name}</p>
-                            <p className="truncate text-[11px] text-muted/70">{target.endpointUrl}</p>
+                            <p className="truncate text-[11px] text-muted">{target.endpointUrl}</p>
                           </div>
                         </div>
 
@@ -878,7 +878,7 @@ export function PublishClient({
                         <Clock className="h-7 w-7 text-muted/30" />
                       </div>
                       <p className="mt-4 text-sm font-medium text-muted">暂无发布记录</p>
-                      <p className="mt-1 text-xs text-muted/60">点击「立即发布」来触发第一次发布</p>
+                      <p className="mt-1 text-xs text-muted">点击「立即发布」来触发第一次发布</p>
                     </div>
                   ) : (
                     <div className="divide-y divide-border/30">
@@ -908,14 +908,14 @@ export function PublishClient({
                                 <span className={cn("text-sm font-medium", config.color)}>
                                   {config.label}
                                 </span>
-                                <span className="shrink-0 text-[11px] tabular-nums text-muted/70">
+                                <span className="shrink-0 text-[11px] tabular-nums text-muted">
                                   {formatTime(record.executedAt)}
                                 </span>
                               </div>
                               {record.errorMsg && (
                                 <p className="mt-1 text-xs text-error/90">{record.errorMsg}</p>
                               )}
-                              <div className="mt-1.5 flex items-center gap-3 text-[11px] text-muted/60">
+                              <div className="mt-1.5 flex items-center gap-3 text-[11px] text-muted">
                                 <span>触发: <span className="text-muted">{record.triggeredBy}</span></span>
                                 <span className="h-0.5 w-0.5 rounded-full bg-muted/30" />
                                 <span className="font-mono">{record.articleVersion.slice(0, 7)}</span>
