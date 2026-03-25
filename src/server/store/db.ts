@@ -33,6 +33,10 @@ export function readDatabase(): Database {
     scoutPatches: [],
     scoutJobs: [],
     scoutConfigs: [],
+    importSources: [],
+    importJobs: [],
+    importedNotes: [],
+    noteViewpointLinks: [],
     ...raw
   } as Database
 }

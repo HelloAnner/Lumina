@@ -4,12 +4,12 @@ import { repository } from "@/src/server/repositories"
 
 export default async function ArticlesPage() {
   const user = await requirePageUser()
-  const articles = repository.listArticles(user.id)
+  const result = repository.listArticles(user.id, { page: 1, pageSize: 20 })
   const topics = repository.listArticleTopics(user.id)
 
   return (
     <ArticlesClient
-      initialArticles={articles}
+      initialData={result}
       initialTopics={topics}
     />
   )

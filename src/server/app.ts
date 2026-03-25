@@ -17,6 +17,7 @@ import translationRoutes from "@/src/server/routes/translations"
 import annotationRoutes from "@/src/server/routes/annotations"
 import scoutRoutes from "@/src/server/routes/scout"
 import articlesRoutes from "@/src/server/routes/articles"
+import importRoutes from "@/src/server/routes/import"
 import { requireAuth } from "@/src/server/middleware/auth"
 
 const app = new Hono<AppEnv>()
@@ -50,6 +51,7 @@ app.use("/api/translations/*", requireAuth)
 app.use("/api/annotations/*", requireAuth)
 app.use("/api/scout/*", requireAuth)
 app.use("/api/articles/*", requireAuth)
+app.use("/api/import/*", requireAuth)
 
 app.route("/api/account", accountRoutes)
 app.route("/api/books", booksRoutes)
@@ -65,6 +67,7 @@ app.route("/api/translations", translationRoutes)
 app.route("/api/annotations", annotationRoutes)
 app.route("/api/scout", scoutRoutes)
 app.route("/api/articles", articlesRoutes)
+app.route("/api/import", importRoutes)
 
 export const GET = handle(app)
 export const HEAD = handle(app)

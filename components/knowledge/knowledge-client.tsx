@@ -20,6 +20,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Toast } from "@/components/ui/toast"
 import { NoteBlockList } from "@/components/knowledge/note-block-renderer"
+import { ImportedNotesTree } from "@/components/import/imported-notes-tree"
+import { ImportedNoteViewer } from "@/components/import/imported-note-viewer"
 import {
   AnnotationSidebar,
   type SelectionContext
@@ -97,6 +99,7 @@ export function KnowledgeClient({
   const [annotatedBlockIds, setAnnotatedBlockIds] = useState<Set<string>>(
     new Set()
   )
+  const [importedNoteId, setImportedNoteId] = useState<string | null>(null)
 
   const prefTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -398,6 +401,7 @@ export function KnowledgeClient({
       }
       setSaveStatus("idle")
       setSelectedId(viewpointId)
+      setImportedNoteId(null)
       setFocusedParentId(viewpointId)
       setSelectionCtx(null)
       setRenamingId(null)
@@ -737,6 +741,15 @@ export function KnowledgeClient({
                 </p>
               </div>
             ) : null}
+
+            {/* 导入笔记 */}
+            <ImportedNotesTree
+              selectedNoteId={importedNoteId}
+              onSelectNote={(id) => {
+                setImportedNoteId(id)
+                setSelectedId("")
+              }}
+            />
           </div>
           <div
             className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/20"
@@ -746,6 +759,10 @@ export function KnowledgeClient({
 
         {/* 中央笔记面板 */}
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {importedNoteId ? (
+            <ImportedNoteViewer noteId={importedNoteId} />
+          ) : (
+          <>
           {/* 顶部标题栏 */}
           <div className="flex h-11 shrink-0 items-center justify-between border-b border-border/40 bg-surface px-6">
             <div className="flex min-w-0 items-center gap-2.5">
@@ -869,6 +886,8 @@ export function KnowledgeClient({
               <span>{blockCount} 个块</span>
             </div>
           </div>
+          </>
+          )}
         </main>
 
         {/* 右侧批注侧栏 */}

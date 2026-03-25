@@ -7,6 +7,7 @@
  */
 import { repository } from "@/src/server/repositories"
 import type {
+  ArticleSection,
   Book,
   BookTocTranslation,
   BookTranslation,
@@ -24,6 +25,11 @@ import {
   extractModelMessageContent,
   requestTranslatedParagraphs
 } from "@/src/server/services/translation/request"
+import {
+  buildArticleSourceHash,
+  collectArticleParagraphs,
+  buildTranslatedArticleSections
+} from "@/src/server/services/translation/article-content"
 
 interface TranslateSectionInput {
   userId: string
@@ -254,6 +260,42 @@ export async function prefetchBookTranslations(input: {
     items: sortByRequestedOrder(sectionIndexes, [...cachedItems, ...translatedItems]),
     toc
   }
+}
+
+/** 文章翻译 */
+export async function prefetchArticleTranslations(input: {
+  userId: string
+  articleId: string
+  sections: ArticleSection[]
+  targetLanguage?: string
+  model: ModelConfig | null
+}) {
+  const targetLanguage = input.targetLanguage ?? DEFAULT_TARGET_LANGUAGE
+  const sourceHash = buildArticleSourceHash(input.sections)
+
+  // 检查缓存
+  const cached = repository.listArticleTranslations(input.userId, input.articleId)
+    .find((t) => t.sourceHash === sourceHash && t.targetLanguage === targetLanguage)
+  if (cached) {
+    return { content: cached.content }
+  }
+
+  validateTranslationModel(input.model)
+
+  const paragraphs = collectArticleParagraphs(input.sections)
+  const translated = await requestTranslatedParagraphs(paragraphs, input.model!, targetLanguage)
+  const translatedSections = buildTranslatedArticleSections(input.sections, translated)
+
+  repository.upsertArticleTranslation({
+    userId: input.userId,
+    articleId: input.articleId,
+    sourceHash,
+    targetLanguage,
+    content: translatedSections,
+    modelId: input.model!.id
+  })
+
+  return { content: translatedSections }
 }
 
 export { buildTranslatedSectionSnapshot, extractModelMessageContent }

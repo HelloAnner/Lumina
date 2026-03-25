@@ -12,6 +12,7 @@ const config: Config = {
       colors: {
         base: "var(--color-base)",
         surface: "var(--color-surface)",
+        card: "var(--color-surface)",
         elevated: "var(--color-elevated)",
         overlay: "var(--color-overlay)",
         sidebar: "var(--color-sidebar)",

@@ -53,7 +53,12 @@ export function usePdfReaderController({
   const [pageCount, setPageCount] = useState(Math.max(book.totalPages ?? 0, book.content.length, 1))
   const [currentPageIndex, setCurrentPageIndex] = useState(initialPageIndex)
   const [panelItems, setPanelItems] = useState(highlights.filter((item) => item.format === "PDF"))
-  const [selectionRect, setSelectionRect] = useState<{ top: number; left: number } | null>(null)
+  const [selectionRect, setSelectionRect] = useState<{
+    selectionTop: number
+    selectionBottom: number
+    selectionCenterX: number
+    containerWidth: number
+  } | null>(null)
   const [selectedText, setSelectedText] = useState("")
   const [selectedPageIndex, setSelectedPageIndex] = useState(0)
   const [selectedRects, setSelectedRects] = useState<Highlight["pdfRects"]>([])
@@ -298,8 +303,10 @@ export function usePdfReaderController({
       setSelectedRects(normalizedRects)
       setSelectedPageIndex(pageIndex)
       setSelectionRect({
-        top: Math.max(12, toolbarRect.top - mainRect.top - 54),
-        left: Math.max(12, toolbarRect.left - mainRect.left + toolbarRect.width / 2 - 54)
+        selectionTop: toolbarRect.top - mainRect.top,
+        selectionBottom: toolbarRect.bottom - mainRect.top,
+        selectionCenterX: toolbarRect.left - mainRect.left + toolbarRect.width / 2,
+        containerWidth: mainRect.width
       })
     },
     [boxSelectionEnabled, clearSelection]
@@ -329,8 +336,10 @@ export function usePdfReaderController({
       setSelectedRects([normalizedRect])
       setSelectedPageIndex(pageIndex)
       setSelectionRect({
-        top: Math.max(12, dragRect.top - mainRect.top - 54),
-        left: Math.max(12, dragRect.left - mainRect.left + dragRect.width / 2 - 54)
+        selectionTop: dragRect.top - mainRect.top,
+        selectionBottom: dragRect.top + dragRect.height - mainRect.top,
+        selectionCenterX: dragRect.left - mainRect.left + dragRect.width / 2,
+        containerWidth: mainRect.width
       })
     },
     [clearSelection]

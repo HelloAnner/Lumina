@@ -17,6 +17,7 @@ import {
   Lightbulb,
   Quote
 } from "lucide-react"
+import { ImportedBlockItem } from "@/components/import/imported-note-blocks"
 import { cn } from "@/src/lib/utils"
 import type { NoteBlock } from "@/src/server/store/types"
 
@@ -131,6 +132,14 @@ function renderBlock(
       return <hr className="my-4 border-border/30" />
     case "chart":
       return <ChartBlockPlaceholder block={block} />
+    case "image":
+    case "callout":
+    case "task":
+    case "table":
+    case "mermaid":
+    case "math":
+    case "excalidraw":
+      return <ImportedBlockItem block={block} />
     default:
       return null
   }

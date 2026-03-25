@@ -1,6 +1,7 @@
 import { ArticleReaderClient } from "@/components/articles/article-reader-client"
 import { requirePageUser } from "@/src/server/lib/session"
 import { repository } from "@/src/server/repositories"
+import { getUiPreferences } from "@/src/server/services/preferences/store"
 import { notFound } from "next/navigation"
 
 export default async function ArticleReaderPage({
@@ -15,5 +16,16 @@ export default async function ArticleReaderPage({
     notFound()
   }
 
-  return <ArticleReaderClient article={article} />
+  const highlights = repository.listHighlightsByBook(user.id, article.id)
+  const initialWidths = await getUiPreferences(user.id)
+  const settings = repository.getReaderSettings(user.id)
+
+  return (
+    <ArticleReaderClient
+      article={article}
+      highlights={highlights}
+      initialWidths={initialWidths}
+      settings={settings}
+    />
+  )
 }

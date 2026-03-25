@@ -391,6 +391,11 @@ export function buildSeedDatabase(): Database {
         dailyPatchLimit: 50,
         entryRetentionDays: 30
       }
-    ]
+    ],
+    articleTranslations: [],
+    importSources: [],
+    importJobs: [],
+    importedNotes: [],
+    noteViewpointLinks: []
   }
 }

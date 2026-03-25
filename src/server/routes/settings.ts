@@ -264,7 +264,14 @@ app.put("/reader", async (c) => {
       fontFamily: z.enum(["system", "serif", "sans"]),
       theme: z.enum(["day", "sepia", "night"]),
       navigationMode: z.enum(["horizontal", "vertical"]),
-      translationView: z.enum(["original", "translation"])
+      translationView: z.enum(["original", "translation"]),
+      highlightShortcuts: z.object({
+        yellow: z.string().min(1).max(20),
+        green: z.string().min(1).max(20),
+        blue: z.string().min(1).max(20),
+        pink: z.string().min(1).max(20),
+        note: z.string().min(1).max(20)
+      }).optional()
     })
     .parse(await c.req.json())
   const item = repository.updateReaderSettings(c.get("userId"), payload)

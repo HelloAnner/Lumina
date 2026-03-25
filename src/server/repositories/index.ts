@@ -5,15 +5,20 @@ import type {
   AggregateJob,
   Annotation,
   AnnotationConfig,
+  ArticleTranslation,
   ArticleTopic,
   Book,
   BookTocTranslation,
   BookTranslation,
   Highlight,
   HighlightViewpoint,
+  ImportedNote,
+  ImportJob,
+  ImportSource,
   ModelBinding,
   ModelConfig,
   NoteBlock,
+  NoteViewpointLink,
   PublishRecord,
   PublishTarget,
   PublishTask,
@@ -411,6 +416,38 @@ export const repository = {
       return entry
     })
   },
+  listArticleTranslations(userId: string, articleId: string): ArticleTranslation[] {
+    return (readDatabase().articleTranslations || []).filter(
+      (item) => item.userId === userId && item.articleId === articleId
+    )
+  },
+  upsertArticleTranslation(
+    input: Omit<ArticleTranslation, "id" | "createdAt" | "updatedAt">
+  ): ArticleTranslation {
+    return mutateDatabase((database) => {
+      if (!database.articleTranslations) {
+        database.articleTranslations = []
+      }
+      const existing = database.articleTranslations.find((item) =>
+        item.userId === input.userId &&
+        item.articleId === input.articleId &&
+        item.sourceHash === input.sourceHash &&
+        item.targetLanguage === input.targetLanguage
+      )
+      if (existing) {
+        Object.assign(existing, input, { updatedAt: now() })
+        return existing
+      }
+      const entry: ArticleTranslation = {
+        ...input,
+        id: randomUUID(),
+        createdAt: now(),
+        updatedAt: now()
+      }
+      database.articleTranslations.push(entry)
+      return entry
+    })
+  },
   listModelConfigs(userId: string) {
     return readDatabase().modelConfigs
       .filter((item) => item.userId === userId)
@@ -748,8 +785,12 @@ export const repository = {
 
   // ─── Scout: 文章 ───
 
-  listArticles(userId: string, topicId?: string, search?: string) {
-    return sortByDate(
+  listArticles(
+    userId: string,
+    opts?: { topicId?: string; search?: string; filter?: string; page?: number; pageSize?: number }
+  ) {
+    const { topicId, search, filter, page = 1, pageSize = 20 } = opts ?? {}
+    const all = sortByDate(
       readDatabase().scoutArticles.filter((item) => {
         if (item.userId !== userId) {
           return false
@@ -760,9 +801,26 @@ export const repository = {
         if (search && !`${item.title} ${item.author ?? ""}`.toLowerCase().includes(search.toLowerCase())) {
           return false
         }
+        if (filter === "unread") {
+          return !item.readProgress || item.readProgress === 0
+        }
+        if (filter === "reading") {
+          return item.readProgress > 0 && item.readProgress < 1 && !item.archived
+        }
+        if (filter === "archived") {
+          return !!item.archived
+        }
+        if (!filter || filter === "all") {
+          return !item.archived
+        }
         return true
       })
     )
+    const total = all.length
+    const totalPages = Math.max(1, Math.ceil(total / pageSize))
+    const safePage = Math.min(Math.max(1, page), totalPages)
+    const items = all.slice((safePage - 1) * pageSize, safePage * pageSize)
+    return { items, total, page: safePage, pageSize, totalPages }
   },
   getArticle(userId: string, articleId: string) {
     return readDatabase().scoutArticles.find(
@@ -1187,6 +1245,128 @@ export const repository = {
       const config: ScoutConfig = { ...input, userId }
       database.scoutConfigs.push(config)
       return config
+    })
+  },
+
+  // ─── Import: 导入来源 ───
+
+  listImportSources(userId: string) {
+    return readDatabase().importSources.filter((s) => s.userId === userId)
+  },
+  getImportSource(userId: string, id: string) {
+    return readDatabase().importSources.find((s) => s.id === id && s.userId === userId)
+  },
+  createImportSource(input: Omit<ImportSource, "id" | "createdAt">) {
+    return mutateDatabase((database) => {
+      const source: ImportSource = { ...input, id: randomUUID(), createdAt: now() }
+      database.importSources.push(source)
+      return source
+    })
+  },
+  updateImportSource(userId: string, id: string, updates: Partial<ImportSource>) {
+    return mutateDatabase((database) => {
+      const source = database.importSources.find((s) => s.id === id && s.userId === userId)
+      if (!source) {
+        return null
+      }
+      Object.assign(source, updates)
+      return source
+    })
+  },
+  deleteImportSource(userId: string, id: string) {
+    return mutateDatabase((database) => {
+      database.importSources = database.importSources.filter((s) => !(s.id === id && s.userId === userId))
+      database.importJobs = database.importJobs.filter((j) => !(j.sourceId === id && j.userId === userId))
+      const noteIds = new Set(
+        database.importedNotes.filter((n) => n.sourceId === id && n.userId === userId).map((n) => n.id)
+      )
+      database.noteViewpointLinks = database.noteViewpointLinks.filter((l) => !noteIds.has(l.noteId))
+      database.importedNotes = database.importedNotes.filter((n) => !(n.sourceId === id && n.userId === userId))
+      // 清理观点中由导入产生的引用块
+      for (const viewpoint of database.viewpoints) {
+        if (viewpoint.articleBlocks) {
+          viewpoint.articleBlocks = viewpoint.articleBlocks.filter(
+            (b) => !(b.sourceRef?.type === "import" && noteIds.has(b.sourceRef.noteId))
+          )
+        }
+      }
+    })
+  },
+
+  // ─── Import: 导入任务 ───
+
+  listImportJobs(userId: string, sourceId?: string) {
+    const jobs = readDatabase().importJobs.filter((j) => j.userId === userId)
+    const filtered = sourceId ? jobs.filter((j) => j.sourceId === sourceId) : jobs
+    return sortByDate(filtered, "startedAt")
+  },
+  getImportJob(userId: string, id: string) {
+    return readDatabase().importJobs.find((j) => j.id === id && j.userId === userId)
+  },
+  createImportJob(input: Omit<ImportJob, "id">) {
+    return mutateDatabase((database) => {
+      const job: ImportJob = { ...input, id: randomUUID() }
+      database.importJobs.push(job)
+      return job
+    })
+  },
+  updateImportJob(userId: string, id: string, updates: Partial<ImportJob>) {
+    return mutateDatabase((database) => {
+      const job = database.importJobs.find((j) => j.id === id && j.userId === userId)
+      if (!job) {
+        return null
+      }
+      Object.assign(job, updates)
+      return job
+    })
+  },
+  /** 检查某来源是否有进行中的导入 */
+  hasRunningImportJob(userId: string, sourceId: string) {
+    return readDatabase().importJobs.some(
+      (j) => j.userId === userId && j.sourceId === sourceId && (j.status === "running" || j.status === "committing")
+    )
+  },
+
+  // ─── Import: 导入笔记 ───
+
+  listImportedNotes(userId: string, sourceId?: string) {
+    const notes = readDatabase().importedNotes.filter((n) => n.userId === userId)
+    return sourceId ? notes.filter((n) => n.sourceId === sourceId) : notes
+  },
+  getImportedNote(userId: string, id: string) {
+    return readDatabase().importedNotes.find((n) => n.id === id && n.userId === userId)
+  },
+  /** 批量写入导入笔记（事务提交阶段调用） */
+  commitImportData(data: {
+    notes: ImportedNote[]
+    links: NoteViewpointLink[]
+    newViewpoints: Viewpoint[]
+  }) {
+    return mutateDatabase((database) => {
+      database.importedNotes.push(...data.notes)
+      database.noteViewpointLinks.push(...data.links)
+      database.viewpoints.push(...data.newViewpoints)
+    })
+  },
+
+  // ─── Import: 笔记-观点关联 ───
+
+  listNoteViewpointLinks(noteId: string) {
+    return readDatabase().noteViewpointLinks.filter((l) => l.noteId === noteId)
+  },
+  listViewpointNoteLinks(viewpointId: string) {
+    return readDatabase().noteViewpointLinks.filter((l) => l.viewpointId === viewpointId)
+  },
+  updateNoteViewpointLink(noteId: string, viewpointId: string, updates: Partial<NoteViewpointLink>) {
+    return mutateDatabase((database) => {
+      const link = database.noteViewpointLinks.find(
+        (l) => l.noteId === noteId && l.viewpointId === viewpointId
+      )
+      if (!link) {
+        return null
+      }
+      Object.assign(link, updates)
+      return link
     })
   }
 }

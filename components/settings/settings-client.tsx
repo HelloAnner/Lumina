@@ -45,8 +45,10 @@ import {
   buildModelTestToast,
   type SettingsToastState
 } from "@/components/settings/settings-client-utils"
+import { ImportSourceSection, type ImportSourceWithStats } from "@/components/import/import-source-section"
 import { cn } from "@/src/lib/utils"
 import type {
+  HighlightShortcuts,
   ModelBinding,
   ModelCategory,
   ModelConfig,
@@ -169,6 +171,37 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
           value ? "translate-x-4" : "translate-x-0.5"
         )}
       />
+    </button>
+  )
+}
+
+/** 按键捕获输入框：点击后按任意键录入快捷键 */
+function ShortcutInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [capturing, setCapturing] = useState(false)
+  return (
+    <button
+      className={cn(
+        "h-7 min-w-[48px] rounded-md border px-2 text-center text-xs font-mono transition",
+        capturing
+          ? "border-primary bg-primary/10 text-primary"
+          : "border-border bg-surface text-foreground hover:border-primary/30"
+      )}
+      onClick={() => setCapturing(true)}
+      onBlur={() => setCapturing(false)}
+      onKeyDown={(e) => {
+        if (!capturing) {
+          return
+        }
+        e.preventDefault()
+        if (e.key === "Escape") {
+          setCapturing(false)
+          return
+        }
+        onChange(e.key.length === 1 ? e.key : e.key)
+        setCapturing(false)
+      }}
+    >
+      {capturing ? "..." : value}
     </button>
   )
 }
@@ -432,12 +465,14 @@ export function SettingsClient({
   user,
   modelConfigs,
   modelBindings,
-  readerSettings
+  readerSettings,
+  importSources = []
 }: {
   user: User
   modelConfigs: ModelConfig[]
   modelBindings: ModelBinding[]
   readerSettings?: ReaderSettings
+  importSources?: ImportSourceWithStats[]
 }) {
   const router = useRouter()
   const { theme: appTheme, setTheme: setAppTheme } = useTheme()
@@ -470,7 +505,10 @@ export function SettingsClient({
     fontFamily: readerSettings?.fontFamily ?? "serif",
     theme: readerSettings?.theme ?? "night",
     navigationMode: readerSettings?.navigationMode ?? "horizontal",
-    translationView: (readerSettings?.translationView ?? "original") as TranslationDisplayMode
+    translationView: (readerSettings?.translationView ?? "original") as TranslationDisplayMode,
+    highlightShortcuts: (readerSettings?.highlightShortcuts ?? {
+      yellow: "1", green: "2", blue: "3", pink: "4", note: "n"
+    }) as HighlightShortcuts
   })
   const [savingReader, setSavingReader] = useState(false)
 
@@ -1010,6 +1048,9 @@ export function SettingsClient({
                 </div>
               </div>
             </Card>
+
+            {/* 导入来源 */}
+            <ImportSourceSection sources={importSources} />
           </div>
         )}
 
@@ -1246,6 +1287,37 @@ export function SettingsClient({
                     <div className="text-sm font-medium">{option.label}</div>
                     <div className="mt-0.5 text-xs text-muted">{option.desc}</div>
                   </button>
+                ))}
+              </div>
+            </Card>
+
+            {/* 划词快捷键 */}
+            <Card className="space-y-3 p-5">
+              <div>
+                <h3 className="text-sm font-medium text-foreground">划词快捷键</h3>
+                <p className="text-xs text-muted mt-0.5">选中文本后按键即可创建对应颜色的高亮</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  { key: "yellow" as const, label: "黄色", color: "bg-yellow-500/30" },
+                  { key: "green" as const, label: "绿色", color: "bg-green-500/30" },
+                  { key: "blue" as const, label: "蓝色", color: "bg-blue-500/30" },
+                  { key: "pink" as const, label: "粉色", color: "bg-pink-500/30" },
+                  { key: "note" as const, label: "笔记", color: "bg-overlay" }
+                ]).map((item) => (
+                  <div key={item.key} className="flex items-center gap-2">
+                    <span className={cn("h-4 w-4 rounded", item.color)} />
+                    <span className="text-xs text-secondary w-8">{item.label}</span>
+                    <ShortcutInput
+                      value={readerForm.highlightShortcuts[item.key]}
+                      onChange={(value) =>
+                        setReaderForm((c) => ({
+                          ...c,
+                          highlightShortcuts: { ...c.highlightShortcuts, [item.key]: value }
+                        }))
+                      }
+                    />
+                  </div>
                 ))}
               </div>
             </Card>

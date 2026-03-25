@@ -55,9 +55,12 @@ export function useReaderController({
     null
   )
   const [selectedSectionIndex, setSelectedSectionIndex] = useState(preferredSectionIndex)
-  const [selectionRect, setSelectionRect] = useState<{ top: number; left: number } | null>(
-    null
-  )
+  const [selectionRect, setSelectionRect] = useState<{
+    selectionTop: number
+    selectionBottom: number
+    selectionCenterX: number
+    containerWidth: number
+  } | null>(null)
   const [noteDraft, setNoteDraft] = useState("")
   const [composerOpen, setComposerOpen] = useState(false)
   const [panelItems, setPanelItems] = useState(highlights)
@@ -608,11 +611,11 @@ export function useReaderController({
       setSelectionRect(null)
       return
     }
-    const left = rect.left - mainRect.left + rect.width / 2 - 54
-    const top = rect.top - mainRect.top - 54
     setSelectionRect({
-      top: Math.max(12, top),
-      left: Math.max(12, left)
+      selectionTop: rect.top - mainRect.top,
+      selectionBottom: rect.bottom - mainRect.top,
+      selectionCenterX: rect.left - mainRect.left + rect.width / 2,
+      containerWidth: mainRect.width
     })
   }, [canSelectCurrentContent, pageIndex])
 

@@ -10,7 +10,7 @@ import { z } from "zod"
 import type { AppEnv } from "@/src/server/lib/hono"
 import { repository } from "@/src/server/repositories"
 import { getBookFromStore } from "@/src/server/services/books/store"
-import { prefetchBookTranslations } from "@/src/server/services/translation/service"
+import { prefetchArticleTranslations, prefetchBookTranslations } from "@/src/server/services/translation/service"
 
 const app = new Hono<AppEnv>()
 
@@ -40,6 +40,33 @@ app.post("/books/:bookId/prefetch", async (c) => {
       {
         error: error instanceof Error ? error.message : "翻译失败"
       },
+      400
+    )
+  }
+})
+
+app.post("/articles/:articleId/prefetch", async (c) => {
+  const payload = z
+    .object({ targetLanguage: z.string().optional() })
+    .parse(await c.req.json())
+  const userId = c.get("userId")
+  const article = repository.getArticle(userId, c.req.param("articleId"))
+  if (!article) {
+    return c.json({ error: "文章不存在" }, 404)
+  }
+  const model = repository.getModelByFeature(userId, "section_translate")
+  try {
+    const result = await prefetchArticleTranslations({
+      userId,
+      articleId: article.id,
+      sections: article.content,
+      targetLanguage: payload.targetLanguage,
+      model
+    })
+    return c.json(result)
+  } catch (error) {
+    return c.json(
+      { error: error instanceof Error ? error.message : "翻译失败" },
       400
     )
   }

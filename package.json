@@ -11,6 +11,7 @@
     "verify": "tsx scripts/verify.ts"
   },
   "dependencies": {
+    "@mozilla/readability": "^0.6.0",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
     "cookie": "^1.0.2",
@@ -21,6 +22,7 @@
     "hono": "^4.6.10",
     "jose": "^5.9.6",
     "jszip": "^3.10.1",
+    "linkedom": "^0.18.12",
     "lucide-react": "^0.468.0",
     "marked": "^15.0.6",
     "minio": "^8.0.2",
@@ -38,6 +40,7 @@
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/d3": "^7.4.3",
+    "@types/minimatch": "^5.1.2",
     "@types/node": "^22.10.2",
     "@types/pdfkit": "^0.17.2",
     "@types/pg": "^8.11.10",

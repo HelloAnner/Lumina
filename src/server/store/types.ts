@@ -37,6 +37,14 @@ export type NoteBlockType =
   | "code"
   | "divider"
   | "chart"
+  // 导入新增
+  | "image"
+  | "callout"
+  | "task"
+  | "table"
+  | "mermaid"
+  | "math"
+  | "excalidraw"
 
 /**
  * 笔记块基础字段
@@ -46,14 +54,10 @@ export interface NoteBlockBase {
   type: NoteBlockType
   /** 块排序序号 */
   sortOrder: number
-  /** Scout 来源引用 */
-  sourceRef?: {
-    type: "scout"
-    patchId: string
-    sourceUrl: string
-    author?: string
-    fetchedAt: string
-  }
+  /** 来源引用（Scout 或导入） */
+  sourceRef?:
+    | { type: "scout"; patchId: string; sourceUrl: string; author?: string; fetchedAt: string }
+    | { type: "import"; noteId: string; sourcePath: string }
 }
 
 /** 标题块 */
@@ -119,6 +123,76 @@ export interface ChartBlock extends NoteBlockBase {
   data: { label: string; value: number }[]
 }
 
+/** 图片块 */
+export interface ImageBlock extends NoteBlockBase {
+  type: "image"
+  /** MinIO objectKey */
+  objectKey: string
+  /** 外部 URL（objectKey 为空时用此字段） */
+  externalUrl?: string
+  originalName: string
+  alt?: string
+  /** Obsidian 指定的显示宽度 */
+  displayWidth?: number
+  width?: number
+  height?: number
+}
+
+/** Callout 块 */
+export interface CalloutBlock extends NoteBlockBase {
+  type: "callout"
+  calloutType: string
+  title?: string
+  foldable: boolean
+  defaultFolded: boolean
+  children: NoteBlock[]
+}
+
+/** 任务项 */
+export interface TaskItem {
+  status: "unchecked" | "checked" | "deferred" | "cancelled"
+  rawStatus: string
+  text: string
+  reminderDate?: string
+  children?: TaskItem[]
+  indent: number
+}
+
+/** 任务列表块 */
+export interface TaskBlock extends NoteBlockBase {
+  type: "task"
+  items: TaskItem[]
+}
+
+/** 表格块 */
+export interface TableBlock extends NoteBlockBase {
+  type: "table"
+  headers: string[]
+  rows: string[][]
+  alignments: ("left" | "center" | "right" | "none")[]
+}
+
+/** Mermaid 图表块 */
+export interface MermaidBlock extends NoteBlockBase {
+  type: "mermaid"
+  code: string
+}
+
+/** 数学公式块 */
+export interface MathBlock extends NoteBlockBase {
+  type: "math"
+  latex: string
+  inline: boolean
+}
+
+/** Excalidraw 嵌入块 */
+export interface ExcalidrawBlock extends NoteBlockBase {
+  type: "excalidraw"
+  sourcePath: string
+  svgObjectKey?: string
+  fallbackText: string
+}
+
 export type NoteBlock =
   | HeadingBlock
   | ParagraphBlock
@@ -128,6 +202,13 @@ export type NoteBlock =
   | CodeBlock
   | DividerBlock
   | ChartBlock
+  | ImageBlock
+  | CalloutBlock
+  | TaskBlock
+  | TableBlock
+  | MermaidBlock
+  | MathBlock
+  | ExcalidrawBlock
 
 /**
  * 批注模式：划词批注或直接对话
@@ -326,6 +407,14 @@ export interface StorageConfig {
   region?: string
 }
 
+export interface HighlightShortcuts {
+  yellow: string
+  green: string
+  blue: string
+  pink: string
+  note: string
+}
+
 export interface ReaderSettings {
   userId: string
   fontSize: 14 | 16 | 18 | 20 | 22
@@ -334,6 +423,7 @@ export interface ReaderSettings {
   theme: ReaderTheme
   navigationMode: "horizontal" | "vertical"
   translationView: TranslationDisplayMode
+  highlightShortcuts?: HighlightShortcuts
 }
 
 export interface BookTranslation {
@@ -424,6 +514,19 @@ export interface ArticleSection {
   items?: string[]
 }
 
+/** 文章翻译缓存 */
+export interface ArticleTranslation {
+  id: string
+  userId: string
+  articleId: string
+  sourceHash: string
+  targetLanguage: string
+  content: ArticleSection[]
+  modelId?: string
+  createdAt: string
+  updatedAt: string
+}
+
 /** 互联网文章 */
 export interface ScoutArticle {
   id: string
@@ -444,6 +547,12 @@ export interface ScoutArticle {
   lastReadAt?: string
   highlightCount: number
   language?: string
+  /** 来源站点名（Readability 提取） */
+  siteName?: string
+  /** 首张图片 URL，用于列表封面 */
+  coverImage?: string
+  /** 归档标记 */
+  archived?: boolean
   status: "ready" | "processing" | "failed"
   createdAt: string
 }
@@ -626,6 +735,73 @@ export interface ScoutConfig {
   rsshubBaseUrl?: string
 }
 
+// ─── 导入模块 ───
+
+export type ImportJobStatus = "pending" | "running" | "committing" | "done" | "failed" | "rolling_back" | "cancelled"
+export type ImportJobStage = "scanning" | "parsing" | "uploading" | "analyzing" | "linking"
+
+export interface ImportSource {
+  id: string
+  userId: string
+  type: "obsidian"
+  name: string
+  path: string
+  excludePatterns: string[]
+  lastSyncAt?: string
+  createdAt: string
+}
+
+export interface ImportJob {
+  id: string
+  userId: string
+  sourceId: string
+  status: ImportJobStatus
+  stage: ImportJobStage
+  progress: {
+    totalFiles: number
+    totalImages: number
+    processed: number
+    total: number
+    currentFile?: string
+  }
+  result?: {
+    importedNotes: number
+    importedImages: number
+    newViewpoints: number
+    linkedViewpoints: number
+  }
+  errorMessage?: string
+  startedAt: string
+  finishedAt?: string
+}
+
+export interface ImportedNote {
+  id: string
+  userId: string
+  sourceId: string
+  relativePath: string
+  title: string
+  frontmatter: Record<string, unknown>
+  blocks: NoteBlock[]
+  rawMarkdown: string
+  contentHash: string
+  tags: string[]
+  wikilinks: string[]
+  imageKeys: string[]
+  importedAt: string
+  lastSyncAt: string
+}
+
+export interface NoteViewpointLink {
+  noteId: string
+  viewpointId: string
+  relevanceScore: number
+  relatedBlockIds: string[]
+  reason: string
+  confirmed: boolean
+  createdAt: string
+}
+
 export interface Database {
   users: User[]
   books: Book[]
@@ -656,4 +832,10 @@ export interface Database {
   scoutPatches: ScoutPatch[]
   scoutJobs: ScoutJob[]
   scoutConfigs: ScoutConfig[]
+  articleTranslations: ArticleTranslation[]
+  // 导入模块
+  importSources: ImportSource[]
+  importJobs: ImportJob[]
+  importedNotes: ImportedNote[]
+  noteViewpointLinks: NoteViewpointLink[]
 }

@@ -18,6 +18,7 @@ import { ReaderHighlightPanel } from "@/components/reader/reader-highlight-panel
 import { ReaderNoteComposer } from "@/components/reader/reader-note-composer"
 import type { ReaderClientProps } from "@/components/reader/reader-types"
 import { useReaderController } from "@/components/reader/use-reader-controller"
+import { useReaderShortcuts } from "@/components/reader/use-reader-shortcuts"
 import { useTheme } from "@/components/theme-provider"
 import { useState } from "react"
 
@@ -26,6 +27,13 @@ export function EpubReaderClient(props: ReaderClientProps) {
   const { theme, setTheme } = useTheme()
   const [tocCollapsed, setTocCollapsed] = useState(false)
   const [highlightsCollapsed, setHighlightsCollapsed] = useState(false)
+
+  useReaderShortcuts({
+    selectedText: reader.selectedText,
+    shortcuts: props.settings?.highlightShortcuts,
+    onHighlight: reader.createHighlight,
+    onNote: () => reader.setComposerOpen(true)
+  })
 
   const progress = Math.round(
     ((reader.pageIndex + 1) / Math.max(reader.book.content.length, 1)) * 100

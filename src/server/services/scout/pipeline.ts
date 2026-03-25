@@ -8,6 +8,7 @@
  */
 import { repository } from "@/src/server/repositories"
 import { fetchRss } from "@/src/server/services/scout/rss-fetcher"
+import { fetchAndExtract } from "@/src/server/services/scout/content-extractor"
 import { normalizeUrl, contentHash } from "@/src/server/services/scout/url-utils"
 import type { ScoutTask, ArticleSection } from "@/src/server/store/types"
 
@@ -58,7 +59,8 @@ export async function runPipeline(userId: string, task: ScoutTask, jobId: string
       return true
     })
 
-    // Stage 3: 创建条目 + 文章
+    // Stage 3: 正文提取 + 创建条目与文章
+    let extractErrors = 0
     for (const raw of filtered) {
       const normalized = normalizeUrl(raw.url)
       const hash = contentHash(raw.content)
@@ -78,27 +80,47 @@ export async function runPipeline(userId: string, task: ScoutTask, jobId: string
         fetchedAt: new Date().toISOString()
       })
 
-      /** 将原始内容转为简单的 ArticleSection[] */
-      const sections: ArticleSection[] = [
-        { id: `${entry.id}-h`, type: "heading", level: 1, text: raw.title },
-        { id: `${entry.id}-p`, type: "paragraph", text: raw.content }
-      ]
+      // 尝试提取原文正文，失败则降级为 RSS 原始内容
+      const extracted = await fetchAndExtract(raw.url)
+
+      let sections: ArticleSection[]
+      let summary: string
+      let author = raw.author
+      let siteName: string | undefined
+      let coverImage: string | undefined
+
+      if (extracted && extracted.content.length > 0) {
+        sections = extracted.content
+        summary = extracted.summary
+        author = extracted.author ?? raw.author
+        siteName = extracted.siteName
+        coverImage = extracted.coverImage
+      } else {
+        extractErrors++
+        sections = [
+          { id: `${entry.id}-h`, type: "heading", level: 1, text: raw.title },
+          { id: `${entry.id}-p`, type: "paragraph", text: raw.content }
+        ]
+        summary = raw.content.slice(0, 200)
+      }
 
       repository.createArticle({
         userId,
         entryId: entry.id,
         sourceId: sources[0]?.id ?? "",
-        title: raw.title,
-        author: raw.author,
+        title: extracted?.title || raw.title,
+        author,
         sourceUrl: raw.url,
         channelName: sources[0]?.name ?? "",
         channelIcon: "",
         publishedAt: raw.publishedAt,
         topics: [],
-        summary: raw.content.slice(0, 200),
+        summary,
         content: sections,
         readProgress: 0,
         highlightCount: 0,
+        siteName,
+        coverImage,
         status: "ready"
       })
 
