@@ -11,6 +11,7 @@ import {
   FileText,
   FolderOpen,
   GripVertical,
+  Import,
   Loader2,
   MessageSquare,
   Pencil,
@@ -22,6 +23,7 @@ import { Toast } from "@/components/ui/toast"
 import { NoteBlockList } from "@/components/knowledge/note-block-renderer"
 import { ImportedNotesTree } from "@/components/import/imported-notes-tree"
 import { ImportedNoteViewer } from "@/components/import/imported-note-viewer"
+import { AddSourceDialog } from "@/components/import/add-source-dialog"
 import {
   AnnotationSidebar,
   type SelectionContext
@@ -100,6 +102,7 @@ export function KnowledgeClient({
     new Set()
   )
   const [importedNoteId, setImportedNoteId] = useState<string | null>(null)
+  const [showImportDialog, setShowImportDialog] = useState(false)
 
   const prefTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -453,22 +456,26 @@ export function KnowledgeClient({
       if (!vid) {
         return
       }
+      // 取消正在排队的 debounce 保存，防止旧数据覆盖
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current)
+        saveTimer.current = null
+      }
+      // 合并未落盘的编辑
+      flushEditsToState()
       // 从 editsRef 中移除该块的未保存编辑
       editsRef.current.delete(blockId)
-      // 乐观更新：从本地 state 中移除
-      setBlocks((prev) => {
-        const next = prev.filter((b) => b.id !== blockId)
-        blocksRef.current = next
-        return next
-      })
+      // 同步计算删除后的 blocks，确保持久化使用同一份数据
+      const next = blocksRef.current.filter((b) => b.id !== blockId)
+      blocksRef.current = next
+      setBlocks(next)
       // 立即持久化
       setSaveStatus("saving")
       try {
-        const payload = blocksRef.current
         await fetch(`/api/viewpoints/${vid}/blocks`, {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ blocks: payload })
+          body: JSON.stringify({ blocks: next })
         })
         setSaveStatus("saved")
         if (savedStatusTimer.current) {
@@ -480,7 +487,7 @@ export function KnowledgeClient({
         setSaveStatus("idle")
       }
     },
-    []
+    [flushEditsToState]
   )
 
   /** 重命名主题 */
@@ -851,6 +858,15 @@ export function KnowledgeClient({
               <Button
                 variant="ghost"
                 size="sm"
+                onClick={() => setShowImportDialog(true)}
+                className="h-7 gap-1.5 px-2.5 text-[12px] text-muted hover:text-foreground"
+              >
+                <Import className="h-3.5 w-3.5" />
+                导入
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 className="h-7 gap-1.5 px-2.5 text-[12px] text-muted hover:text-foreground"
               >
                 <Download className="h-3.5 w-3.5" />
@@ -945,6 +961,18 @@ export function KnowledgeClient({
           />
         </aside>
       </div>
+
+      {showImportDialog && (
+        <AddSourceDialog
+          onClose={() => setShowImportDialog(false)}
+          onCreated={(jobId) => {
+            setShowImportDialog(false)
+            if (jobId) {
+              window.location.href = `/sources/import/${jobId}`
+            }
+          }}
+        />
+      )}
     </>
   )
 }

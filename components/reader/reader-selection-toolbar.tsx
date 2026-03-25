@@ -10,7 +10,15 @@
 "use client"
 
 import { useCallback, useLayoutEffect, useRef, useState } from "react"
-import { Highlighter, Lightbulb } from "lucide-react"
+import { Lightbulb } from "lucide-react"
+import type { HighlightColor } from "@/src/server/store/types"
+
+const COLOR_MAP: { color: HighlightColor; bg: string; ring: string; label: string }[] = [
+  { color: "yellow", bg: "bg-yellow-400", ring: "ring-yellow-400/40", label: "黄色 (1)" },
+  { color: "green", bg: "bg-emerald-400", ring: "ring-emerald-400/40", label: "绿色 (2)" },
+  { color: "blue", bg: "bg-blue-400", ring: "ring-blue-400/40", label: "蓝色 (3)" },
+  { color: "pink", bg: "bg-pink-400", ring: "ring-pink-400/40", label: "粉色 (4)" }
+]
 
 export interface SelectionRect {
   selectionTop: number
@@ -28,7 +36,7 @@ export function ReaderSelectionToolbar({
   onNote
 }: {
   selectionRect: SelectionRect | null
-  onHighlight: () => void
+  onHighlight: (color: HighlightColor) => void
   onNote: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -76,13 +84,15 @@ export function ReaderSelectionToolbar({
         opacity: position ? 1 : 0
       }}
     >
-      <button
-        className="rounded-full bg-primary/15 p-2 text-primary transition hover:bg-primary/20"
-        onClick={onHighlight}
-        title="高亮 (1)"
-      >
-        <Highlighter className="h-4 w-4" />
-      </button>
+      {COLOR_MAP.map(({ color, bg, ring, label }) => (
+        <button
+          key={color}
+          className={`h-6 w-6 rounded-full ${bg} transition hover:ring-2 ${ring} hover:scale-110`}
+          onClick={() => onHighlight(color)}
+          title={label}
+        />
+      ))}
+      <span className="mx-0.5 h-4 w-px bg-border/40" />
       <button
         className="rounded-full bg-elevated p-2 text-foreground transition hover:bg-overlay"
         onClick={onNote}

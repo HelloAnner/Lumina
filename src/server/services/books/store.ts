@@ -209,6 +209,7 @@ export function buildBookFromStoredRow(row: any): {
     format: row.format,
     filePath: row.file_path,
     coverPath: row.cover_path ?? undefined,
+    coverVariant: row.cover_variant ?? 0,
     totalPages: row.total_pages ?? undefined,
     readProgress: Number(row.read_progress ?? 0),
     lastReadAt: row.last_read_at ? new Date(row.last_read_at).toISOString() : undefined,
@@ -443,8 +444,8 @@ export async function updateBookInStore(userId: string, bookId: string, updates:
     await ensureBookSchema()
     await getBookPool().query(
       `UPDATE app_books
-       SET title = $3, author = $4, cover_path = $5, total_pages = $6, read_progress = $7, last_read_at = $8,
-           tags = $9::jsonb, status = $10, synopsis = $11, toc = $12::jsonb, content = $13::jsonb
+       SET title = $3, author = $4, cover_path = $5, cover_variant = $6, total_pages = $7, read_progress = $8, last_read_at = $9,
+           tags = $10::jsonb, status = $11, synopsis = $12, toc = $13::jsonb, content = $14::jsonb
        WHERE user_id = $1 AND id = $2`,
       [
         userId,
@@ -452,6 +453,7 @@ export async function updateBookInStore(userId: string, bookId: string, updates:
         merged.title,
         merged.author ?? null,
         merged.coverPath ?? null,
+        merged.coverVariant ?? 0,
         merged.totalPages ?? null,
         merged.readProgress,
         merged.lastReadAt ?? null,

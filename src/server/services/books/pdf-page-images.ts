@@ -89,6 +89,9 @@ async function renderPdfPageSnapshot(
   }
 }
 
+/** 每批并行渲染的页数 */
+const RENDER_BATCH_SIZE = 4
+
 export async function attachPdfPageImageBlocks(params: {
   buffer: Buffer
   userId: string
@@ -108,32 +111,39 @@ export async function attachPdfPageImageBlocks(params: {
   try {
     const sectionMap = new Map(params.sections.map((section) => [section.pageIndex, section]))
 
+    // 第一步：并行检测哪些页面含图片
+    const imagePages: number[] = []
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       const page = await pdf.getPage(pageNumber)
       const operatorList = await page.getOperatorList()
       page.cleanup()
-      if (!pageHasImageOperator(operatorList, pdfjs.OPS)) {
-        continue
+      if (pageHasImageOperator(operatorList, pdfjs.OPS)) {
+        imagePages.push(pageNumber)
       }
+    }
 
-      const snapshot = await renderPdfPageSnapshot(pdf, pageNumber)
-      if (!snapshot) {
-        continue
-      }
-
-      await uploadBookObject({
-        userId: params.userId,
-        bookId: params.bookId,
-        fileName: buildPdfPageImageFileName(pageNumber),
-        buffer: snapshot,
-        contentType: "image/png"
-      })
-
-      const section = sectionMap.get(pageNumber)
-      if (!section) {
-        continue
-      }
-      sectionMap.set(pageNumber, mergePdfPageImageBlock(section, params.bookId))
+    // 第二步：分批并行渲染+上传
+    for (let i = 0; i < imagePages.length; i += RENDER_BATCH_SIZE) {
+      const batch = imagePages.slice(i, i + RENDER_BATCH_SIZE)
+      await Promise.all(
+        batch.map(async (pageNumber) => {
+          const snapshot = await renderPdfPageSnapshot(pdf, pageNumber)
+          if (!snapshot) {
+            return
+          }
+          await uploadBookObject({
+            userId: params.userId,
+            bookId: params.bookId,
+            fileName: buildPdfPageImageFileName(pageNumber),
+            buffer: snapshot,
+            contentType: "image/png"
+          })
+          const section = sectionMap.get(pageNumber)
+          if (section) {
+            sectionMap.set(pageNumber, mergePdfPageImageBlock(section, params.bookId))
+          }
+        })
+      )
     }
 
     return params.sections.map((section) => sectionMap.get(section.pageIndex) ?? section)

@@ -44,6 +44,7 @@ interface Props {
   initialData: PaginatedResult
   initialTopics: ArticleTopic[]
   initialSortBy?: ArticleSortBy
+  archiveRetentionDays?: number
 }
 
 const SORT_OPTIONS: { key: ArticleSortBy; label: string }[] = [
@@ -84,7 +85,7 @@ function timeAgo(dateStr?: string): string {
   return `${days}d ago`
 }
 
-export function ArticlesClient({ initialData, initialTopics, initialSortBy = "lastRead" }: Props) {
+export function ArticlesClient({ initialData, initialTopics, initialSortBy = "lastRead", archiveRetentionDays = 30 }: Props) {
   const router = useRouter()
   const [data, setData] = useState<PaginatedResult>(initialData)
   const [topics] = useState(initialTopics)
@@ -314,6 +315,7 @@ export function ArticlesClient({ initialData, initialTopics, initialSortBy = "la
                   key={article.id}
                   article={article}
                   isArchivedView={activeFilter === "archived"}
+                  archiveRetentionDays={archiveRetentionDays}
                   onClick={() => router.push(`/articles/${article.id}`)}
                   onArchive={() => handleArchive(article.id)}
                   onRestore={() => handleRestore(article.id)}
@@ -391,6 +393,7 @@ export function ArticlesClient({ initialData, initialTopics, initialSortBy = "la
 function ArticleRow({
   article,
   isArchivedView,
+  archiveRetentionDays = 30,
   onClick,
   onArchive,
   onRestore,
@@ -398,6 +401,7 @@ function ArticleRow({
 }: {
   article: ScoutArticle
   isArchivedView: boolean
+  archiveRetentionDays?: number
   onClick: () => void
   onArchive: () => void
   onRestore: () => void
@@ -419,6 +423,17 @@ function ArticleRow({
         ? "text-success"
         : "text-primary"
       : "text-placeholder"
+
+  // 归档过期提示
+  let expiryHint = ""
+  if (isArchivedView && archiveRetentionDays > 0 && article.archivedAt) {
+    const elapsed = Date.now() - new Date(article.archivedAt).getTime()
+    const remaining = archiveRetentionDays * 86_400_000 - elapsed
+    const remainingDays = Math.ceil(remaining / 86_400_000)
+    if (remainingDays <= 7 && remainingDays > 0) {
+      expiryHint = `${remainingDays} 天后自动删除`
+    }
+  }
 
   return (
     <div className="group flex items-start gap-3 rounded-lg border border-border/40 bg-card/40 p-3.5 transition-colors hover:bg-overlay/60">
@@ -448,6 +463,9 @@ function ArticleRow({
             <span className="text-muted">{article.highlightCount} 条划线</span>
           )}
           <span className={readColor}>{readLabel}</span>
+          {expiryHint && (
+            <span className="text-destructive/70">{expiryHint}</span>
+          )}
           {article.topics.length > 0 && (
             <span className="ml-auto rounded bg-elevated px-2 py-0.5 text-[10px] text-muted">
               {article.topics.length} 个主题

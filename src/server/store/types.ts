@@ -257,6 +257,10 @@ export interface User {
   name: string
   aggregateSchedule: "manual" | "daily" | "weekly"
   aggregateCron?: string
+  /** 归档文章保留天数（0 表示永久保留） */
+  archiveRetentionDays?: number
+  /** 已读完文章自动归档天数（0 表示不自动归档） */
+  autoArchiveAfterDays?: number
   deletedAt?: string
   createdAt: string
 }
@@ -269,6 +273,7 @@ export interface Book {
   format: BookFormat
   filePath: string
   coverPath?: string
+  coverVariant?: number
   totalPages?: number
   readProgress: number
   lastReadAt?: string
@@ -555,6 +560,8 @@ export interface ScoutArticle {
   reading?: boolean
   /** 归档标记 */
   archived?: boolean
+  /** 归档时间 */
+  archivedAt?: string
   /** 翻译视图偏好 */
   translationView?: TranslationDisplayMode
   /** 翻译后标题（用于列表展示） */

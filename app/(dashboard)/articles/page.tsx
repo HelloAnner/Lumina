@@ -5,6 +5,7 @@ import { getUiPreferences } from "@/src/server/services/preferences/store"
 
 export default async function ArticlesPage() {
   const user = await requirePageUser()
+  const fullUser = repository.getUserById(user.id)
   const prefs = await getUiPreferences(user.id)
   const result = repository.listArticles(user.id, {
     page: 1,
@@ -18,6 +19,7 @@ export default async function ArticlesPage() {
       initialData={result}
       initialTopics={topics}
       initialSortBy={prefs.articleSortBy}
+      archiveRetentionDays={fullUser?.archiveRetentionDays ?? 30}
     />
   )
 }

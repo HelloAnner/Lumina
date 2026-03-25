@@ -54,8 +54,21 @@ app.delete("/topics/:id", (c) => {
 // ─── 文章 ───
 
 app.get("/", (c) => {
+  const userId = c.get("userId")
   const { topicId, search, filter, sortBy, page, pageSize } = c.req.query()
-  const result = repository.listArticles(c.get("userId"), {
+
+  // 请求驱动：自动归档已读完文章 + 清理过期归档
+  const user = repository.getUserById(userId)
+  const autoArchiveDays = user?.autoArchiveAfterDays ?? 3
+  if (autoArchiveDays > 0) {
+    repository.autoArchiveFinished(userId, autoArchiveDays)
+  }
+  const retentionDays = user?.archiveRetentionDays ?? 30
+  if (retentionDays > 0) {
+    repository.purgeExpiredArchives(userId, retentionDays)
+  }
+
+  const result = repository.listArticles(userId, {
     topicId,
     search,
     filter,
@@ -139,7 +152,10 @@ app.post("/:id/refetch", async (c) => {
 
 /** 删除即归档：将文章移入归档态，不丢数据 */
 app.delete("/:id", (c) => {
-  const item = repository.updateArticle(c.get("userId"), c.req.param("id"), { archived: true })
+  const item = repository.updateArticle(c.get("userId"), c.req.param("id"), {
+    archived: true,
+    archivedAt: new Date().toISOString()
+  })
   if (!item) {
     return c.json({ error: "Article not found" }, 404)
   }

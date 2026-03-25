@@ -351,6 +351,11 @@ export const repository = {
   },
   deleteViewpoint(userId: string, viewpointId: string) {
     return mutateDatabase((database) => {
+      // 收集即将断开关联的高亮 ID
+      const affectedHighlightIds = database.highlightViewpoints
+        .filter((item) => item.viewpointId === viewpointId)
+        .map((item) => item.highlightId)
+
       database.viewpoints = database.viewpoints.filter(
         (item) => !(item.id === viewpointId && item.userId === userId)
       )
@@ -360,6 +365,17 @@ export const repository = {
       database.relations = database.relations.filter(
         (item) => item.sourceId !== viewpointId && item.targetId !== viewpointId
       )
+
+      // 清理孤立高亮：全部关联观点都已删除时，删除高亮本身
+      const orphanIds = affectedHighlightIds.filter(
+        (hId) => !database.highlightViewpoints.some((hv) => hv.highlightId === hId)
+      )
+      if (orphanIds.length > 0) {
+        const orphanSet = new Set(orphanIds)
+        database.highlights = database.highlights.filter(
+          (item) => !orphanSet.has(item.id)
+        )
+      }
     })
   },
   listRelatedViewpoints(userId: string, viewpointId: string) {
@@ -929,6 +945,40 @@ export const repository = {
       database.scoutArticles = database.scoutArticles.filter(
         (item) => !(item.userId === userId && item.id === articleId)
       )
+    })
+  },
+  /** 清理超过保留天数的归档文章 */
+  purgeExpiredArchives(userId: string, retentionDays: number) {
+    const cutoff = Date.now() - retentionDays * 86_400_000
+    return mutateDatabase((database) => {
+      database.scoutArticles = database.scoutArticles.filter((item) => {
+        if (item.userId !== userId || !item.archived) {
+          return true
+        }
+        const archivedTime = item.archivedAt
+          ? new Date(item.archivedAt).getTime()
+          : new Date(item.createdAt).getTime()
+        return archivedTime > cutoff
+      })
+    })
+  },
+  /** 将已读完超过指定天数的文章自动归档 */
+  autoArchiveFinished(userId: string, afterDays: number) {
+    const cutoff = Date.now() - afterDays * 86_400_000
+    const now = new Date().toISOString()
+    return mutateDatabase((database) => {
+      for (const item of database.scoutArticles) {
+        if (item.userId !== userId || item.archived || item.readProgress < 1) {
+          continue
+        }
+        const readTime = item.lastReadAt
+          ? new Date(item.lastReadAt).getTime()
+          : 0
+        if (readTime > 0 && readTime < cutoff) {
+          item.archived = true
+          item.archivedAt = now
+        }
+      }
     })
   },
 

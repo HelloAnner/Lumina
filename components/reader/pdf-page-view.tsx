@@ -11,6 +11,15 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { normalizePdfDragRect, type PdfHighlightRect } from "@/components/reader/pdf-highlight-utils"
 import type { Highlight } from "@/src/server/store/types"
 
+/** 模块级缓存，避免每页重复 dynamic import */
+let pdfjsModulePromise: Promise<typeof import("pdfjs-dist/webpack.mjs")> | null = null
+function getPdfjsModule() {
+  if (!pdfjsModulePromise) {
+    pdfjsModulePromise = import("pdfjs-dist/webpack.mjs")
+  }
+  return pdfjsModulePromise
+}
+
 function buildHighlightRects(item: Highlight) {
   return Array.isArray(item.pdfRects) ? item.pdfRects : []
 }
@@ -128,7 +137,7 @@ export function PdfPageView({
         background: "rgb(255,255,255)"
       }).promise
       const textContent = await page.getTextContent()
-      const pdfjs = await import("pdfjs-dist/webpack.mjs")
+      const pdfjs = await getPdfjsModule()
       const textLayerRenderer = new pdfjs.TextLayer({
         textContentSource: textContent,
         container: textLayer,

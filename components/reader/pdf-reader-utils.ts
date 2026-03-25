@@ -38,15 +38,21 @@ export function findCurrentPdfPageIndex(
   pageRefs: Record<number, HTMLDivElement | null>,
   currentIndex: number
 ) {
+  const keys = Object.keys(pageRefs).map(Number).sort((a, b) => a - b)
+  if (keys.length === 0) {
+    return currentIndex
+  }
+  const maxKey = keys[keys.length - 1]
+  const start = Math.max(keys[0], currentIndex - 2)
+  const end = Math.min(maxKey, currentIndex + 3)
   let nextIndex = currentIndex
-  Object.entries(pageRefs).forEach(([key, element]) => {
-    if (!element) {
-      return
+
+  for (let i = start; i <= end; i++) {
+    const element = pageRefs[i]
+    if (element && element.getBoundingClientRect().top - containerTop <= 120) {
+      nextIndex = i
     }
-    if (element.getBoundingClientRect().top - containerTop <= 120) {
-      nextIndex = Number(key)
-    }
-  })
+  }
   return nextIndex
 }
 

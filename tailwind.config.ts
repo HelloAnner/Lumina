@@ -63,6 +63,15 @@ const config: Config = {
       boxShadow: {
         panel: "0 2px 8px rgba(0,0,0,0.25), 0 8px 24px rgba(0,0,0,0.15)",
         "panel-light": "0 1px 2px rgba(0,0,0,0.02), 0 4px 12px rgba(0,0,0,0.012)"
+      },
+      keyframes: {
+        "indeterminate-slide": {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(400%)" }
+        }
+      },
+      animation: {
+        "indeterminate-slide": "indeterminate-slide 1.4s cubic-bezier(0.25, 0.1, 0.25, 1) infinite"
       }
     }
   },

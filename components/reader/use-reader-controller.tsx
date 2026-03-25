@@ -536,14 +536,17 @@ export function useReaderController({
     []
   )
 
-  // 点击选区工具栏外部时清除选区浮层（handleMouseUp 只绑在段落上，点击其他区域不会触发）
+  // 点击选区工具栏外部时清除选区浮层（想法编辑器打开时保留选区）
   useEffect(() => {
     function handleDocumentMouseDown(event: MouseEvent) {
       if (!selectionRect) {
         return
       }
       const target = event.target as Element
-      if (target.closest("[data-reader-selection-toolbar]")) {
+      if (
+        target.closest("[data-reader-selection-toolbar]") ||
+        target.closest("[data-reader-note-composer]")
+      ) {
         return
       }
       setSelectionRect(null)

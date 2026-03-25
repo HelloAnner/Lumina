@@ -7,11 +7,14 @@
  * Created on 2026/3/25
  */
 import { Hono } from "hono"
-import { existsSync, statSync } from "node:fs"
+import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs"
+import { dirname, join } from "node:path"
 import { z } from "zod"
 import type { AppEnv } from "@/src/server/lib/hono"
 import { repository } from "@/src/server/repositories"
 import { cancelImportJob } from "@/src/server/services/import/pipeline"
+
+const DATA_DIR = process.env.DATA_DIR ?? "data/app"
 
 const app = new Hono<AppEnv>()
 
@@ -77,6 +80,70 @@ app.post("/sources", async (c) => {
   })
 
   return c.json({ item: source }, 201)
+})
+
+/** 通过浏览器上传 Vault 文件夹创建导入来源 */
+app.post("/sources/upload", async (c) => {
+  const userId = c.get("userId")
+  const form = await c.req.formData()
+
+  const name = (form.get("name") as string)?.trim()
+  if (!name) {
+    return c.json({ error: "名称不能为空" }, 400)
+  }
+
+  const excludePatterns: string[] = JSON.parse(
+    (form.get("excludePatterns") as string) || "[]"
+  )
+  const relativePaths: string[] = JSON.parse(
+    (form.get("relativePaths") as string) || "[]"
+  )
+  const files = form.getAll("files") as File[]
+
+  if (files.length === 0 || relativePaths.length !== files.length) {
+    return c.json({ error: "未选择文件或路径信息缺失" }, 400)
+  }
+
+  // 创建 source 获取 ID，再写文件到对应目录
+  const source = repository.createImportSource({
+    userId,
+    type: "obsidian",
+    name,
+    path: "", // 占位，写完文件后回填
+    excludePatterns
+  })
+
+  const vaultDir = join(DATA_DIR, "vaults", source.id)
+
+  for (let i = 0; i < files.length; i++) {
+    const relPath = relativePaths[i]
+    if (!relPath || relPath.includes("..")) {
+      continue
+    }
+    const targetPath = join(vaultDir, relPath)
+    mkdirSync(dirname(targetPath), { recursive: true })
+    const buffer = Buffer.from(await files[i].arrayBuffer())
+    writeFileSync(targetPath, buffer)
+  }
+
+  // 回填实际路径
+  repository.updateImportSource(userId, source.id, { path: vaultDir })
+
+  // 自动触发同步
+  const job = repository.createImportJob({
+    userId,
+    sourceId: source.id,
+    status: "pending",
+    stage: "scanning",
+    progress: { totalFiles: 0, totalImages: 0, processed: 0, total: 0 },
+    startedAt: new Date().toISOString()
+  })
+
+  void import("@/src/server/services/import/pipeline").then((m) =>
+    m.runImportPipeline(userId, job.id)
+  )
+
+  return c.json({ item: source, job }, 201)
 })
 
 /** 更新导入来源 */

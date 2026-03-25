@@ -1,14 +1,16 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   ArrowRight,
   Check,
   ChevronDown,
   Edit3,
+  ImagePlus,
   LayoutGrid,
   Plus,
+  RefreshCw,
   Search,
   Trash2,
   X
@@ -28,18 +30,19 @@ type LibraryBook = Book & {
 }
 
 /**
- * 封面配色方案 - 低饱和度克制色系
+ * 封面配色方案 - 温暖大地色系
+ * 灵感：Swan Song 的宁静近未来美学
  * 每组：背景色、装饰线色、文字色
  */
 const COVER_PALETTES = [
-  { bg: "#13131A", accent: "#6C8EEF", text: "#BFC8F5" },
-  { bg: "#131E1E", accent: "#4EB5A8", text: "#B8E8E4" },
-  { bg: "#201916", accent: "#C87D50", text: "#E8C4A0" },
-  { bg: "#17141F", accent: "#9B8EC4", text: "#CCC5E8" },
-  { bg: "#131820", accent: "#5B8FD4", text: "#B0CDF0" },
-  { bg: "#1E1910", accent: "#C4943A", text: "#E8D0A0" },
-  { bg: "#121B14", accent: "#6BC89B", text: "#B4E4C8" },
-  { bg: "#1C1318", accent: "#C47090", text: "#E8B8CC" },
+  { bg: "#1E1C19", accent: "#C4A882", text: "#D4C8B8" },
+  { bg: "#171C18", accent: "#7BA878", text: "#B4C8AF" },
+  { bg: "#1C1816", accent: "#B88868", text: "#D4B8A0" },
+  { bg: "#18181E", accent: "#7880A8", text: "#B0B8D0" },
+  { bg: "#1C1A14", accent: "#C4A050", text: "#D8C898" },
+  { bg: "#1C1718", accent: "#A87878", text: "#D0B0B0" },
+  { bg: "#161C1C", accent: "#689898", text: "#A8C8C8" },
+  { bg: "#1A1918", accent: "#989088", text: "#C8C0B8" },
 ]
 
 function hashTitle(title: string): number {
@@ -50,71 +53,30 @@ function hashTitle(title: string): number {
   return Math.abs(h)
 }
 
-/** 生成封面装饰图案（基于哈希确定性选择） */
-function CoverPattern({ hash, accent }: { hash: number; accent: string }) {
-  const variant = hash % 4
-  const accentDim = accent + "18"
-  const accentMid = accent + "30"
-
-  if (variant === 0) {
-    // 右下角大圆弧
-    return (
-      <div
-        className="absolute -bottom-12 -right-12 h-40 w-40 rounded-full"
-        style={{ border: `1.5px solid ${accentMid}`, background: accentDim }}
-      />
-    )
-  }
-  if (variant === 1) {
-    // 对角线
-    return (
-      <>
-        <div className="absolute right-5 top-5 h-px w-14" style={{ background: accentMid }} />
-        <div className="absolute right-5 top-5 h-14 w-px" style={{ background: accentMid }} />
-      </>
-    )
-  }
-  if (variant === 2) {
-    // 底部横条纹
-    return (
-      <div className="absolute bottom-6 left-5 right-5 flex flex-col gap-[5px]">
-        <div className="h-px" style={{ background: accentMid }} />
-        <div className="h-px w-3/4" style={{ background: accentDim }} />
-        <div className="h-px w-1/2" style={{ background: accentDim }} />
-      </div>
-    )
-  }
-  // 右上角小菱形
-  return (
-    <div
-      className="absolute right-5 top-6 h-8 w-8 rotate-45"
-      style={{ border: `1px solid ${accentMid}` }}
-    />
-  )
-}
-
-/** 极简书籍封面 */
+/** 极简书籍封面 — 温暖大地色系，以排版为核心 */
 function BookCover({
   title,
   coverUrl,
+  coverVariant,
   progress,
   isComplete
 }: {
   title: string
   coverUrl?: string
+  coverVariant?: number
   progress: number
   isComplete: boolean
 }) {
   const [imgError, setImgError] = useState(false)
   const hash = hashTitle(title)
-  const palette = COVER_PALETTES[hash % COVER_PALETTES.length]
+  const palette = COVER_PALETTES[(hash + (coverVariant || 0)) % COVER_PALETTES.length]
   const normalizedProgress = normalizeLibraryProgress(progress)
   const showCover = coverUrl && !imgError
 
   return (
     <div className="group/cover relative">
       <div
-        className="relative aspect-[3/4] w-full overflow-hidden rounded-lg shadow-panel transition-transform duration-300 ease-out group-hover/cover:-translate-y-1"
+        className="relative aspect-[3/4] w-full overflow-hidden rounded-lg transition-transform duration-300 ease-out group-hover/cover:-translate-y-1"
         style={{ background: palette.bg }}
       >
         {showCover ? (
@@ -127,24 +89,20 @@ function BookCover({
             onError={() => setImgError(true)}
           />
         ) : (
-          <>
-            {/* 装饰图案 */}
-            <CoverPattern hash={hash} accent={palette.accent} />
+          <div className="flex h-full flex-col justify-between p-6">
             {/* 顶部装饰线 */}
             <div
-              className="absolute left-5 top-5 h-[2px] w-8 rounded-full"
+              className="h-[2px] w-6 rounded-full"
               style={{ background: palette.accent }}
             />
             {/* 书名 */}
-            <div className="absolute inset-x-5 bottom-5 top-10 flex flex-col justify-end">
-              <p
-                className="line-clamp-4 text-[15px] font-semibold leading-[1.4]"
-                style={{ color: palette.text }}
-              >
-                {title}
-              </p>
-            </div>
-          </>
+            <p
+              className="line-clamp-4 text-lg font-medium leading-snug"
+              style={{ color: palette.text }}
+            >
+              {title}
+            </p>
+          </div>
         )}
 
         {/* 已读完标记 */}
@@ -176,7 +134,7 @@ function ContinueReadingCard({
 }) {
   const [imgError, setImgError] = useState(false)
   const hash = hashTitle(book.title)
-  const palette = COVER_PALETTES[hash % COVER_PALETTES.length]
+  const palette = COVER_PALETTES[(hash + (book.coverVariant || 0)) % COVER_PALETTES.length]
   const normalizedProgress = normalizeLibraryProgress(book.readProgress)
   const showCover = book.coverUrl && !imgError
 
@@ -201,21 +159,18 @@ function ContinueReadingCard({
             onError={() => setImgError(true)}
           />
         ) : (
-          <>
-            <CoverPattern hash={hash} accent={palette.accent} />
+          <div className="flex h-full flex-col justify-between p-5">
             <div
-              className="absolute left-4 top-4 h-[2px] w-6 rounded-full"
+              className="h-[2px] w-5 rounded-full"
               style={{ background: palette.accent }}
             />
-            <div className="absolute inset-x-4 bottom-4 top-8 flex flex-col justify-end">
-              <p
-                className="line-clamp-3 text-[13px] font-semibold leading-[1.4]"
-                style={{ color: palette.text }}
-              >
-                {book.title}
-              </p>
-            </div>
-          </>
+            <p
+              className="line-clamp-3 text-[13px] font-medium leading-snug"
+              style={{ color: palette.text }}
+            >
+              {book.title}
+            </p>
+          </div>
         )}
       </div>
 
@@ -281,6 +236,17 @@ function formatLastRead(dateStr: string): string {
 }
 
 /** 编辑书籍对话框 */
+/** 将 File 转为 base64 data URI */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+/** 编辑书籍对话框（含封面编辑） */
 function EditBookDialog({
   book,
   isOpen,
@@ -290,13 +256,24 @@ function EditBookDialog({
   book: LibraryBook | null
   isOpen: boolean
   onClose: () => void
-  onSave: (bookId: string, data: { title: string; author: string; format: BookFormat; tags: string[] }) => void
+  onSave: (bookId: string, data: {
+    title: string
+    author: string
+    format: BookFormat
+    tags: string[]
+    coverImageBase64?: string
+    coverVariant?: number
+  }) => void
 }) {
   const [title, setTitle] = useState(book?.title || "")
   const [author, setAuthor] = useState(book?.author || "")
   const [format, setFormat] = useState<BookFormat>(book?.format || "EPUB")
   const [tags, setTags] = useState<string[]>(book?.tags || [])
   const [newTag, setNewTag] = useState("")
+  const [coverPreview, setCoverPreview] = useState<string | null>(null)
+  const [coverBase64, setCoverBase64] = useState<string | null>(null)
+  const [coverVariant, setCoverVariant] = useState(book?.coverVariant || 0)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useMemo(() => {
     if (book) {
@@ -304,6 +281,9 @@ function EditBookDialog({
       setAuthor(book.author || "")
       setFormat(book.format)
       setTags(book.tags)
+      setCoverPreview(null)
+      setCoverBase64(null)
+      setCoverVariant(book.coverVariant || 0)
     }
   }, [book])
 
@@ -322,14 +302,40 @@ function EditBookDialog({
     setTags(tags.filter((t) => t !== tagToRemove))
   }
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const base64 = await fileToBase64(file)
+    setCoverBase64(base64)
+    setCoverPreview(base64)
+  }
+
+  const handleRefreshVariant = () => {
+    const next = (coverVariant + 1) % COVER_PALETTES.length
+    setCoverVariant(next)
+    setCoverPreview(null)
+    setCoverBase64(null)
+  }
+
   const handleSave = () => {
-    onSave(book.id, { title: title.trim() || book.title, author: author.trim(), format, tags })
+    onSave(book.id, {
+      title: title.trim() || book.title,
+      author: author.trim(),
+      format,
+      tags,
+      ...(coverBase64 ? { coverImageBase64: coverBase64 } : {}),
+      coverVariant
+    })
     onClose()
   }
 
+  const previewHash = hashTitle(title.trim() || book.title)
+  const previewPalette = COVER_PALETTES[(previewHash + coverVariant) % COVER_PALETTES.length]
+  const displayCoverUrl = coverPreview || book.coverUrl
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-2xl">
+      <div className="w-full max-w-lg rounded-xl border border-border bg-surface p-6 shadow-2xl">
         <div className="mb-5 flex items-center justify-between">
           <h3 className="text-lg font-semibold">编辑书籍信息</h3>
           <button
@@ -338,6 +344,60 @@ function EditBookDialog({
           >
             <X className="h-4 w-4" />
           </button>
+        </div>
+
+        {/* 封面编辑区 */}
+        <div className="mb-5 flex gap-5">
+          <div
+            className="relative aspect-[3/4] w-28 flex-shrink-0 overflow-hidden rounded-lg"
+            style={{ background: previewPalette.bg }}
+          >
+            {displayCoverUrl ? (
+              <Image
+                src={displayCoverUrl}
+                alt={book.title}
+                fill
+                className="object-cover"
+                unoptimized
+              />
+            ) : (
+              <div className="flex h-full flex-col justify-between p-4">
+                <div
+                  className="h-[2px] w-5 rounded-full"
+                  style={{ background: previewPalette.accent }}
+                />
+                <p
+                  className="line-clamp-3 text-xs font-medium leading-snug"
+                  style={{ color: previewPalette.text }}
+                >
+                  {title || book.title}
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="flex flex-col justify-center gap-2">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-secondary transition-colors hover:bg-elevated hover:text-foreground"
+            >
+              <ImagePlus className="h-3.5 w-3.5" />
+              上传封面
+            </button>
+            <button
+              onClick={handleRefreshVariant}
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-secondary transition-colors hover:bg-elevated hover:text-foreground"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              刷新图案
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+          </div>
         </div>
 
         <div className="space-y-4">
@@ -450,7 +510,14 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
 
   async function handleSaveBook(
     bookId: string,
-    data: { title: string; author: string; format: BookFormat; tags: string[] }
+    data: {
+      title: string
+      author: string
+      format: BookFormat
+      tags: string[]
+      coverImageBase64?: string
+      coverVariant?: number
+    }
   ) {
     const response = await fetch(`/api/books/${bookId}`, {
       method: "PUT",
@@ -458,8 +525,10 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
       body: JSON.stringify(data)
     })
     if (response.ok) {
-      const { item } = await response.json()
-      setBooks((current) => current.map((b) => (b.id === bookId ? { ...b, ...item } : b)))
+      const { item, coverUrl } = await response.json()
+      setBooks((current) => current.map((b) => (
+        b.id === bookId ? { ...b, ...item, coverUrl: coverUrl || b.coverUrl } : b
+      )))
       router.refresh()
     }
   }
@@ -581,6 +650,7 @@ export function LibraryClient({ initialBooks }: { initialBooks: LibraryBook[] })
                 <BookCover
                   title={book.title}
                   coverUrl={book.coverUrl}
+                  coverVariant={book.coverVariant}
                   progress={book.readProgress}
                   isComplete={book.readProgress >= 1}
                 />

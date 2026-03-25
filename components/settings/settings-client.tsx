@@ -498,6 +498,27 @@ export function SettingsClient({
   const [savingSchedule, setSavingSchedule] = useState(false)
   const isAutoSync = schedule !== "manual"
 
+  // 归档设置
+  const [archiveRetention, setArchiveRetention] = useState(user.archiveRetentionDays ?? 30)
+  const [autoArchiveDays, setAutoArchiveDays] = useState(user.autoArchiveAfterDays ?? 3)
+
+  const handleArchiveSettingChange = async (updates: { archiveRetentionDays?: number; autoArchiveAfterDays?: number }) => {
+    if (updates.archiveRetentionDays !== undefined) {
+      setArchiveRetention(updates.archiveRetentionDays)
+    }
+    if (updates.autoArchiveAfterDays !== undefined) {
+      setAutoArchiveDays(updates.autoArchiveAfterDays)
+    }
+    const resp = await fetch("/api/settings/archive", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(updates)
+    })
+    if (resp.ok) {
+      showToast("归档策略已更新")
+    }
+  }
+
   // 阅读设置
   const [readerForm, setReaderForm] = useState({
     fontSize: readerSettings?.fontSize ?? 16,
@@ -1045,6 +1066,57 @@ export function SettingsClient({
                 <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-elevated/30 px-4 py-3">
                   <HardDrive className="h-4 w-4 shrink-0 text-muted" />
                   <span className="text-sm text-secondary">存储容量由平台统一管理，无需手动配置</span>
+                </div>
+              </div>
+            </Card>
+
+            {/* 归档管理 */}
+            <Card>
+              <div className="border-b border-border/60 px-5 py-3.5">
+                <span className="text-sm font-medium">归档管理</span>
+              </div>
+              <div className="divide-y divide-border/40">
+                <div className="flex items-center justify-between px-5 py-4">
+                  <div>
+                    <div className="text-sm font-medium">已读完自动归档</div>
+                    <div className="mt-0.5 text-xs text-muted">读完后超过指定天数自动移入归档</div>
+                  </div>
+                  <div className="relative">
+                    <select
+                      className="h-9 w-36 appearance-none rounded-lg border border-border bg-surface px-3 pr-8 text-sm outline-none transition-colors hover:border-primary/40 focus:border-primary/60"
+                      value={autoArchiveDays}
+                      onChange={(e) => handleArchiveSettingChange({ autoArchiveAfterDays: Number(e.target.value) })}
+                    >
+                      <option value={1}>1 天</option>
+                      <option value={3}>3 天</option>
+                      <option value={7}>7 天</option>
+                      <option value={14}>14 天</option>
+                      <option value={30}>30 天</option>
+                      <option value={0}>不自动归档</option>
+                    </select>
+                    <ChevronsUpDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between px-5 py-4">
+                  <div>
+                    <div className="text-sm font-medium">归档保留天数</div>
+                    <div className="mt-0.5 text-xs text-muted">超过保留天数的归档文章将被自动永久删除</div>
+                  </div>
+                  <div className="relative">
+                    <select
+                      className="h-9 w-36 appearance-none rounded-lg border border-border bg-surface px-3 pr-8 text-sm outline-none transition-colors hover:border-primary/40 focus:border-primary/60"
+                      value={archiveRetention}
+                      onChange={(e) => handleArchiveSettingChange({ archiveRetentionDays: Number(e.target.value) })}
+                    >
+                      <option value={7}>7 天</option>
+                      <option value={14}>14 天</option>
+                      <option value={30}>30 天</option>
+                      <option value={60}>60 天</option>
+                      <option value={90}>90 天</option>
+                      <option value={0}>永久保留</option>
+                    </select>
+                    <ChevronsUpDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+                  </div>
                 </div>
               </div>
             </Card>

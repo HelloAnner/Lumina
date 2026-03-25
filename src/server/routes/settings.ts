@@ -278,4 +278,25 @@ app.put("/reader", async (c) => {
   return c.json({ item })
 })
 
+app.get("/archive", (c) => {
+  const user = repository.getUserById(c.get("userId"))
+  return c.json({
+    item: {
+      archiveRetentionDays: user?.archiveRetentionDays ?? 30,
+      autoArchiveAfterDays: user?.autoArchiveAfterDays ?? 3
+    }
+  })
+})
+
+app.put("/archive", async (c) => {
+  const payload = z
+    .object({
+      archiveRetentionDays: z.number().int().min(0).max(365).optional(),
+      autoArchiveAfterDays: z.number().int().min(0).max(365).optional()
+    })
+    .parse(await c.req.json())
+  const user = repository.updateUser(c.get("userId"), payload)
+  return c.json({ item: user })
+})
+
 export default app

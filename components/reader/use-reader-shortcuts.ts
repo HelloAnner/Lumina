@@ -8,7 +8,7 @@
  */
 "use client"
 
-import { useEffect } from "react"
+import { useCallback, useEffect, useState } from "react"
 import type { HighlightColor, HighlightShortcuts } from "@/src/server/store/types"
 
 const DEFAULT_SHORTCUTS: HighlightShortcuts = {
@@ -30,20 +30,30 @@ export function useReaderShortcuts({
   onHighlight: (color: HighlightColor) => void
   onNote: () => void
 }) {
+  const [showHint, setShowHint] = useState(false)
+
+  const dismissHint = useCallback(() => setShowHint(false), [])
+
   useEffect(() => {
-    if (!selectedText) {
-      return
-    }
-
-    const bindings = shortcuts ?? DEFAULT_SHORTCUTS
-
     function handleKeydown(event: KeyboardEvent) {
-      // 忽略输入框内的按键
       const tag = (event.target as HTMLElement).tagName
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
         return
       }
 
+      // ? 键切换快捷键提示
+      if (event.key === "?") {
+        event.preventDefault()
+        setShowHint((prev) => !prev)
+        return
+      }
+
+      // 高亮快捷键仅在有选中文本时生效
+      if (!selectedText) {
+        return
+      }
+
+      const bindings = shortcuts ?? DEFAULT_SHORTCUTS
       const key = event.key.toLowerCase()
       const colors: HighlightColor[] = ["yellow", "green", "blue", "pink"]
 
@@ -64,6 +74,8 @@ export function useReaderShortcuts({
     window.addEventListener("keydown", handleKeydown)
     return () => window.removeEventListener("keydown", handleKeydown)
   }, [selectedText, shortcuts, onHighlight, onNote])
+
+  return { showShortcutHint: showHint, dismissShortcutHint: dismissHint }
 }
 
 export { DEFAULT_SHORTCUTS }

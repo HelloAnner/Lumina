@@ -264,28 +264,28 @@ async function safeResolveDestPageIndex(
   }
 }
 
-async function appendOutlineNodes(
+async function collectOutlineNodes(
   pdf: PdfDocumentLike,
   nodes: PdfOutlineNodeLike[],
-  level: number,
-  bucket: HardParsedBookMetadata["toc"]
-) {
-  for (const node of nodes) {
-    const title = node.title?.trim()
-    const pageIndex = await safeResolveDestPageIndex(pdf, node.dest)
-    if (title && typeof pageIndex === "number") {
-      bucket.push({
-        id: crypto.randomUUID(),
-        title,
-        pageIndex,
-        level
-      })
-    }
-    const children = Array.isArray(node.items) ? node.items : []
-    if (children.length > 0) {
-      await appendOutlineNodes(pdf, children, level + 1, bucket)
-    }
-  }
+  level: number
+): Promise<HardParsedBookMetadata["toc"]> {
+  const results = await Promise.all(
+    nodes.map(async (node) => {
+      const title = node.title?.trim()
+      const pageIndex = await safeResolveDestPageIndex(pdf, node.dest)
+      const entry: HardParsedBookMetadata["toc"] = []
+      if (title && typeof pageIndex === "number") {
+        entry.push({ id: crypto.randomUUID(), title, pageIndex, level })
+      }
+      const children = Array.isArray(node.items) ? node.items : []
+      if (children.length > 0) {
+        const childEntries = await collectOutlineNodes(pdf, children, level + 1)
+        entry.push(...childEntries)
+      }
+      return entry
+    })
+  )
+  return results.flat()
 }
 
 async function extractPageContent(
@@ -340,14 +340,19 @@ export async function extractPdfMetadataFromDocument(
   const title = info.Title?.trim() || fallbackTitle(fileName)
   const author = info.Author?.trim() || "未知作者"
   const outline = await extractPdfOutline(pdf)
-  const toc: HardParsedBookMetadata["toc"] = []
-  await appendOutlineNodes(pdf, outline, 0, toc)
+  const toc = await collectOutlineNodes(pdf, outline, 0)
+
+  const pageResults = await Promise.all(
+    Array.from({ length: pdf.numPages }, (_, i) => {
+      const pageNumber = i + 1
+      return extractPageContent(pdf, pageNumber).then((content) => ({ pageNumber, content }))
+    })
+  )
 
   const pageTexts: string[] = []
   const sections: HardParsedBookMetadata["sections"] = []
 
-  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-    const content = await extractPageContent(pdf, pageNumber)
+  for (const { pageNumber, content } of pageResults) {
     pageTexts.push(content)
     sections.push({
       id: crypto.randomUUID(),

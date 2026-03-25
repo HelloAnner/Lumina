@@ -31,6 +31,7 @@ export async function ensureBookSchema() {
         format TEXT NOT NULL,
         file_path TEXT NOT NULL,
         cover_path TEXT,
+        cover_variant INTEGER DEFAULT 0,
         total_pages INTEGER,
         read_progress REAL DEFAULT 0,
         last_read_at TIMESTAMPTZ,
@@ -44,7 +45,11 @@ export async function ensureBookSchema() {
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS idx_app_books_user_id ON app_books(user_id);
-    `).then(() => undefined)
+    `).then(async () => {
+      await getPool().query(`
+        ALTER TABLE app_books ADD COLUMN IF NOT EXISTS cover_variant INTEGER DEFAULT 0;
+      `).catch(() => {})
+    })
   }
   return schemaReady
 }

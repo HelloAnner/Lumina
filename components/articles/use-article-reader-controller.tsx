@@ -9,7 +9,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { Highlight, HighlightColor, ReaderSettings, ScoutArticle } from "@/src/server/store/types"
+import type { Highlight, HighlightColor, ReaderSettings, ReaderTheme, ScoutArticle } from "@/src/server/store/types"
 import type { ResolvedHighlight } from "@/components/reader/reader-types"
 import { buildParagraphSegments } from "@/components/reader/reader-highlight-utils"
 import {
@@ -56,6 +56,8 @@ export function useArticleReaderController({
   const [fontSize, setFontSize] = useState<ReaderSettings["fontSize"]>(settings?.fontSize ?? 16)
   const [lineHeight, setLineHeight] = useState<ReaderSettings["lineHeight"]>(settings?.lineHeight ?? 2)
   const [letterSpacing, setLetterSpacing] = useState(0)
+  const [fontFamily, setFontFamily] = useState<ReaderSettings["fontFamily"]>(settings?.fontFamily ?? "system")
+  const [readerTheme, setReaderTheme] = useState<ReaderTheme>(settings?.theme ?? "day")
   const [showFontPanel, setShowFontPanel] = useState(false)
   const [highlightsWidth, setHighlightsWidth] = useState(initialWidths.readerHighlightsWidth)
   const [refetching, setRefetching] = useState(false)
@@ -211,14 +213,17 @@ export function useArticleReaderController({
     }
   }, [article.id, article.reading, article.archived])
 
-  // 点击工具栏外清除选区
+  // 点击工具栏外清除选区（想法编辑器打开时保留选区）
   useEffect(() => {
     function handleDocumentMouseDown(event: MouseEvent) {
       if (!selectionRect) {
         return
       }
       const target = event.target as Element
-      if (target.closest("[data-reader-selection-toolbar]")) {
+      if (
+        target.closest("[data-reader-selection-toolbar]") ||
+        target.closest("[data-reader-note-composer]")
+      ) {
         return
       }
       setSelectionRect(null)
@@ -448,6 +453,8 @@ export function useArticleReaderController({
     fontSize,
     lineHeight,
     letterSpacing,
+    fontFamily,
+    readerTheme,
     showFontPanel,
     highlightsWidth,
     fontPanelRef,
@@ -470,6 +477,8 @@ export function useArticleReaderController({
     setFontSize,
     setLineHeight,
     setLetterSpacing,
+    setFontFamily,
+    setReaderTheme,
     setHighlightsWidth
   }
 }

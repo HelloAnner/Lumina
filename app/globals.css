@@ -88,6 +88,21 @@
   --gradient-glow-secondary: radial-gradient(ellipse at bottom right, rgba(184, 137, 90, 0.02), transparent 55%);
 }
 
+/* 阅读器 Sepia 主题 — 暖黄纸质阅读氛围 */
+.sepia {
+  --color-base: #F2EDE4;
+  --color-surface: #EDE8DF;
+  --color-elevated: #F5F0E8;
+  --color-overlay: #E8E2D8;
+  --color-foreground: #2C2820;
+  --color-secondary: #6A6050;
+  --color-muted: #9A9080;
+  --color-border: rgba(160, 140, 110, 0.2);
+  --color-reader-sidebar: #F0EAE0;
+  --color-reader-card: #FAF6EF;
+  --color-reader-text: #3C3528;
+}
+
 * {
   box-sizing: border-box;
 }

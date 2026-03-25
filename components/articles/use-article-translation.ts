@@ -91,16 +91,18 @@ export function useArticleTranslation({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const viewRef = useRef(translationView)
+  viewRef.current = translationView
+
   const toggleTranslationView = useCallback(() => {
     setTranslationError(null)
-    setTranslationView((current) => {
-      const next = current === "translation" ? "original" : "translation"
-      if (next === "translation" && !translatedContent) {
-        void fetchTranslation()
-      }
-      persistView(next)
-      return next
-    })
+    const next = viewRef.current === "translation" ? "original" : "translation"
+    setTranslationView(next)
+    persistView(next)
+    // 切到译文且尚无缓存时发起翻译，放在 setState 之外确保 isTranslating 独立触发渲染
+    if (next === "translation" && !translatedContent) {
+      void fetchTranslation()
+    }
   }, [fetchTranslation, persistView, translatedContent])
 
   const displayTitle =

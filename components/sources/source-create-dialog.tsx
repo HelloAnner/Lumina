@@ -47,6 +47,7 @@ const TAG_GROUPS: { label: string; tags: string[] }[] = [
 
 export function SourceCreateDialog({ channels, credentials, onClose, onCreated }: Props) {
   const [step, setStep] = useState<"select" | "configure">("select")
+  const [activeGroup, setActiveGroup] = useState(TAG_GROUPS[0].label)
   const [selectedChannel, setSelectedChannel] = useState<ScoutChannel | null>(null)
   const [name, setName] = useState("")
   const [paramValues, setParamValues] = useState<Record<string, string>>({})
@@ -70,6 +71,12 @@ export function SourceCreateDialog({ channels, credentials, onClose, onCreated }
       )
     })).filter((g) => g.channels.length > 0)
   }, [builtinChannels])
+
+  /** 当前主题下的渠道列表 */
+  const activeChannels = useMemo(() => {
+    const group = groupedChannels.find((g) => g.label === activeGroup)
+    return group?.channels ?? []
+  }, [groupedChannels, activeGroup])
 
   const handleSelectChannel = useCallback((channel: ScoutChannel) => {
     setSelectedChannel(channel)
@@ -169,34 +176,47 @@ export function SourceCreateDialog({ channels, credentials, onClose, onCreated }
           </button>
         </div>
 
-        {/* 第一步：选择模板 */}
+        {/* 第一步：选择模板（主题标签页） */}
         {step === "select" && (
-          <div className="space-y-5">
-            {groupedChannels.map((group) => (
-              <div key={group.label}>
-                <span className="mb-2 block text-[11px] font-medium uppercase tracking-wider text-secondary">
+          <div className="space-y-4">
+            {/* 水平主题标签 */}
+            <div className="flex gap-1.5">
+              {groupedChannels.map((group) => (
+                <button
+                  key={group.label}
+                  onClick={() => setActiveGroup(group.label)}
+                  className={cn(
+                    "rounded-full px-3.5 py-1.5 text-[12px] font-medium transition-colors",
+                    activeGroup === group.label
+                      ? "bg-elevated text-foreground"
+                      : "text-muted hover:text-secondary"
+                  )}
+                >
                   {group.label}
-                </span>
-                <div className="grid grid-cols-2 gap-2">
-                  {group.channels.map((ch) => (
-                    <button
-                      key={ch.id}
-                      onClick={() => handleSelectChannel(ch)}
-                      className="flex flex-col gap-1 rounded-xl border border-border/60 p-3 text-left transition-colors hover:border-primary/30 hover:bg-overlay/40"
-                    >
-                      <span className="text-[13px] font-medium text-foreground">{ch.name}</span>
-                      <span className="text-[11px] text-secondary line-clamp-2">{ch.description}</span>
-                      <div className="mt-1 flex items-center gap-2 text-[11px] text-muted">
-                        <span>{ch.protocol}</span>
-                        {ch.requiresCredential && (
-                          <span className="text-amber-500">需要凭证</span>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
+                </button>
+              ))}
+            </div>
+            {/* 当前主题的模板卡片（固定高度，可滚动） */}
+            <div className="h-[360px] overflow-y-auto pr-1">
+            <div className="grid grid-cols-2 gap-2">
+              {activeChannels.map((ch) => (
+                <button
+                  key={ch.id}
+                  onClick={() => handleSelectChannel(ch)}
+                  className="flex flex-col gap-1 rounded-xl border border-border/60 p-3 text-left transition-colors hover:border-primary/30 hover:bg-overlay/40"
+                >
+                  <span className="text-[13px] font-medium text-foreground">{ch.name}</span>
+                  <span className="text-[11px] text-secondary line-clamp-2">{ch.description}</span>
+                  <div className="mt-1 flex items-center gap-2 text-[11px] text-muted">
+                    <span>{ch.protocol}</span>
+                    {ch.requiresCredential && (
+                      <span className="text-amber-500">需要凭证</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+            </div>
           </div>
         )}
 

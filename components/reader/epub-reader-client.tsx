@@ -162,7 +162,7 @@ export function EpubReaderClient(props: ReaderClientProps) {
           )}
           <ReaderSelectionToolbar
             selectionRect={reader.selectionRect}
-            onHighlight={() => reader.createHighlight("yellow")}
+            onHighlight={(color) => reader.createHighlight(color)}
             onNote={() => reader.setComposerOpen(true)}
           />
 

@@ -12,10 +12,17 @@ import type React from "react"
 import { buildArticleTextBlocks } from "@/components/articles/article-highlight-utils"
 import type { ArticleSection, ReaderSettings } from "@/src/server/store/types"
 
+const FONT_FAMILY_MAP: Record<ReaderSettings["fontFamily"], string> = {
+  system: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  serif: "'Noto Serif SC', 'Source Serif 4', Georgia, serif",
+  sans: "Inter, 'SF Pro', -apple-system, sans-serif"
+}
+
 interface Props {
   sections: ArticleSection[]
   fontSize: ReaderSettings["fontSize"]
   lineHeight: ReaderSettings["lineHeight"]
+  fontFamily?: ReaderSettings["fontFamily"]
   letterSpacing: number
   scrollContainerRef: React.RefObject<HTMLDivElement>
   paragraphRefs: React.MutableRefObject<Record<string, HTMLElement | null>>
@@ -32,6 +39,7 @@ export function ArticleReaderContent({
   sections,
   fontSize,
   lineHeight,
+  fontFamily,
   letterSpacing,
   scrollContainerRef,
   paragraphRefs,
@@ -48,11 +56,17 @@ export function ArticleReaderContent({
       ref={scrollContainerRef}
       className="h-full overflow-y-auto bg-reader-sidebar px-8 py-8"
       onScroll={onScroll}
+      onMouseUp={onParagraphMouseUp}
     >
       <div className="mx-auto max-w-[720px] rounded-xl bg-reader-card px-12 py-10 shadow-sm">
         <div
           className="text-reader-text selection:bg-[rgba(108,142,239,0.3)]"
-          style={{ fontSize, lineHeight, letterSpacing: `${letterSpacing}em` }}
+          style={{
+            fontSize,
+            lineHeight,
+            letterSpacing: `${letterSpacing}em`,
+            fontFamily: fontFamily ? FONT_FAMILY_MAP[fontFamily] : undefined
+          }}
         >
           {sections.map((section, idx) => {
             const tb = textBlockMap.get(idx)
@@ -73,7 +87,6 @@ export function ArticleReaderContent({
                     ref={(el) => { paragraphRefs.current[`0-${refIdx}`] = el }}
                     data-section-index={0}
                     data-paragraph-start={tb?.start ?? 0}
-                    onMouseUp={onParagraphMouseUp}
                     className={cls}
                   >
                     {tb ? renderParagraphContent(section.text ?? "", tb.start, 0) : section.text}
@@ -89,7 +102,6 @@ export function ArticleReaderContent({
                     ref={(el) => { paragraphRefs.current[`0-${refIdx}`] = el }}
                     data-section-index={0}
                     data-paragraph-start={tb?.start ?? 0}
-                    onMouseUp={onParagraphMouseUp}
                     className="mb-4 text-[15px] leading-[1.75] text-foreground/90"
                   >
                     {tb ? renderParagraphContent(section.text ?? "", tb.start, 0) : section.text}
@@ -105,7 +117,6 @@ export function ArticleReaderContent({
                     ref={(el) => { paragraphRefs.current[`0-${refIdx}`] = el }}
                     data-section-index={0}
                     data-paragraph-start={tb?.start ?? 0}
-                    onMouseUp={onParagraphMouseUp}
                     className="mb-4 border-l-2 border-primary/30 pl-4 text-[14px] italic text-muted"
                   >
                     {tb ? renderParagraphContent(section.text ?? "", tb.start, 0) : section.text}
@@ -128,7 +139,6 @@ export function ArticleReaderContent({
                           ref={(el) => { paragraphRefs.current[`0-${refIdx}`] = el }}
                           data-section-index={0}
                           data-paragraph-start={itemTb?.start ?? 0}
-                          onMouseUp={onParagraphMouseUp}
                         >
                           {itemTb ? renderParagraphContent(item, itemTb.start, 0) : item}
                         </li>

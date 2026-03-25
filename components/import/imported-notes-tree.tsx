@@ -14,7 +14,7 @@ import {
   ChevronRight,
   FileText,
   FolderOpen,
-  Import
+  Import,
 } from "lucide-react"
 import { cn } from "@/src/lib/utils"
 
@@ -58,7 +58,6 @@ export function ImportedNotesTree({ selectedNoteId, onSelectNote }: Props) {
             name: s.name,
             noteCount: s.stats?.noteCount ?? 0
           })))
-          // 默认展开所有来源
           setExpandedSources(Object.fromEntries(items.map((s) => [s.id, true])))
         }
         if (notesRes.ok) {
@@ -72,7 +71,9 @@ export function ImportedNotesTree({ selectedNoteId, onSelectNote }: Props) {
   }, [])
 
   const totalNotes = notes.length
-  if (sources.length === 0) return null
+  if (sources.length === 0) {
+    return null
+  }
 
   return (
     <div className="mt-2">
@@ -89,9 +90,11 @@ export function ImportedNotesTree({ selectedNoteId, onSelectNote }: Props) {
         }
         <Import className="h-3.5 w-3.5 shrink-0 text-muted/60" />
         <span className="flex-1 truncate">导入笔记</span>
-        <span className="rounded-full bg-elevated px-1.5 py-0.5 text-[10px] text-muted">
-          {totalNotes}
-        </span>
+        {totalNotes > 0 && (
+          <span className="rounded-full bg-elevated px-1.5 py-0.5 text-[10px] text-muted">
+            {totalNotes}
+          </span>
+        )}
       </button>
 
       {expanded && sources.map((source) => {
@@ -133,6 +136,7 @@ export function ImportedNotesTree({ selectedNoteId, onSelectNote }: Props) {
           </div>
         )
       })}
+
     </div>
   )
 }

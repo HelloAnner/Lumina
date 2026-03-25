@@ -13,6 +13,7 @@ import { useState } from "react"
 import {
   AlertTriangle,
   ArrowLeft,
+  Copy,
   ExternalLink,
   Languages,
   Moon,
@@ -42,19 +43,36 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
   const [outlineCollapsed, setOutlineCollapsed] = useState(false)
   const [highlightsCollapsed, setHighlightsCollapsed] = useState(false)
 
-  useReaderShortcuts({
+  const { showShortcutHint, dismissShortcutHint } = useReaderShortcuts({
     selectedText: reader.selectedText,
     shortcuts: props.settings?.highlightShortcuts,
     onHighlight: reader.createHighlight,
     onNote: () => reader.setComposerOpen(true)
   })
 
+  /** 阅读器主题变更时同步全局 light/dark class */
+  function handleReaderThemeChange(t: typeof reader.readerTheme) {
+    reader.setReaderTheme(t)
+    if (t === "night") {
+      setTheme("dark")
+    } else if (t === "day") {
+      setTheme("light")
+    }
+  }
+
+  // 把全局 toggleTheme 也保留（顶栏月亮/太阳按钮）
   function toggleTheme() {
-    setTheme(theme === "light" ? "dark" : "light")
+    if (theme === "light") {
+      setTheme("dark")
+      reader.setReaderTheme("night")
+    } else {
+      setTheme("light")
+      reader.setReaderTheme("day")
+    }
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-reader-sidebar">
+    <div className={cn("flex h-screen flex-col overflow-hidden bg-reader-sidebar", reader.readerTheme === "sepia" && "sepia")}>
       {reader.toast && !/失败|错误|请检查/.test(reader.toast) ? (
         <Toast
           title={reader.toast}
@@ -120,13 +138,24 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
               >
                 <RefreshCw className={cn("h-3.5 w-3.5", reader.refetching && "animate-spin")} />
               </button>
+              <button
+                onClick={() => {
+                  void navigator.clipboard.writeText(reader.article.sourceUrl)
+                  reader.setToast("链接已复制")
+                }}
+                title="复制原文链接"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-muted transition hover:bg-overlay hover:text-foreground"
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </button>
               <a
                 href={reader.article.sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1 text-[12px] text-muted hover:text-foreground transition-colors"
+                title="查看原文"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-muted transition hover:bg-overlay hover:text-foreground"
               >
-                <ExternalLink className="h-3 w-3" />
+                <ExternalLink className="h-3.5 w-3.5" />
               </a>
             </>
           )}
@@ -137,11 +166,15 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
       </div>
 
       {/* 阅读进度条 2px */}
-      <div className="h-[2px] w-full bg-border/40">
-        <div
-          className="h-full bg-primary transition-all duration-150"
-          style={{ width: `${reader.scrollProgress}%` }}
-        />
+      <div className="h-[2px] w-full overflow-hidden bg-border/40">
+        {reader.isTranslating ? (
+          <div className="h-full w-1/4 animate-indeterminate-slide bg-primary/80" />
+        ) : (
+          <div
+            className="h-full bg-primary transition-all duration-150"
+            style={{ width: `${reader.scrollProgress}%` }}
+          />
+        )}
       </div>
 
       {/* 主体三栏 */}
@@ -204,7 +237,7 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
 
           <ReaderSelectionToolbar
             selectionRect={reader.selectionRect}
-            onHighlight={() => reader.createHighlight("yellow")}
+            onHighlight={(color) => reader.createHighlight(color)}
             onNote={() => reader.setComposerOpen(true)}
           />
 
@@ -212,6 +245,7 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
             sections={reader.displayContent}
             fontSize={reader.fontSize}
             lineHeight={reader.lineHeight}
+            fontFamily={reader.fontFamily}
             letterSpacing={reader.letterSpacing}
             scrollContainerRef={reader.scrollContainerRef}
             paragraphRefs={reader.paragraphRefs}
@@ -245,10 +279,14 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
             fontSize={reader.fontSize}
             lineHeight={reader.lineHeight}
             letterSpacing={reader.letterSpacing}
+            fontFamily={reader.fontFamily}
+            readerTheme={reader.readerTheme}
             translationView={reader.translationView}
             onFontSizeChange={reader.setFontSize}
             onLineHeightChange={reader.setLineHeight}
             onLetterSpacingChange={reader.setLetterSpacing}
+            onFontFamilyChange={reader.setFontFamily}
+            onReaderThemeChange={handleReaderThemeChange}
             onToggleTranslation={reader.toggleTranslationView}
           />
         </main>
@@ -279,6 +317,37 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
         onCancel={() => reader.setComposerOpen(false)}
         onSave={() => reader.createHighlight("yellow", reader.noteDraft)}
       />
+
+      {/* 快捷键提示条 */}
+      {showShortcutHint && (
+        <div className="absolute inset-x-0 bottom-6 z-40 flex justify-center" onClick={dismissShortcutHint}>
+          <div className="flex items-center gap-4 rounded-full border border-border/40 bg-surface/95 px-5 py-2.5 shadow-panel backdrop-blur-sm">
+            <span className="flex items-center gap-1.5 text-xs text-secondary">
+              <kbd className="rounded bg-elevated px-1.5 py-0.5 text-[11px] font-medium text-foreground">1</kbd>
+              <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
+            </span>
+            <span className="flex items-center gap-1.5 text-xs text-secondary">
+              <kbd className="rounded bg-elevated px-1.5 py-0.5 text-[11px] font-medium text-foreground">2</kbd>
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+            </span>
+            <span className="flex items-center gap-1.5 text-xs text-secondary">
+              <kbd className="rounded bg-elevated px-1.5 py-0.5 text-[11px] font-medium text-foreground">3</kbd>
+              <span className="h-2.5 w-2.5 rounded-full bg-blue-400" />
+            </span>
+            <span className="flex items-center gap-1.5 text-xs text-secondary">
+              <kbd className="rounded bg-elevated px-1.5 py-0.5 text-[11px] font-medium text-foreground">4</kbd>
+              <span className="h-2.5 w-2.5 rounded-full bg-pink-400" />
+            </span>
+            <span className="h-3 w-px bg-border/40" />
+            <span className="flex items-center gap-1.5 text-xs text-secondary">
+              <kbd className="rounded bg-elevated px-1.5 py-0.5 text-[11px] font-medium text-foreground">N</kbd>
+              笔记
+            </span>
+            <span className="h-3 w-px bg-border/40" />
+            <span className="text-[11px] text-muted">按 ? 关闭</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

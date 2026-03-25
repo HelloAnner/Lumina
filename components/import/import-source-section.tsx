@@ -15,13 +15,10 @@ import {
   Loader2,
   Plus,
   RefreshCw,
-  Settings2,
   Trash2,
-  X
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { cn } from "@/src/lib/utils"
 import type { ImportSource } from "@/src/server/store/types"
@@ -219,142 +216,5 @@ function StatItem({ label, value }: { label: string; value: number }) {
   )
 }
 
-/** 添加来源对话框 */
-function AddSourceDialog({
-  onClose,
-  onCreated
-}: {
-  onClose: () => void
-  onCreated: (jobId?: string) => void
-}) {
-  const [name, setName] = useState("")
-  const [path, setPath] = useState("")
-  const [excludes, setExcludes] = useState(".obsidian/**\n.trash/**")
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState("")
-
-  const handleSubmit = async () => {
-    if (!name.trim() || !path.trim()) {
-      setError("请填写名称和路径")
-      return
-    }
-
-    setSaving(true)
-    setError("")
-
-    try {
-      // 创建来源
-      const createRes = await fetch("/api/import/sources", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          path: path.trim(),
-          excludePatterns: excludes.split("\n").map((l) => l.trim()).filter(Boolean)
-        })
-      })
-
-      if (!createRes.ok) {
-        const data = await createRes.json().catch(() => ({}))
-        setError(data.error ?? "创建失败")
-        setSaving(false)
-        return
-      }
-
-      const { item: source } = await createRes.json()
-
-      // 立即触发同步
-      const syncRes = await fetch(`/api/import/sources/${source.id}/sync`, { method: "POST" })
-      if (syncRes.ok) {
-        const { item: job } = await syncRes.json()
-        onCreated(job?.id)
-      } else {
-        onCreated()
-      }
-    } catch {
-      setError("网络错误")
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-[480px] rounded-2xl border border-border bg-surface p-7 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-        <h2 className="text-lg font-semibold">添加导入来源</h2>
-
-        <div className="mt-6 space-y-5">
-          {/* 来源类型（固定为 Obsidian） */}
-          <div className="space-y-2">
-            <label className="text-[13px] text-secondary">来源类型</label>
-            <div className="flex h-10 items-center gap-2 rounded-sm border border-border bg-elevated px-3">
-              <FolderOpen className="h-4 w-4 text-accent-purple" />
-              <span className="text-[13px]">Obsidian Vault</span>
-            </div>
-          </div>
-
-          {/* 名称 */}
-          <div className="space-y-2">
-            <label className="text-[13px] text-secondary">显示名称</label>
-            <Input
-              placeholder="例如：Work Notes"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-
-          {/* Vault 路径 */}
-          <div className="space-y-2">
-            <label className="text-[13px] text-secondary">Vault 路径</label>
-            <Input
-              placeholder="/Users/.../MyVault"
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              className="font-mono text-xs"
-            />
-          </div>
-
-          {/* 排除目录 */}
-          <div className="space-y-2">
-            <label className="text-[13px] text-secondary">排除目录（每行一个 glob）</label>
-            <textarea
-              value={excludes}
-              onChange={(e) => setExcludes(e.target.value)}
-              rows={3}
-              className="w-full rounded-sm border border-border bg-elevated px-3 py-2.5 font-mono text-xs text-muted outline-none transition-colors focus:border-primary/40"
-            />
-          </div>
-
-          {error && (
-            <p className="text-xs text-error">{error}</p>
-          )}
-        </div>
-
-        {/* 底部按钮 */}
-        <div className="mt-6 flex justify-end gap-2.5">
-          <Button
-            variant="secondary"
-            onClick={onClose}
-            className="h-[38px] rounded-sm px-[18px] text-[13px]"
-          >
-            取消
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={saving}
-            className="h-[38px] rounded-sm bg-accent-blue px-[18px] text-[13px] font-medium text-white hover:bg-accent-blue/90"
-          >
-            {saving ? (
-              <>
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                创建中...
-              </>
-            ) : (
-              "添加并开始导入"
-            )}
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}
+/** 复用独立的 AddSourceDialog 组件 */
+import { AddSourceDialog } from "@/components/import/add-source-dialog"

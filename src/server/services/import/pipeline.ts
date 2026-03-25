@@ -202,19 +202,30 @@ export async function runImportPipeline(userId: string, jobId: string) {
       updateStage(userId, jobId, "uploading", { processed: imgProcessed, total: imageHashMap.size })
     }
 
-    // Stage 4: 分析（LLM 观点拆分）
+    // Stage 4: 分析（结构化观点提取 + 可选 LLM 增强）
     updateStage(userId, jobId, "analyzing", { processed: 0, total: pendingData.notes.length })
-
-    // 获取已有观点列表
-    const existingViewpoints = repository.listImportedNotes(userId).length > 0
-      ? [] // 后续迭代中实现 LLM 调用
-      : []
 
     // 获取绑定的模型
     const binding = repository.listModelBindings?.(userId)?.find((b) => b.feature === "aggregation_analyze")
     const modelConfig = binding
       ? repository.listModelConfigs(userId).find((m) => m.id === binding.modelId) ?? null
       : null
+
+    // 为整个导入来源创建一个根文件夹观点
+    const sourceFolderVp: Viewpoint = {
+      id: randomUUID(),
+      userId,
+      title: source.name,
+      isFolder: true,
+      isCandidate: false,
+      sortOrder: 900,
+      highlightCount: 0,
+      articleContent: "",
+      articleBlocks: [],
+      relatedBookIds: [],
+      createdAt: new Date().toISOString()
+    }
+    pendingData.newViewpoints.push(sourceFolderVp)
 
     for (let idx = 0; idx < pendingData.notes.length; idx++) {
       if (signal.aborted) {
@@ -228,55 +239,62 @@ export async function runImportPipeline(userId: string, jobId: string) {
         currentFile: note.relativePath
       })
 
-      // 如果配置了模型，尝试 LLM 分析
+      // 基于标题层级提取结构化观点
+      const headingViewpoints = extractViewpointsFromHeadings(
+        note, userId, sourceFolderVp.id
+      )
+
+      for (const hvp of headingViewpoints) {
+        pendingData.newViewpoints.push(hvp.viewpoint)
+        pendingData.links.push({
+          noteId: note.id,
+          viewpointId: hvp.viewpoint.id,
+          relevanceScore: 0.9,
+          relatedBlockIds: hvp.blockIds,
+          reason: "基于标题层级结构提取",
+          confirmed: false,
+          createdAt: new Date().toISOString()
+        })
+      }
+
+      // 如果配置了 LLM，额外进行语义分析增强
       if (modelConfig) {
         try {
           const viewpointResults = await analyzeNoteViewpoints(
             note,
-            existingViewpoints,
+            [],
             modelConfig
           )
 
           for (const vp of viewpointResults) {
-            if (vp.isExisting && vp.existingViewpointId) {
-              pendingData.links.push({
-                noteId: note.id,
-                viewpointId: vp.existingViewpointId,
-                relevanceScore: vp.confidence,
-                relatedBlockIds: vp.relatedBlockIndices.map((i) => note.blocks[i]?.id).filter(Boolean),
-                reason: vp.reason,
-                confirmed: false,
-                createdAt: new Date().toISOString()
-              })
-            } else {
-              // 新建观点
-              const newVp: Viewpoint = {
-                id: randomUUID(),
-                userId,
-                title: vp.title,
-                isFolder: false,
-                isCandidate: true,
-                sortOrder: 999,
-                highlightCount: 0,
-                articleContent: "",
-                articleBlocks: [],
-                relatedBookIds: [],
-                createdAt: new Date().toISOString()
-              }
-              pendingData.newViewpoints.push(newVp)
-              pendingData.links.push({
-                noteId: note.id,
-                viewpointId: newVp.id,
-                relevanceScore: vp.confidence,
-                relatedBlockIds: vp.relatedBlockIndices.map((i) => note.blocks[i]?.id).filter(Boolean),
-                reason: vp.reason,
-                confirmed: false,
-                createdAt: new Date().toISOString()
-              })
+            // LLM 发现的观点作为候选项，挂在来源文件夹下
+            const newVp: Viewpoint = {
+              id: randomUUID(),
+              userId,
+              title: vp.title,
+              parentId: sourceFolderVp.id,
+              isFolder: false,
+              isCandidate: true,
+              sortOrder: 999,
+              highlightCount: 0,
+              articleContent: "",
+              articleBlocks: [],
+              relatedBookIds: [],
+              createdAt: new Date().toISOString()
             }
+            pendingData.newViewpoints.push(newVp)
+            pendingData.links.push({
+              noteId: note.id,
+              viewpointId: newVp.id,
+              relevanceScore: vp.confidence,
+              relatedBlockIds: vp.relatedBlockIndices.map((i) => note.blocks[i]?.id).filter(Boolean),
+              reason: vp.reason,
+              confirmed: false,
+              createdAt: new Date().toISOString()
+            })
           }
         } catch {
-          // LLM 分析失败，跳过此笔记的观点分析但不中断导入
+          // LLM 分析失败不中断导入，已有基于标题的结构化提取兜底
         }
       }
     }
@@ -333,6 +351,127 @@ export async function runImportPipeline(userId: string, jobId: string) {
   } finally {
     runningJobs.delete(jobId)
   }
+}
+
+/**
+ * 基于标题层级提取结构化观点
+ * 利用 Obsidian 笔记的 H1/H2/H3 结构自动生成层级观点树
+ * 每个标题成为一个观点节点，内容块关联到最近的标题观点
+ */
+function extractViewpointsFromHeadings(
+  note: ImportedNote,
+  userId: string,
+  sourceParentId: string
+): Array<{ viewpoint: Viewpoint; blockIds: string[] }> {
+  const results: Array<{ viewpoint: Viewpoint; blockIds: string[] }> = []
+
+  // 收集标题块及其位置
+  const headings: Array<{ idx: number; level: number; text: string }> = []
+  for (let i = 0; i < note.blocks.length; i++) {
+    const block = note.blocks[i]
+    if (block.type === "heading") {
+      headings.push({ idx: i, level: block.level, text: block.text })
+    }
+  }
+
+  // 无标题的笔记：整篇作为一个观点
+  if (headings.length === 0) {
+    const vp: Viewpoint = {
+      id: randomUUID(),
+      userId,
+      title: note.title,
+      parentId: sourceParentId,
+      isFolder: false,
+      isCandidate: false,
+      sortOrder: results.length,
+      highlightCount: 0,
+      articleContent: "",
+      articleBlocks: [],
+      relatedBookIds: [],
+      createdAt: new Date().toISOString()
+    }
+    results.push({
+      viewpoint: vp,
+      blockIds: note.blocks.map((b) => b.id)
+    })
+    return results
+  }
+
+  // 建立标题 → 观点的映射，保持层级关系
+  // levelStack 追踪当前各层级的父观点 ID
+  const levelStack: Map<number, string> = new Map()
+
+  for (let hi = 0; hi < headings.length; hi++) {
+    const heading = headings[hi]
+    const nextHeadingIdx = hi + 1 < headings.length ? headings[hi + 1].idx : note.blocks.length
+
+    // 确定父级：找到比当前层级更高（数字更小）的最近祖先
+    let parentId = sourceParentId
+    for (let lvl = heading.level - 1; lvl >= 1; lvl--) {
+      if (levelStack.has(lvl)) {
+        parentId = levelStack.get(lvl)!
+        break
+      }
+    }
+
+    const vp: Viewpoint = {
+      id: randomUUID(),
+      userId,
+      title: heading.text,
+      parentId,
+      isFolder: false,
+      isCandidate: false,
+      sortOrder: results.length,
+      highlightCount: 0,
+      articleContent: "",
+      articleBlocks: [],
+      relatedBookIds: [],
+      createdAt: new Date().toISOString()
+    }
+
+    // 更新层级栈，清除同级及更深层级的记录
+    levelStack.set(heading.level, vp.id)
+    for (const [lvl] of levelStack) {
+      if (lvl > heading.level) {
+        levelStack.delete(lvl)
+      }
+    }
+
+    // 收集此标题到下一个标题之间的所有块 ID
+    const blockIds: string[] = []
+    for (let bi = heading.idx; bi < nextHeadingIdx; bi++) {
+      blockIds.push(note.blocks[bi].id)
+    }
+
+    results.push({ viewpoint: vp, blockIds })
+  }
+
+  // 标题前的内容块（如果有）归到笔记级观点
+  if (headings[0].idx > 0) {
+    const preBlocks: string[] = []
+    for (let i = 0; i < headings[0].idx; i++) {
+      preBlocks.push(note.blocks[i].id)
+    }
+    if (preBlocks.length > 0) {
+      const vp: Viewpoint = {
+        id: randomUUID(),
+        userId,
+        title: note.title,
+        parentId: sourceParentId,
+        isFolder: false,
+        isCandidate: false,
+        sortOrder: -1,
+        highlightCount: 0,
+        articleContent: "",
+        articleBlocks: [],
+        relatedBookIds: [],
+        createdAt: new Date().toISOString()
+      }
+      results.unshift({ viewpoint: vp, blockIds: preBlocks })
+    }
+  }
+
+  return results
 }
 
 interface ViewpointAnalysisResult {

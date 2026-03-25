@@ -329,11 +329,31 @@ app.put("/:id", async (c) => {
     .object({
       title: z.string().optional(),
       author: z.string().optional(),
-      tags: z.array(z.string()).optional()
+      tags: z.array(z.string()).optional(),
+      coverImageBase64: z.string().optional(),
+      coverVariant: z.number().optional()
     })
     .parse(await c.req.json())
-  const book = await updateBookInStore(c.get("userId"), c.req.param("id"), payload)
-  return c.json({ item: book })
+
+  const { coverImageBase64, ...updates } = payload
+  const userId = c.get("userId")
+  const bookId = c.req.param("id")
+
+  if (coverImageBase64) {
+    const coverUploaded = await uploadCoverImage({
+      userId,
+      bookId,
+      imageBase64: coverImageBase64
+    })
+    ;(updates as Record<string, unknown>).coverPath = formatMinioPath(
+      coverUploaded.bucket,
+      coverUploaded.objectName
+    )
+  }
+
+  const book = await updateBookInStore(userId, bookId, updates)
+  const coverUrl = await getStoredObjectUrl(book?.coverPath)
+  return c.json({ item: book, coverUrl })
 })
 
 app.delete("/:id", async (c) => {

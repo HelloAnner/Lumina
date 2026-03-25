@@ -287,7 +287,7 @@ export function PdfReaderClient(props: ReaderClientProps) {
             <>
               <ReaderSelectionToolbar
                 selectionRect={sourceReader.selectionRect}
-                onHighlight={() => sourceReader.createHighlight("yellow")}
+                onHighlight={(color) => sourceReader.createHighlight(color)}
                 onNote={() => sourceReader.setComposerOpen(true)}
               />
               {sourceReader.fallbackMessage ? (
@@ -322,7 +322,7 @@ export function PdfReaderClient(props: ReaderClientProps) {
             <>
               <ReaderSelectionToolbar
                 selectionRect={parsedReader.selectionRect}
-                onHighlight={() => parsedReader.createHighlight("yellow")}
+                onHighlight={(color) => parsedReader.createHighlight(color)}
                 onNote={() => parsedReader.setComposerOpen(true)}
               />
               <ReaderContent

@@ -10,7 +10,19 @@
 
 import type React from "react"
 import { cn } from "@/src/lib/utils"
-import type { ReaderSettings, TranslationDisplayMode } from "@/src/server/store/types"
+import type { ReaderSettings, ReaderTheme, TranslationDisplayMode } from "@/src/server/store/types"
+
+const FONT_OPTIONS: { value: ReaderSettings["fontFamily"]; label: string }[] = [
+  { value: "system", label: "默认" },
+  { value: "serif", label: "衬线" },
+  { value: "sans", label: "无衬线" }
+]
+
+const THEME_OPTIONS: { value: ReaderTheme; label: string; dot: string }[] = [
+  { value: "day", label: "明亮", dot: "bg-white border border-border/60" },
+  { value: "sepia", label: "纸质", dot: "bg-[#F5F0E8] border border-[#D4C8B0]" },
+  { value: "night", label: "暗色", dot: "bg-[#1C1C1E] border border-border/60" }
+]
 
 export function ReaderFontPanel({
   open,
@@ -18,11 +30,15 @@ export function ReaderFontPanel({
   fontSize,
   lineHeight,
   letterSpacing,
+  fontFamily,
+  readerTheme,
   translationView,
   isCurrentSectionTranslating,
   onFontSizeChange,
   onLineHeightChange,
   onLetterSpacingChange,
+  onFontFamilyChange,
+  onReaderThemeChange,
   onToggleTranslation
 }: {
   open: boolean
@@ -30,11 +46,15 @@ export function ReaderFontPanel({
   fontSize: ReaderSettings["fontSize"]
   lineHeight: ReaderSettings["lineHeight"]
   letterSpacing: number
+  fontFamily?: ReaderSettings["fontFamily"]
+  readerTheme?: ReaderTheme
   translationView?: TranslationDisplayMode
   isCurrentSectionTranslating?: boolean
   onFontSizeChange: (value: ReaderSettings["fontSize"]) => void
   onLineHeightChange: (value: ReaderSettings["lineHeight"]) => void
   onLetterSpacingChange: (value: number) => void
+  onFontFamilyChange?: (value: ReaderSettings["fontFamily"]) => void
+  onReaderThemeChange?: (value: ReaderTheme) => void
   onToggleTranslation?: () => void
 }) {
   if (!open) return null
@@ -79,6 +99,59 @@ export function ReaderFontPanel({
                 >
                   译文
                 </button>
+              </div>
+            </div>
+            <div className="h-px bg-border/40" />
+          </>
+        )}
+
+        {/* 阅读主题 */}
+        {readerTheme !== undefined && onReaderThemeChange && (
+          <>
+            <div className="flex flex-col gap-2">
+              <span className="text-[11px] font-medium text-secondary">阅读主题</span>
+              <div className="flex gap-1">
+                {THEME_OPTIONS.map(({ value, label, dot }) => (
+                  <button
+                    key={value}
+                    onClick={() => onReaderThemeChange(value)}
+                    className={cn(
+                      "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-all",
+                      readerTheme === value
+                        ? "bg-primary/10 text-primary ring-1 ring-primary/20"
+                        : "bg-elevated text-secondary hover:text-foreground"
+                    )}
+                  >
+                    <span className={cn("h-3 w-3 rounded-full", dot)} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="h-px bg-border/40" />
+          </>
+        )}
+
+        {/* 字体 */}
+        {fontFamily !== undefined && onFontFamilyChange && (
+          <>
+            <div className="flex flex-col gap-2">
+              <span className="text-[11px] font-medium text-secondary">字体</span>
+              <div className="flex gap-1">
+                {FONT_OPTIONS.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => onFontFamilyChange(value)}
+                    className={cn(
+                      "flex h-8 flex-1 items-center justify-center rounded-lg text-xs font-medium transition-all",
+                      fontFamily === value
+                        ? "bg-primary text-white"
+                        : "bg-elevated text-secondary hover:text-foreground"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             </div>
             <div className="h-px bg-border/40" />
