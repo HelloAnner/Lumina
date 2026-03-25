@@ -62,12 +62,44 @@ export async function fetchRss(feedUrl: string): Promise<FeedItem[]> {
 }
 
 function parseRssItem(item: Record<string, any>): FeedItem {
+  const description = item["content:encoded"] ?? item.description ?? ""
   return {
-    url: item.link ?? "",
+    url: extractArticleUrl(item, description),
     title: item.title ?? "",
-    content: item["content:encoded"] ?? item.description ?? "",
+    content: description,
     author: item["dc:creator"] ?? item.author ?? undefined,
     publishedAt: item.pubDate ?? undefined
+  }
+}
+
+/**
+ * 从 RSS item 中提取真实文章 URL
+ * 聚合站（HN、Lobsters 等）的 <link> 指向讨论页，真实 URL 在描述中
+ */
+function extractArticleUrl(item: Record<string, any>, description: string): string {
+  const link = item.link ?? ""
+
+  // 非聚合站直接返回
+  if (!isAggregatorUrl(link)) {
+    return link
+  }
+
+  // 尝试从描述 HTML 中提取第一个外链
+  const match = description.match(/<a\s[^>]*href=["']([^"']+)["'][^>]*>/i)
+  if (match?.[1] && !isAggregatorUrl(match[1])) {
+    return match[1]
+  }
+
+  return link
+}
+
+const AGGREGATOR_HOSTS = ["news.ycombinator.com", "lobste.rs", "old.reddit.com", "www.reddit.com"]
+
+function isAggregatorUrl(url: string): boolean {
+  try {
+    return AGGREGATOR_HOSTS.includes(new URL(url).hostname)
+  } catch {
+    return false
   }
 }
 

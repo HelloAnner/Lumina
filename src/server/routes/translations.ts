@@ -59,6 +59,7 @@ app.post("/articles/:articleId/prefetch", async (c) => {
     const result = await prefetchArticleTranslations({
       userId,
       articleId: article.id,
+      title: article.title,
       sections: article.content,
       targetLanguage: payload.targetLanguage,
       model

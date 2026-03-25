@@ -9,9 +9,9 @@ export default async function DashboardLayout({
   await requirePageUser()
 
   return (
-    <div className="flex min-h-screen bg-base">
+    <div className="flex h-screen overflow-hidden bg-base">
       <Sidebar />
-      <main className="min-h-screen flex-1">{children}</main>
+      <main className="flex-1 overflow-y-auto">{children}</main>
     </div>
   )
 }

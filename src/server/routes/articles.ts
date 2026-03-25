@@ -54,11 +54,12 @@ app.delete("/topics/:id", (c) => {
 // ─── 文章 ───
 
 app.get("/", (c) => {
-  const { topicId, search, filter, page, pageSize } = c.req.query()
+  const { topicId, search, filter, sortBy, page, pageSize } = c.req.query()
   const result = repository.listArticles(c.get("userId"), {
     topicId,
     search,
     filter,
+    sortBy,
     page: page ? Number(page) : undefined,
     pageSize: pageSize ? Number(pageSize) : undefined
   })
@@ -78,14 +79,33 @@ app.put("/:id", async (c) => {
     readProgress: z.number().optional(),
     lastReadPosition: z.string().optional(),
     lastReadAt: z.string().optional(),
+    reading: z.boolean().optional(),
     topics: z.array(z.string()).optional(),
-    archived: z.boolean().optional()
+    archived: z.boolean().optional(),
+    translationView: z.enum(["original", "translation"]).optional(),
+    translatedTitle: z.string().optional()
   }).parse(await c.req.json())
 
-  const item = repository.updateArticle(c.get("userId"), c.req.param("id"), payload)
+  const userId = c.get("userId")
+  const articleId = c.req.param("id")
+  const item = repository.updateArticle(userId, articleId, payload)
   if (!item) {
     return c.json({ error: "Article not found" }, 404)
   }
+
+  // 切换到翻译视图时，后台异步触发翻译（即使用户退出阅读也能完成）
+  if (payload.translationView === "translation" && item.content?.length > 0) {
+    const { prefetchArticleTranslations } = await import("@/src/server/services/translation/service")
+    const model = repository.getModelByFeature(userId, "section_translate")
+    void prefetchArticleTranslations({
+      userId,
+      articleId,
+      title: item.title,
+      sections: item.content,
+      model
+    }).catch(() => undefined)
+  }
+
   return c.json({ item })
 })
 

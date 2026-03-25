@@ -69,7 +69,10 @@ export function useArticleReaderController({
 
   const translation = useArticleTranslation({
     articleId: article.id,
+    articleTitle: article.title,
     originalSections: article.content,
+    initialView: article.translationView ?? "original",
+    initialTranslatedTitle: article.translatedTitle,
     onError: setToast
   })
 
@@ -189,6 +192,24 @@ export function useArticleReaderController({
       containerWidth: mainRect.width
     })
   }, [])
+
+  // 进入阅读器时标记为「阅读中」（归档文章同时恢复）
+  useEffect(() => {
+    const updates: Record<string, unknown> = {}
+    if (!article.reading) {
+      updates.reading = true
+    }
+    if (article.archived) {
+      updates.archived = false
+    }
+    if (Object.keys(updates).length > 0) {
+      fetch(`/api/articles/${article.id}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(updates)
+      }).catch(() => undefined)
+    }
+  }, [article.id, article.reading, article.archived])
 
   // 点击工具栏外清除选区
   useEffect(() => {
@@ -350,7 +371,8 @@ export function useArticleReaderController({
     try {
       const res = await fetch(`/api/articles/${article.id}/refetch`, { method: "POST" })
       if (res.ok) {
-        setToast("内容已更新，请刷新页面查看")
+        window.location.reload()
+        return
       } else {
         const data = await res.json().catch(() => ({}))
         setToast(data.error || "重新获取失败")
@@ -407,6 +429,7 @@ export function useArticleReaderController({
 
   return {
     article,
+    displayTitle: translation.displayTitle,
     displayContent: translation.displayContent,
     outlineEntries,
     scrollProgress,

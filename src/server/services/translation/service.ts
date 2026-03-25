@@ -266,6 +266,7 @@ export async function prefetchBookTranslations(input: {
 export async function prefetchArticleTranslations(input: {
   userId: string
   articleId: string
+  title: string
   sections: ArticleSection[]
   targetLanguage?: string
   model: ModelConfig | null
@@ -277,14 +278,19 @@ export async function prefetchArticleTranslations(input: {
   const cached = repository.listArticleTranslations(input.userId, input.articleId)
     .find((t) => t.sourceHash === sourceHash && t.targetLanguage === targetLanguage)
   if (cached) {
-    return { content: cached.content }
+    const article = repository.getArticle(input.userId, input.articleId)
+    return { content: cached.content, translatedTitle: article?.translatedTitle ?? input.title }
   }
 
   validateTranslationModel(input.model)
 
+  // 标题与正文一起翻译，保持上下文连贯
   const paragraphs = collectArticleParagraphs(input.sections)
-  const translated = await requestTranslatedParagraphs(paragraphs, input.model!, targetLanguage)
-  const translatedSections = buildTranslatedArticleSections(input.sections, translated)
+  const allParagraphs = [input.title, ...paragraphs]
+  const allTranslated = await requestTranslatedParagraphs(allParagraphs, input.model!, targetLanguage)
+  const translatedTitle = allTranslated[0] ?? input.title
+  const translatedParagraphs = allTranslated.slice(1)
+  const translatedSections = buildTranslatedArticleSections(input.sections, translatedParagraphs)
 
   repository.upsertArticleTranslation({
     userId: input.userId,
@@ -295,7 +301,10 @@ export async function prefetchArticleTranslations(input: {
     modelId: input.model!.id
   })
 
-  return { content: translatedSections }
+  // 持久化翻译标题
+  repository.updateArticle(input.userId, input.articleId, { translatedTitle })
+
+  return { content: translatedSections, translatedTitle }
 }
 
 export { buildTranslatedSectionSnapshot, extractModelMessageContent }

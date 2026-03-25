@@ -18,7 +18,8 @@ app.put("/ui", async (c) => {
       knowledgeTreeWidth: z.number().min(180).max(420).optional(),
       knowledgeListWidth: z.number().min(220).max(420).optional(),
       readerTocWidth: z.number().min(200).max(420).optional(),
-      readerHighlightsWidth: z.number().min(260).max(480).optional()
+      readerHighlightsWidth: z.number().min(260).max(480).optional(),
+      articleSortBy: z.enum(["lastRead", "created"]).optional()
     })
     .parse(await c.req.json())
   return c.json({ item: await saveUiPreferences(c.get("userId"), payload) })

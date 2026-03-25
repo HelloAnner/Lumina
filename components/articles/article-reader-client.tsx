@@ -54,7 +54,7 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
   }
 
   return (
-    <div className="h-screen overflow-hidden bg-reader-sidebar">
+    <div className="flex h-screen flex-col overflow-hidden bg-reader-sidebar">
       {reader.toast && !/失败|错误|请检查/.test(reader.toast) ? (
         <Toast
           title={reader.toast}
@@ -64,21 +64,21 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
       ) : null}
 
       {/* 顶部导航栏 48px */}
-      <div className="flex h-12 items-center justify-between border-b border-border/60 bg-elevated px-5">
-        <div className="flex items-center gap-3">
+      <div className="flex min-h-12 items-center justify-between border-b border-border/60 bg-elevated px-5 py-2">
+        <div className="mr-4 flex items-center gap-3">
           <Link
-            className="flex items-center gap-1.5 text-muted transition-colors hover:text-foreground"
+            className="flex shrink-0 items-center gap-1.5 text-muted transition-colors hover:text-foreground"
             href="/articles"
           >
             <ArrowLeft className="h-[15px] w-[15px]" />
             <span className="text-[13px]">文章库</span>
           </Link>
-          <span className="h-4 w-px bg-border/60" />
-          <span className="text-[14px] font-medium text-foreground line-clamp-1 max-w-[400px]">
-            {reader.article.title}
+          <span className="h-4 w-px shrink-0 bg-border/60" />
+          <span className="text-[14px] font-medium leading-snug text-foreground">
+            {reader.displayTitle}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <button
             className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition ${
               reader.translationView === "translation"
@@ -115,9 +115,10 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
               <button
                 onClick={reader.handleRefetch}
                 disabled={reader.refetching}
-                className="flex items-center gap-1 text-[12px] text-muted hover:text-foreground transition-colors disabled:opacity-50"
+                title="重新拉取文章"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-muted transition hover:bg-overlay hover:text-foreground disabled:opacity-50"
               >
-                <RefreshCw className={cn("h-3 w-3", reader.refetching && "animate-spin")} />
+                <RefreshCw className={cn("h-3.5 w-3.5", reader.refetching && "animate-spin")} />
               </button>
               <a
                 href={reader.article.sourceUrl}
@@ -144,7 +145,7 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
       </div>
 
       {/* 主体三栏 */}
-      <div className="flex h-[calc(100vh-50px)]">
+      <div className="flex min-h-0 flex-1">
         {/* 左侧大纲 */}
         {!outlineCollapsed && reader.outlineEntries.length > 0 && (
           <aside className="flex w-[220px] shrink-0 flex-col border-r border-border/60 bg-elevated">

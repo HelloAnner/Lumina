@@ -551,8 +551,14 @@ export interface ScoutArticle {
   siteName?: string
   /** 首张图片 URL，用于列表封面 */
   coverImage?: string
+  /** 是否正在阅读中（显式标记，点击阅读即为 true，手动归档才清除） */
+  reading?: boolean
   /** 归档标记 */
   archived?: boolean
+  /** 翻译视图偏好 */
+  translationView?: TranslationDisplayMode
+  /** 翻译后标题（用于列表展示） */
+  translatedTitle?: string
   status: "ready" | "processing" | "failed"
   createdAt: string
 }

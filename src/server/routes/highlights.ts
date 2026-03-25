@@ -3,6 +3,7 @@ import { z } from "zod"
 import type { AppEnv } from "@/src/server/lib/hono"
 import { repository } from "@/src/server/repositories"
 import { syncPendingHighlights } from "@/src/server/services/aggregation/highlight-sync"
+import { deleteHighlightVector } from "@/src/server/services/aggregation/vector-store"
 
 const app = new Hono<AppEnv>()
 const pdfRectSchema = z.object({
@@ -64,7 +65,10 @@ app.put("/:id", async (c) => {
 })
 
 app.delete("/:id", (c) => {
-  repository.deleteHighlight(c.get("userId"), c.req.param("id"))
+  const highlightId = c.req.param("id")
+  repository.deleteHighlight(c.get("userId"), highlightId)
+  /** 异步清理向量存储 */
+  void deleteHighlightVector(highlightId).catch(() => undefined)
   return c.json({ ok: true })
 })
 

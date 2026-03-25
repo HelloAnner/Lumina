@@ -15,7 +15,8 @@ import {
   ExternalLink,
   Highlighter,
   Lightbulb,
-  Quote
+  Quote,
+  X
 } from "lucide-react"
 import { ImportedBlockItem } from "@/components/import/imported-note-blocks"
 import { cn } from "@/src/lib/utils"
@@ -78,12 +79,14 @@ export function NoteBlockItem({
   block,
   hasAnnotation,
   onSelectText,
-  onTextChange
+  onTextChange,
+  onDelete
 }: {
   block: NoteBlock
   hasAnnotation?: boolean
   onSelectText?: (blockId: string, text: string) => void
   onTextChange?: (blockId: string, text: string) => void
+  onDelete?: (blockId: string) => void
 }) {
   const handleMouseUp = () => {
     if (!onSelectText) {
@@ -105,6 +108,15 @@ export function NoteBlockItem({
         <div className="absolute -left-6 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-warning/20 border border-warning/40">
           <div className="h-1.5 w-1.5 rounded-full bg-warning" />
         </div>
+      )}
+      {onDelete && (
+        <button
+          onClick={() => onDelete(block.id)}
+          title="删除此块"
+          className="absolute -right-2 top-0 z-10 flex h-5 w-5 items-center justify-center rounded-full border border-border/60 bg-surface text-muted opacity-0 shadow-sm transition hover:border-error/40 hover:bg-error/10 hover:text-error group-hover/block:opacity-100"
+        >
+          <X className="h-2.5 w-2.5" />
+        </button>
       )}
       {renderBlock(block, onTextChange)}
     </div>
@@ -350,12 +362,14 @@ export function NoteBlockList({
   blocks,
   annotatedBlockIds,
   onSelectText,
-  onBlockTextChange
+  onBlockTextChange,
+  onBlockDelete
 }: {
   blocks: NoteBlock[]
   annotatedBlockIds?: Set<string>
   onSelectText?: (blockId: string, text: string) => void
   onBlockTextChange?: (blockId: string, text: string) => void
+  onBlockDelete?: (blockId: string) => void
 }) {
   if (blocks.length === 0) {
     return (
@@ -376,6 +390,7 @@ export function NoteBlockList({
           hasAnnotation={annotatedBlockIds?.has(block.id)}
           onSelectText={onSelectText}
           onTextChange={onBlockTextChange}
+          onDelete={onBlockDelete}
         />
       ))}
     </div>

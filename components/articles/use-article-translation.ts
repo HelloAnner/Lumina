@@ -1,6 +1,6 @@
 /**
  * 文章翻译状态 Hook
- * 管理文章的原文/译文切换和翻译请求
+ * 管理文章的原文/译文切换和翻译请求，持久化语言偏好
  *
  * @author Anner
  * @since 0.3.0
@@ -8,25 +8,50 @@
  */
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { ArticleSection, TranslationDisplayMode } from "@/src/server/store/types"
 
 const DEFAULT_TARGET_LANGUAGE = "zh-CN"
 
 export function useArticleTranslation({
   articleId,
+  articleTitle,
   originalSections,
+  initialView,
+  initialTranslatedTitle,
   onError
 }: {
   articleId: string
+  articleTitle: string
   originalSections: ArticleSection[]
+  initialView: TranslationDisplayMode
+  initialTranslatedTitle?: string
   onError: (message: string) => void
 }) {
-  const [translationView, setTranslationView] = useState<TranslationDisplayMode>("original")
+  const [translationView, setTranslationView] = useState<TranslationDisplayMode>(initialView)
   const [translatedContent, setTranslatedContent] = useState<ArticleSection[] | null>(null)
+  const [translatedTitle, setTranslatedTitle] = useState(initialTranslatedTitle ?? "")
   const [isTranslating, setIsTranslating] = useState(false)
   const [translationError, setTranslationError] = useState<string | null>(null)
   const [targetLanguage] = useState(DEFAULT_TARGET_LANGUAGE)
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /** 持久化翻译视图偏好 */
+  const persistView = useCallback(
+    (view: TranslationDisplayMode) => {
+      if (persistTimer.current) {
+        clearTimeout(persistTimer.current)
+      }
+      persistTimer.current = setTimeout(() => {
+        fetch(`/api/articles/${articleId}`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ translationView: view })
+        }).catch(() => undefined)
+      }, 200)
+    },
+    [articleId]
+  )
 
   const fetchTranslation = useCallback(async () => {
     if (translatedContent) {
@@ -45,6 +70,9 @@ export function useArticleTranslation({
       }
       setTranslationError(null)
       setTranslatedContent(data.content)
+      if (data.translatedTitle) {
+        setTranslatedTitle(data.translatedTitle)
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "翻译失败"
       setTranslationError(message)
@@ -55,6 +83,14 @@ export function useArticleTranslation({
     }
   }, [articleId, onError, targetLanguage, translatedContent])
 
+  // 初始视图为翻译时，自动拉取译文
+  useEffect(() => {
+    if (initialView === "translation" && !translatedContent && !isTranslating) {
+      void fetchTranslation()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const toggleTranslationView = useCallback(() => {
     setTranslationError(null)
     setTranslationView((current) => {
@@ -62,9 +98,15 @@ export function useArticleTranslation({
       if (next === "translation" && !translatedContent) {
         void fetchTranslation()
       }
+      persistView(next)
       return next
     })
-  }, [fetchTranslation, translatedContent])
+  }, [fetchTranslation, persistView, translatedContent])
+
+  const displayTitle =
+    translationView === "translation" && translatedTitle
+      ? translatedTitle
+      : articleTitle
 
   const displayContent =
     translationView === "translation" && translatedContent
@@ -75,6 +117,7 @@ export function useArticleTranslation({
     translationView,
     toggleTranslationView,
     targetLanguage,
+    displayTitle,
     displayContent,
     translatedContent,
     isTranslating,

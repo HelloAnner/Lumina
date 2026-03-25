@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation"
 import {
   Archive,
   ArchiveRestore,
+  ArrowDownUp,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -27,6 +28,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/src/lib/utils"
 import type { ScoutArticle, ArticleTopic } from "@/src/server/store/types"
+import type { ArticleSortBy } from "@/src/server/services/preferences/store"
 
 type FilterTab = "all" | "unread" | "reading" | "archived"
 
@@ -41,7 +43,13 @@ interface PaginatedResult {
 interface Props {
   initialData: PaginatedResult
   initialTopics: ArticleTopic[]
+  initialSortBy?: ArticleSortBy
 }
+
+const SORT_OPTIONS: { key: ArticleSortBy; label: string }[] = [
+  { key: "lastRead", label: "最近阅读" },
+  { key: "created", label: "创建时间" }
+]
 
 const FILTER_TABS: { key: FilterTab; label: string }[] = [
   { key: "all", label: "全部" },
@@ -76,13 +84,14 @@ function timeAgo(dateStr?: string): string {
   return `${days}d ago`
 }
 
-export function ArticlesClient({ initialData, initialTopics }: Props) {
+export function ArticlesClient({ initialData, initialTopics, initialSortBy = "lastRead" }: Props) {
   const router = useRouter()
   const [data, setData] = useState<PaginatedResult>(initialData)
   const [topics] = useState(initialTopics)
   const [search, setSearch] = useState("")
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all")
   const [activeTopic, setActiveTopic] = useState<string | null>(null)
+  const [sortBy, setSortBy] = useState<ArticleSortBy>(initialSortBy)
   const [loading, setLoading] = useState(false)
 
   /** 从 API 获取分页数据 */
@@ -90,6 +99,7 @@ export function ArticlesClient({ initialData, initialTopics }: Props) {
     filter?: string
     topicId?: string
     search?: string
+    sortBy?: string
     page?: number
   }) => {
     setLoading(true)
@@ -103,6 +113,9 @@ export function ArticlesClient({ initialData, initialTopics }: Props) {
       }
       if (params.search) {
         query.set("search", params.search)
+      }
+      if (params.sortBy) {
+        query.set("sortBy", params.sortBy)
       }
       if (params.page) {
         query.set("page", String(params.page))
@@ -120,22 +133,32 @@ export function ArticlesClient({ initialData, initialTopics }: Props) {
   const handleFilterChange = (tab: FilterTab) => {
     setActiveFilter(tab)
     setActiveTopic(null)
-    fetchArticles({ filter: tab, search })
+    fetchArticles({ filter: tab, search, sortBy })
   }
 
   const handleTopicClick = (topicId: string) => {
     const next = activeTopic === topicId ? null : topicId
     setActiveTopic(next)
-    fetchArticles({ filter: activeFilter, topicId: next ?? undefined, search })
+    fetchArticles({ filter: activeFilter, topicId: next ?? undefined, search, sortBy })
   }
 
   const handleSearch = (value: string) => {
     setSearch(value)
-    fetchArticles({ filter: activeFilter, topicId: activeTopic ?? undefined, search: value })
+    fetchArticles({ filter: activeFilter, topicId: activeTopic ?? undefined, search: value, sortBy })
   }
 
   const handlePageChange = (page: number) => {
-    fetchArticles({ filter: activeFilter, topicId: activeTopic ?? undefined, search, page })
+    fetchArticles({ filter: activeFilter, topicId: activeTopic ?? undefined, search, sortBy, page })
+  }
+
+  const handleSortChange = (next: ArticleSortBy) => {
+    setSortBy(next)
+    fetchArticles({ filter: activeFilter, topicId: activeTopic ?? undefined, search, sortBy: next })
+    fetch("/api/preferences/ui", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ articleSortBy: next })
+    }).catch(() => undefined)
   }
 
   const refetch = useCallback(() => {
@@ -143,9 +166,10 @@ export function ArticlesClient({ initialData, initialTopics }: Props) {
       filter: activeFilter,
       topicId: activeTopic ?? undefined,
       search,
+      sortBy,
       page: data.page
     })
-  }, [fetchArticles, activeFilter, activeTopic, search, data.page])
+  }, [fetchArticles, activeFilter, activeTopic, search, sortBy, data.page])
 
   /** 归档（软删除） */
   const handleArchive = async (articleId: string) => {
@@ -193,22 +217,41 @@ export function ArticlesClient({ initialData, initialTopics }: Props) {
         </div>
       </header>
 
-      {/* 筛选 Tab */}
-      <div className="flex shrink-0 items-center border-b border-border px-6">
-        {FILTER_TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => handleFilterChange(tab.key)}
-            className={cn(
-              "px-4 py-2 text-[13px] transition-colors",
-              activeFilter === tab.key
-                ? "border-b-2 border-primary font-medium text-foreground"
-                : "text-muted hover:text-secondary"
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* 筛选 Tab + 排序 */}
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-6">
+        <div className="flex items-center">
+          {FILTER_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => handleFilterChange(tab.key)}
+              className={cn(
+                "px-4 py-2 text-[13px] transition-colors",
+                activeFilter === tab.key
+                  ? "border-b-2 border-primary font-medium text-foreground"
+                  : "text-muted hover:text-secondary"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1 text-[12px] text-muted">
+          <ArrowDownUp className="h-3 w-3" />
+          {SORT_OPTIONS.map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => handleSortChange(opt.key)}
+              className={cn(
+                "rounded px-2 py-1 transition-colors",
+                sortBy === opt.key
+                  ? "text-foreground"
+                  : "hover:text-secondary"
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className={cn("flex-1 overflow-y-auto px-6 py-5", loading && "opacity-60")}>
@@ -362,24 +405,28 @@ function ArticleRow({
 }) {
   const readLabel = article.archived
     ? "已归档"
-    : article.readProgress >= 1
-      ? "已读完"
-      : article.readProgress > 0
-        ? `阅读 ${Math.round(article.readProgress * 100)}%`
-        : "未读"
+    : article.reading
+      ? article.readProgress >= 1
+        ? "已读完"
+        : article.readProgress > 0
+          ? `阅读 ${Math.round(article.readProgress * 100)}%`
+          : "阅读中"
+      : "未读"
   const readColor = article.archived
     ? "text-placeholder"
-    : article.readProgress >= 1
-      ? "text-success"
-      : article.readProgress > 0
-        ? "text-primary"
-        : "text-placeholder"
+    : article.reading
+      ? article.readProgress >= 1
+        ? "text-success"
+        : "text-primary"
+      : "text-placeholder"
 
   return (
     <div className="group flex items-start gap-3 rounded-lg border border-border/40 bg-card/40 p-3.5 transition-colors hover:bg-overlay/60">
       <button onClick={onClick} className="flex-1 min-w-0 text-left">
         <p className="text-[14px] font-medium text-foreground line-clamp-1 group-hover:text-primary transition-colors">
-          {article.title}
+          {article.translationView === "translation" && article.translatedTitle
+            ? article.translatedTitle
+            : article.title}
         </p>
         <div className="mt-1.5 flex items-center gap-2 text-[12px]">
           {article.author && <span className="text-secondary">{article.author}</span>}

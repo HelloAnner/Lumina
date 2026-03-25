@@ -238,6 +238,75 @@ export const repository = {
   },
   deleteHighlight(userId: string, highlightId: string) {
     return mutateDatabase((database) => {
+      const highlight = database.highlights.find(
+        (item) => item.userId === userId && item.id === highlightId
+      )
+      if (!highlight) {
+        return
+      }
+
+      // 找到关联的主题 ID
+      const linkedViewpointIds = database.highlightViewpoints
+        .filter((item) => item.highlightId === highlightId)
+        .map((item) => item.viewpointId)
+
+      // 从主题的 articleBlocks 中移除引用此划线的块（quote/highlight）及其紧跟的 insight 批注块
+      for (const vpId of linkedViewpointIds) {
+        const viewpoint = database.viewpoints.find(
+          (item) => item.id === vpId && item.userId === userId
+        )
+        if (!viewpoint?.articleBlocks) {
+          continue
+        }
+
+        const removedIds = new Set<string>()
+        // 标记引用此划线的块
+        for (const block of viewpoint.articleBlocks) {
+          if (
+            (block.type === "quote" || block.type === "highlight") &&
+            "highlightId" in block &&
+            block.highlightId === highlightId
+          ) {
+            removedIds.add(block.id)
+          }
+        }
+
+        // 同时移除紧跟在引用块后面的 insight 批注块
+        const sorted = [...viewpoint.articleBlocks].sort((a, b) => a.sortOrder - b.sortOrder)
+        for (let i = 0; i < sorted.length; i++) {
+          if (removedIds.has(sorted[i].id) && sorted[i + 1]?.type === "insight") {
+            removedIds.add(sorted[i + 1].id)
+          }
+        }
+
+        viewpoint.articleBlocks = viewpoint.articleBlocks.filter(
+          (block) => !removedIds.has(block.id)
+        )
+        viewpoint.highlightCount = Math.max(0, viewpoint.highlightCount - 1)
+
+        // 重算 relatedBookIds：只保留仍有关联划线的 bookId
+        const remainingBookIds = new Set(
+          database.highlightViewpoints
+            .filter((hv) => hv.viewpointId === vpId && hv.highlightId !== highlightId)
+            .map((hv) => database.highlights.find((h) => h.id === hv.highlightId)?.bookId)
+            .filter(Boolean) as string[]
+        )
+        viewpoint.relatedBookIds = viewpoint.relatedBookIds.filter(
+          (bookId) => remainingBookIds.has(bookId)
+        )
+      }
+
+      // 文章划线计数递减
+      if (highlight.sourceType === "article" && highlight.articleId) {
+        const article = database.scoutArticles.find(
+          (a) => a.id === highlight.articleId && a.userId === userId
+        )
+        if (article) {
+          article.highlightCount = Math.max(0, article.highlightCount - 1)
+        }
+      }
+
+      // 删除划线本体和关联记录
       database.highlights = database.highlights.filter(
         (item) => !(item.userId === userId && item.id === highlightId)
       )
@@ -787,11 +856,10 @@ export const repository = {
 
   listArticles(
     userId: string,
-    opts?: { topicId?: string; search?: string; filter?: string; page?: number; pageSize?: number }
+    opts?: { topicId?: string; search?: string; filter?: string; sortBy?: string; page?: number; pageSize?: number }
   ) {
-    const { topicId, search, filter, page = 1, pageSize = 20 } = opts ?? {}
-    const all = sortByDate(
-      readDatabase().scoutArticles.filter((item) => {
+    const { topicId, search, filter, sortBy = "lastRead", page = 1, pageSize = 20 } = opts ?? {}
+    const filtered = readDatabase().scoutArticles.filter((item) => {
         if (item.userId !== userId) {
           return false
         }
@@ -802,10 +870,10 @@ export const repository = {
           return false
         }
         if (filter === "unread") {
-          return !item.readProgress || item.readProgress === 0
+          return !item.reading && !item.archived
         }
         if (filter === "reading") {
-          return item.readProgress > 0 && item.readProgress < 1 && !item.archived
+          return !!item.reading && !item.archived
         }
         if (filter === "archived") {
           return !!item.archived
@@ -815,7 +883,13 @@ export const repository = {
         }
         return true
       })
-    )
+    const all = sortBy === "created"
+      ? sortByDate(filtered, "createdAt")
+      : [...filtered].sort((a, b) => {
+        const aTime = a.lastReadAt || a.createdAt
+        const bTime = b.lastReadAt || b.createdAt
+        return bTime.localeCompare(aTime)
+      })
     const total = all.length
     const totalPages = Math.max(1, Math.ceil(total / pageSize))
     const safePage = Math.min(Math.max(1, page), totalPages)

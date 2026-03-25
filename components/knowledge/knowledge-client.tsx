@@ -446,6 +446,43 @@ export function KnowledgeClient({
     [buildSavePayload, flushEditsToState]
   )
 
+  /** 删除单个笔记块 */
+  const handleBlockDelete = useCallback(
+    async (blockId: string) => {
+      const vid = selectedIdRef.current
+      if (!vid) {
+        return
+      }
+      // 从 editsRef 中移除该块的未保存编辑
+      editsRef.current.delete(blockId)
+      // 乐观更新：从本地 state 中移除
+      setBlocks((prev) => {
+        const next = prev.filter((b) => b.id !== blockId)
+        blocksRef.current = next
+        return next
+      })
+      // 立即持久化
+      setSaveStatus("saving")
+      try {
+        const payload = blocksRef.current
+        await fetch(`/api/viewpoints/${vid}/blocks`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ blocks: payload })
+        })
+        setSaveStatus("saved")
+        if (savedStatusTimer.current) {
+          clearTimeout(savedStatusTimer.current)
+        }
+        savedStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 2000)
+      } catch {
+        setToast("删除失败，请重试")
+        setSaveStatus("idle")
+      }
+    },
+    []
+  )
+
   /** 重命名主题 */
   const renameViewpoint = useCallback(
     async (viewpointId: string, newTitle: string) => {
@@ -853,6 +890,7 @@ export function KnowledgeClient({
                 annotatedBlockIds={annotatedBlockIds}
                 onSelectText={handleSelectText}
                 onBlockTextChange={handleBlockTextChange}
+                onBlockDelete={handleBlockDelete}
               />
             </div>
           </div>
