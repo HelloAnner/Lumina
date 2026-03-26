@@ -1,6 +1,17 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react"
+import {
+  usePathname,
+  useRouter,
+  useSearchParams
+} from "next/navigation"
 import {
   BookOpen,
   Check,
@@ -12,11 +23,17 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Toast } from "@/components/ui/toast"
-import { NoteBlockList } from "@/components/knowledge/note-block-renderer"
+import { NoteEditor } from "@/components/knowledge/note-editor"
 import { ImportedNotesTree } from "@/components/import/imported-notes-tree"
 import { ImportedNoteViewer } from "@/components/import/imported-note-viewer"
 import { AddSourceDialog } from "@/components/import/add-source-dialog"
 import { type SelectionContext } from "@/components/knowledge/annotation-sidebar"
+import {
+  DEFAULT_KNOWLEDGE_NOTE_STATE,
+  buildKnowledgeNoteKey,
+  buildKnowledgeSearch,
+  readKnowledgeSelection
+} from "@/components/knowledge/knowledge-url-state"
 import { RightSidebar, type RightSidebarTab } from "@/components/knowledge/right-sidebar"
 import { ViewpointTree } from "@/components/knowledge/viewpoint-tree"
 import {
@@ -49,11 +66,13 @@ type DraftNode = {
  */
 export function KnowledgeClient({
   initialViewpoints,
+  initialImportedNoteId,
   initialSelected,
   unconfirmed,
   initialWidths
 }: {
   initialViewpoints: Viewpoint[]
+  initialImportedNoteId?: string
   initialSelected?: Viewpoint
   unconfirmed: (Highlight & { similarityScore?: number })[]
   initialWidths: {
@@ -61,10 +80,15 @@ export function KnowledgeClient({
     knowledgeListWidth: number
   }
 }) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [toast, setToast] = useState("")
   const [viewpoints, setViewpoints] = useState(initialViewpoints)
   const [selectedId, setSelectedId] = useState(
-    initialSelected?.id ?? initialViewpoints[0]?.id
+    initialImportedNoteId
+      ? ""
+      : (initialSelected?.id ?? initialViewpoints[0]?.id ?? "")
   )
   const [blocks, setBlocks] = useState<NoteBlock[]>(
     initialSelected?.articleBlocks ?? []
@@ -82,20 +106,89 @@ export function KnowledgeClient({
   )
   const [activeRightTab, setActiveRightTab] = useState<RightSidebarTab>("annotations")
   const [selectedBlockForChat, setSelectedBlockForChat] = useState<NoteBlock | null>(null)
-  const [importedNoteId, setImportedNoteId] = useState<string | null>(null)
+  const [importedNoteId, setImportedNoteId] = useState<string | null>(
+    initialImportedNoteId ?? null
+  )
+  const [noteState, setNoteState] = useState(DEFAULT_KNOWLEDGE_NOTE_STATE)
+  const [activeHeadingId, setActiveHeadingId] = useState<string>()
   const [showImportDialog, setShowImportDialog] = useState(false)
+  const [importedReadyVersion, setImportedReadyVersion] = useState(0)
 
   const prefTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const noteStateTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const contentScrollRef = useRef<HTMLDivElement>(null)
+  const restoringNoteKeyRef = useRef<string | null>(null)
+  const isRestoringScrollRef = useRef(false)
   /** 编辑中的文本变更，不触发 React 重渲染 */
   const editsRef = useRef<Map<string, string>>(new Map())
   const blocksRef = useRef(blocks)
   blocksRef.current = blocks
+  const noteStateRef = useRef(noteState)
+  noteStateRef.current = noteState
   const selectedIdRef = useRef(selectedId)
   selectedIdRef.current = selectedId
   const headerInputRef = useRef<HTMLInputElement>(null)
   const selected = viewpoints.find((v) => v.id === selectedId)
+  const routeSelection = useMemo(
+    () => readKnowledgeSelection(new URLSearchParams(searchParams.toString())),
+    [searchParams]
+  )
+  const currentSelection = useMemo(
+    () => importedNoteId
+      ? { importedNoteId }
+      : { viewpointId: selectedId || undefined },
+    [importedNoteId, selectedId]
+  )
+  const currentNoteKey = buildKnowledgeNoteKey(currentSelection)
+
+  const scheduleNoteStateSave = useCallback((partial: {
+    outlineCollapsed?: boolean
+    scrollTop?: number
+    anchorHeadingId?: string
+  }) => {
+    if (!currentNoteKey) {
+      return
+    }
+    const next = {
+      outlineCollapsed:
+        partial.outlineCollapsed ?? noteStateRef.current.outlineCollapsed,
+      scrollTop: partial.scrollTop ?? noteStateRef.current.scrollTop,
+      anchorHeadingId:
+        partial.anchorHeadingId ?? noteStateRef.current.anchorHeadingId
+    }
+    setNoteState(next)
+    if (noteStateTimer.current) {
+      clearTimeout(noteStateTimer.current)
+    }
+    noteStateTimer.current = setTimeout(async () => {
+      await persistKnowledgeNoteState(currentNoteKey, next)
+    }, 220)
+  }, [currentNoteKey])
+
+  const flushCurrentNoteState = useCallback(() => {
+    if (!currentNoteKey) {
+      return
+    }
+    const scrollTop = Math.round(contentScrollRef.current?.scrollTop ?? 0)
+    scheduleNoteStateSave({
+      scrollTop,
+      anchorHeadingId: activeHeadingId
+    })
+  }, [activeHeadingId, currentNoteKey, scheduleNoteStateSave])
+
+  const replaceKnowledgeUrl = useCallback((selection: {
+    viewpointId?: string
+    importedNoteId?: string
+  }) => {
+    const nextSearch = buildKnowledgeSearch(
+      new URLSearchParams(searchParams.toString()),
+      selection
+    )
+    const nextUrl = nextSearch ? `${pathname}?${nextSearch}` : pathname
+    router.replace(nextUrl, { scroll: false })
+  }, [pathname, router, searchParams])
 
   // 加载笔记块
   useEffect(() => {
@@ -113,6 +206,135 @@ export function KnowledgeClient({
       }
     })()
   }, [selectedId])
+
+  useEffect(() => {
+    if (routeSelection.importedNoteId) {
+      if (routeSelection.importedNoteId === importedNoteId) {
+        return
+      }
+      setImportedReadyVersion(0)
+      setImportedNoteId(routeSelection.importedNoteId)
+      setSelectedId("")
+      setBlocks([])
+      setSelectionCtx(null)
+      setSelectedBlockForChat(null)
+      return
+    }
+    const nextViewpointId = resolveClientSelectedViewpointId(
+      viewpoints,
+      routeSelection.viewpointId
+    )
+    if (!nextViewpointId) {
+      return
+    }
+    if (importedNoteId || nextViewpointId !== selectedId) {
+      setImportedReadyVersion(0)
+      setImportedNoteId(null)
+      setSelectedId(nextViewpointId)
+      setSelectionCtx(null)
+      setSelectedBlockForChat(null)
+    }
+  }, [importedNoteId, routeSelection, selectedId, viewpoints])
+
+  useEffect(() => {
+    restoringNoteKeyRef.current = null
+    setActiveHeadingId(undefined)
+    if (!currentNoteKey) {
+      setNoteState(DEFAULT_KNOWLEDGE_NOTE_STATE)
+      return
+    }
+    void (async () => {
+      try {
+        const query = new URLSearchParams({ noteKey: currentNoteKey })
+        const res = await fetch(`/api/preferences/knowledge-note?${query}`)
+        const data = await res.json()
+        setNoteState(data.item ?? DEFAULT_KNOWLEDGE_NOTE_STATE)
+      } catch {
+        setNoteState(DEFAULT_KNOWLEDGE_NOTE_STATE)
+      }
+    })()
+  }, [currentNoteKey])
+
+  useEffect(() => {
+    if (!currentNoteKey || !contentScrollRef.current) {
+      return
+    }
+    const contentReady = importedNoteId
+      ? importedReadyVersion > 0
+      : blocks.length > 0 || selectedId === ""
+    if (!contentReady || restoringNoteKeyRef.current === currentNoteKey) {
+      return
+    }
+    const container = contentScrollRef.current
+    isRestoringScrollRef.current = true
+    const timer = window.setTimeout(() => {
+      container.scrollTo({ top: noteState.scrollTop, behavior: "auto" })
+      restoringNoteKeyRef.current = currentNoteKey
+      window.setTimeout(() => {
+        isRestoringScrollRef.current = false
+      }, 80)
+    }, 40)
+    return () => window.clearTimeout(timer)
+  }, [
+    blocks.length,
+    currentNoteKey,
+    importedNoteId,
+    importedReadyVersion,
+    noteState.scrollTop,
+    selectedId
+  ])
+
+  useEffect(() => {
+    const container = contentScrollRef.current
+    if (!container || !currentNoteKey) {
+      return
+    }
+    const handleScroll = () => {
+      if (isRestoringScrollRef.current) {
+        return
+      }
+      scheduleNoteStateSave({
+        scrollTop: Math.round(container.scrollTop),
+        anchorHeadingId: activeHeadingId
+      })
+    }
+    container.addEventListener("scroll", handleScroll, { passive: true })
+    return () => container.removeEventListener("scroll", handleScroll)
+  }, [activeHeadingId, currentNoteKey, scheduleNoteStateSave])
+
+  useEffect(() => {
+    if (!currentNoteKey) {
+      return
+    }
+    scheduleNoteStateSave({ anchorHeadingId: activeHeadingId })
+  }, [activeHeadingId, currentNoteKey, scheduleNoteStateSave])
+
+  useEffect(() => {
+    const handlePageHide = () => {
+      if (!currentNoteKey) {
+        return
+      }
+      if (noteStateTimer.current) {
+        clearTimeout(noteStateTimer.current)
+      }
+      void persistKnowledgeNoteState(currentNoteKey, {
+        ...noteStateRef.current,
+        scrollTop: Math.round(contentScrollRef.current?.scrollTop ?? 0),
+        anchorHeadingId: activeHeadingId
+      }, true)
+    }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        handlePageHide()
+      }
+    }
+    window.addEventListener("pagehide", handlePageHide)
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [activeHeadingId, currentNoteKey])
 
   // 保存宽度偏好
   useEffect(() => {
@@ -294,10 +516,24 @@ export function KnowledgeClient({
   /** 划词回调 */
   const handleSelectText = useCallback(
     (blockId: string, text: string) => {
+      setActiveRightTab("annotations")
       setSelectionCtx({ blockId, text })
     },
     []
   )
+
+  const refreshBlocks = useCallback(async () => {
+    if (!selectedId) {
+      return
+    }
+    try {
+      const res = await fetch(`/api/viewpoints/${selectedId}/blocks`)
+      const data = await res.json()
+      setBlocks(data.blocks ?? [])
+    } catch {
+      /* ignore */
+    }
+  }, [selectedId])
 
   /** 批注变更回调 */
   const handleAnnotationsChange = useCallback((annos: Annotation[]) => {
@@ -312,20 +548,7 @@ export function KnowledgeClient({
     if (justDone) {
       void refreshBlocks()
     }
-  }, [])
-
-  const refreshBlocks = async () => {
-    if (!selectedId) {
-      return
-    }
-    try {
-      const res = await fetch(`/api/viewpoints/${selectedId}/blocks`)
-      const data = await res.json()
-      setBlocks(data.blocks ?? [])
-    } catch {
-      /* ignore */
-    }
-  }
+  }, [refreshBlocks])
 
   /** 构建保存载荷 */
   const buildSavePayload = useCallback(() => {
@@ -374,6 +597,7 @@ export function KnowledgeClient({
   /** 切换主题前刷新未保存的编辑 */
   const selectViewpoint = useCallback(
     async (viewpointId: string) => {
+      flushCurrentNoteState()
       if (editsRef.current.size > 0 && selectedIdRef.current) {
         if (saveTimer.current) {
           clearTimeout(saveTimer.current)
@@ -394,10 +618,18 @@ export function KnowledgeClient({
       setSaveStatus("idle")
       setSelectedId(viewpointId)
       setImportedNoteId(null)
+      setImportedReadyVersion(0)
       setSelectionCtx(null)
+      setSelectedBlockForChat(null)
       setEditingHeaderTitle(false)
+      replaceKnowledgeUrl({ viewpointId })
     },
-    [buildSavePayload, flushEditsToState]
+    [
+      buildSavePayload,
+      flushCurrentNoteState,
+      flushEditsToState,
+      replaceKnowledgeUrl
+    ]
   )
 
   /** 块文本编辑 */
@@ -733,8 +965,13 @@ export function KnowledgeClient({
               <ImportedNotesTree
                 selectedNoteId={importedNoteId}
                 onSelectNote={(id) => {
+                  flushCurrentNoteState()
+                  setImportedReadyVersion(0)
                   setImportedNoteId(id)
                   setSelectedId("")
+                  setSelectedBlockForChat(null)
+                  setSelectionCtx(null)
+                  replaceKnowledgeUrl({ importedNoteId: id })
                 }}
               />
             }
@@ -748,7 +985,11 @@ export function KnowledgeClient({
         {/* 中央笔记面板 */}
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {importedNoteId ? (
-            <ImportedNoteViewer noteId={importedNoteId} />
+            <ImportedNoteViewer
+              noteId={importedNoteId}
+              onReady={() => setImportedReadyVersion((value) => value + 1)}
+              scrollContainerRef={contentScrollRef}
+            />
           ) : (
           <>
           {/* 顶部标题栏 */}
@@ -843,25 +1084,32 @@ export function KnowledgeClient({
           )}
 
           {/* 笔记块内容 */}
-          <div className="relative min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto max-w-2xl px-8 py-8">
-              <NoteBlockList
-                blocks={blocks}
-                annotatedBlockIds={annotatedBlockIds}
-                chatSelectedBlockId={activeRightTab === "chat" ? selectedBlockForChat?.id : undefined}
-                focusBlockId={focusBlockId}
-                onSelectText={handleSelectText}
-                onBlockTextChange={handleBlockTextChange}
-                onBlockDelete={handleBlockDelete}
-                onBlockInsert={handleBlockInsert}
-                onBlockTypeChange={handleBlockTypeChange}
-                onEnterNewBlock={handleEnterNewBlock}
-                onBackspaceEmpty={handleBackspaceEmpty}
-                onBlockClick={activeRightTab === "chat" ? (blockId) => {
-                  const block = blocks.find((b) => b.id === blockId)
-                  setSelectedBlockForChat(block ?? null)
-                } : undefined}
-              />
+          <div
+            ref={contentScrollRef}
+            className="relative min-h-0 flex-1 overflow-y-auto"
+          >
+            <div className="w-full px-8 py-8">
+              {selectedId ? (
+                <NoteEditor
+                  viewpointId={selectedId}
+                  blocks={blocks}
+                  annotatedBlockIds={annotatedBlockIds}
+                  outlineCollapsed={noteState.outlineCollapsed}
+                  selectedBlockId={activeRightTab === "chat" ? selectedBlockForChat?.id : undefined}
+                  scrollContainerRef={contentScrollRef}
+                  onBlocksChange={setBlocks}
+                  onSelectText={handleSelectText}
+                  onActiveHeadingChange={setActiveHeadingId}
+                  onOutlineCollapsedChange={(collapsed) => {
+                    scheduleNoteStateSave({ outlineCollapsed: collapsed })
+                  }}
+                  onSaveStatusChange={setSaveStatus}
+                  onBlockClick={activeRightTab === "chat" ? (blockId) => {
+                    const block = blocks.find((item) => item.id === blockId)
+                    setSelectedBlockForChat(block ?? null)
+                  } : undefined}
+                />
+              ) : null}
             </div>
           </div>
 
@@ -942,4 +1190,47 @@ export function KnowledgeClient({
       )}
     </>
   )
+}
+
+function resolveClientSelectedViewpointId(
+  viewpoints: Viewpoint[],
+  viewpointId?: string
+) {
+  if (!viewpointId) {
+    return viewpoints[0]?.id
+  }
+  return viewpoints.find((item) => item.id === viewpointId)?.id
+    ?? viewpoints[0]?.id
+}
+
+async function persistKnowledgeNoteState(
+  noteKey: string,
+  state: {
+    outlineCollapsed: boolean
+    scrollTop: number
+    anchorHeadingId?: string
+  },
+  immediate = false
+) {
+  const payload = JSON.stringify({
+    noteKey,
+    outlineCollapsed: state.outlineCollapsed,
+    scrollTop: Math.max(0, Math.round(state.scrollTop)),
+    anchorHeadingId: state.anchorHeadingId ?? null
+  })
+  if (
+    immediate &&
+    typeof navigator !== "undefined" &&
+    typeof navigator.sendBeacon === "function"
+  ) {
+    const blob = new Blob([payload], { type: "application/json" })
+    navigator.sendBeacon("/api/preferences/knowledge-note", blob)
+    return
+  }
+  await fetch("/api/preferences/knowledge-note", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: payload,
+    keepalive: immediate
+  })
 }

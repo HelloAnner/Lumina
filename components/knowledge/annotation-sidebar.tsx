@@ -234,7 +234,7 @@ export function AnnotationSidebar({
             <MessageSquare className="mb-2 h-6 w-6 text-muted/20" />
             <p className="text-[12px] text-muted">暂无批注</p>
             <p className="mt-1 text-[11px] text-muted">
-              选中文字或点击右上角添加
+              选中文字后按 C，或点击右上角添加
             </p>
           </div>
         ) : (

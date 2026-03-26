@@ -191,7 +191,7 @@ test("prefetchBookTranslations 会复用同章节的进行中翻译任务", asyn
   }
 
   let fetchCount = 0
-  context.mock.method(globalThis, "fetch", async (_url, init) => {
+  context.mock.method(globalThis, "fetch", async (_url: string | URL | Request, init?: RequestInit) => {
     fetchCount += 1
     const body = JSON.parse(String(init?.body)) as {
       messages: Array<{ role: string; content: string }>
@@ -295,7 +295,7 @@ test("prefetchBookTranslations 会翻译目录并持久化缓存", async (contex
     modelName: "demo-model"
   }
 
-  context.mock.method(globalThis, "fetch", async (_url, init) => {
+  context.mock.method(globalThis, "fetch", async (_url: string | URL | Request, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body)) as {
       messages: Array<{ role: string; content: string }>
     }

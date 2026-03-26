@@ -20,6 +20,16 @@ export type ViewpointDropTarget =
       type: "root"
     }
 
+export interface ViewpointDropIntentInput {
+  relativeX: number
+  relativeY: number
+  height: number
+  indentLeft: number
+}
+
+export const DROP_EDGE_RATIO = 0.24
+export const DROP_CHILD_X_OFFSET = 28
+
 export function buildViewpointTree(nodes: Viewpoint[]) {
   const map = new Map<string, ViewpointTreeNode>()
   nodes.forEach((node) => map.set(node.id, { ...node, children: [] }))
@@ -117,6 +127,20 @@ export function collectViewpointSubtreeIds(viewpoints: Viewpoint[], targetId: st
 
   walk(target)
   return ids
+}
+
+export function resolveViewpointDropIntent(
+  input: ViewpointDropIntentInput
+): "before" | "after" | "inside" {
+  const ratio = input.relativeY / input.height
+  if (ratio < DROP_EDGE_RATIO) {
+    return "before"
+  }
+  if (ratio > 1 - DROP_EDGE_RATIO) {
+    return "after"
+  }
+  const childThreshold = input.indentLeft + DROP_CHILD_X_OFFSET
+  return input.relativeX >= childThreshold ? "inside" : "after"
 }
 
 function sortTreeNodes(nodes: ViewpointTreeNode[]) {

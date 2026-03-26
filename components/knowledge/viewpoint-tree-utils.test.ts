@@ -12,6 +12,7 @@ import {
   buildViewpointTree,
   collectViewpointSubtreeIds,
   moveViewpointNode,
+  resolveViewpointDropIntent,
   serializeViewpointOrder
 } from "@/components/knowledge/viewpoint-tree-utils"
 
@@ -147,4 +148,48 @@ test("collectViewpointSubtreeIds 会返回当前观点及全部子观点", () =>
   )
 
   assert.deepEqual(ids, ["root", "child-1", "child-2"])
+})
+
+test("resolveViewpointDropIntent 默认更偏向排到下方", () => {
+  assert.equal(
+    resolveViewpointDropIntent({
+      relativeX: 18,
+      relativeY: 18,
+      height: 36,
+      indentLeft: 24
+    }),
+    "after"
+  )
+
+  assert.equal(
+    resolveViewpointDropIntent({
+      relativeX: 60,
+      relativeY: 18,
+      height: 36,
+      indentLeft: 24
+    }),
+    "inside"
+  )
+})
+
+test("resolveViewpointDropIntent 在上下边缘优先 before / after", () => {
+  assert.equal(
+    resolveViewpointDropIntent({
+      relativeX: 80,
+      relativeY: 2,
+      height: 36,
+      indentLeft: 24
+    }),
+    "before"
+  )
+
+  assert.equal(
+    resolveViewpointDropIntent({
+      relativeX: 80,
+      relativeY: 35,
+      height: 36,
+      indentLeft: 24
+    }),
+    "after"
+  )
 })

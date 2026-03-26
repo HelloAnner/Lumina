@@ -49,7 +49,7 @@ export type NoteBlockType =
 
 /** 行内富文本标记 */
 export interface InlineMark {
-  type: "bold" | "italic" | "strike" | "code" | "link"
+  type: "bold" | "italic" | "strike" | "code" | "link" | "highlight"
   attrs?: {
     href?: string
   }

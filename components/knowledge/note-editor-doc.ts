@@ -19,7 +19,8 @@ const MARK_NAME_MAP: Record<string, InlineMark["type"]> = {
   italic: "italic",
   strike: "strike",
   code: "code",
-  link: "link"
+  link: "link",
+  highlight: "highlight"
 }
 
 /**
@@ -32,6 +33,16 @@ export function blocksToTipTapDoc(blocks: NoteBlock[]): JSONContent {
       .map((block) => blockToNode(block))
       .filter(isContentNode)
   }
+}
+
+/**
+ * 归一化块顺序
+ */
+export function normalizeBlockOrder(blocks: NoteBlock[]): NoteBlock[] {
+  return sortBlocks(blocks).map((block, index) => ({
+    ...block,
+    sortOrder: index
+  }))
 }
 
 /**
@@ -294,19 +305,15 @@ function tipTapToRichText(content: JSONContent[] | undefined): RichTextSegment[]
 function normalizeMarks(
   marks: JSONContent["marks"]
 ): RichTextSegment["marks"] | undefined {
-  const normalized = (marks ?? [])
-    .map((mark) => {
-      const type = mark.type ? MARK_NAME_MAP[mark.type] : null
-      if (!type) {
-        return null
-      }
-      const attrs = mark.attrs?.href ? { href: String(mark.attrs.href) } : undefined
-      return {
-        type,
-        ...(attrs ? { attrs } : {})
-      }
-    })
-    .filter(isMark)
+  const normalized: InlineMark[] = []
+  for (const mark of marks ?? []) {
+    const type = mark.type ? MARK_NAME_MAP[mark.type] : null
+    if (!type) {
+      continue
+    }
+    const attrs = mark.attrs?.href ? { href: String(mark.attrs.href) } : undefined
+    normalized.push(attrs ? { type, attrs } : { type })
+  }
   return normalized.length > 0 ? normalized : undefined
 }
 
@@ -385,8 +392,4 @@ function isContentNode(node: JSONContent | null): node is JSONContent {
 
 function isBlock(block: NoteBlock | null): block is NoteBlock {
   return Boolean(block)
-}
-
-function isMark(mark: InlineMark | null): mark is InlineMark {
-  return Boolean(mark)
 }

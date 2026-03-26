@@ -2,7 +2,9 @@ import { Hono } from "hono"
 import { z } from "zod"
 import type { AppEnv } from "@/src/server/lib/hono"
 import {
+  getKnowledgeNoteState,
   getUiPreferences,
+  saveKnowledgeNoteState,
   saveUiPreferences
 } from "@/src/server/services/preferences/store"
 
@@ -23,6 +25,31 @@ app.put("/ui", async (c) => {
     })
     .parse(await c.req.json())
   return c.json({ item: await saveUiPreferences(c.get("userId"), payload) })
+})
+
+app.get("/knowledge-note", async (c) => {
+  const query = z.object({
+    noteKey: z.string().min(1)
+  }).parse(c.req.query())
+  return c.json({
+    item: await getKnowledgeNoteState(c.get("userId"), query.noteKey)
+  })
+})
+
+app.put("/knowledge-note", async (c) => {
+  const payload = z.object({
+    noteKey: z.string().min(1),
+    outlineCollapsed: z.boolean().optional(),
+    scrollTop: z.number().min(0).max(2_000_000).optional(),
+    anchorHeadingId: z.string().max(160).nullable().optional()
+  }).parse(await c.req.json())
+  return c.json({
+    item: await saveKnowledgeNoteState(c.get("userId"), payload.noteKey, {
+      outlineCollapsed: payload.outlineCollapsed,
+      scrollTop: payload.scrollTop,
+      anchorHeadingId: payload.anchorHeadingId ?? undefined
+    })
+  })
 })
 
 export default app

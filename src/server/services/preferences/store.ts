@@ -10,12 +10,23 @@ export interface UiPreferences {
   articleSortBy: ArticleSortBy
 }
 
+export interface KnowledgeNoteState {
+  outlineCollapsed: boolean
+  scrollTop: number
+  anchorHeadingId?: string
+}
+
 const DEFAULT_PREFERENCES: UiPreferences = {
   knowledgeTreeWidth: 240,
   knowledgeListWidth: 280,
   readerTocWidth: 240,
   readerHighlightsWidth: 320,
   articleSortBy: "lastRead"
+}
+
+const DEFAULT_KNOWLEDGE_NOTE_STATE: KnowledgeNoteState = {
+  outlineCollapsed: false,
+  scrollTop: 0
 }
 
 let preferenceSchemaReady: Promise<void> | null = null
@@ -50,6 +61,37 @@ async function ensurePreferenceSchema() {
         getBookPool().query(`
           ALTER TABLE user_ui_preferences
           ADD COLUMN IF NOT EXISTS article_sort_by TEXT NOT NULL DEFAULT 'lastRead'
+        `)
+      )
+      .then(() =>
+        getBookPool().query(`
+          CREATE TABLE IF NOT EXISTS user_knowledge_note_state (
+            user_id TEXT NOT NULL,
+            note_key TEXT NOT NULL,
+            outline_collapsed BOOLEAN NOT NULL DEFAULT FALSE,
+            scroll_top INTEGER NOT NULL DEFAULT 0,
+            anchor_heading_id TEXT,
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+            PRIMARY KEY (user_id, note_key)
+          )
+        `)
+      )
+      .then(() =>
+        getBookPool().query(`
+          ALTER TABLE user_knowledge_note_state
+          ADD COLUMN IF NOT EXISTS outline_collapsed BOOLEAN NOT NULL DEFAULT FALSE
+        `)
+      )
+      .then(() =>
+        getBookPool().query(`
+          ALTER TABLE user_knowledge_note_state
+          ADD COLUMN IF NOT EXISTS scroll_top INTEGER NOT NULL DEFAULT 0
+        `)
+      )
+      .then(() =>
+        getBookPool().query(`
+          ALTER TABLE user_knowledge_note_state
+          ADD COLUMN IF NOT EXISTS anchor_heading_id TEXT
         `)
       )
       .then(() => undefined)
@@ -124,4 +166,78 @@ export async function saveUiPreferences(
     return next
   }
   return next
+}
+
+export async function getKnowledgeNoteState(
+  userId: string,
+  noteKey: string
+): Promise<KnowledgeNoteState> {
+  if (!noteKey.trim()) {
+    return DEFAULT_KNOWLEDGE_NOTE_STATE
+  }
+  try {
+    await ensurePreferenceSchema()
+    const result = await getBookPool().query(
+      `SELECT outline_collapsed, scroll_top, anchor_heading_id
+       FROM user_knowledge_note_state
+       WHERE user_id = $1 AND note_key = $2
+       LIMIT 1`,
+      [userId, noteKey]
+    )
+    const row = result.rows[0]
+    if (!row) {
+      return DEFAULT_KNOWLEDGE_NOTE_STATE
+    }
+    return {
+      outlineCollapsed: Boolean(row.outline_collapsed),
+      scrollTop: Math.max(0, Number(row.scroll_top ?? 0)),
+      anchorHeadingId: row.anchor_heading_id ?? undefined
+    }
+  } catch {
+    return DEFAULT_KNOWLEDGE_NOTE_STATE
+  }
+}
+
+export async function saveKnowledgeNoteState(
+  userId: string,
+  noteKey: string,
+  state: Partial<KnowledgeNoteState>
+): Promise<KnowledgeNoteState> {
+  const current = await getKnowledgeNoteState(userId, noteKey)
+  const next = {
+    outlineCollapsed: state.outlineCollapsed ?? current.outlineCollapsed,
+    scrollTop: Math.max(0, Math.round(state.scrollTop ?? current.scrollTop)),
+    anchorHeadingId: normalizeHeadingId(
+      state.anchorHeadingId ?? current.anchorHeadingId
+    )
+  }
+  try {
+    await ensurePreferenceSchema()
+    await getBookPool().query(
+      `INSERT INTO user_knowledge_note_state
+        (user_id, note_key, outline_collapsed, scroll_top, anchor_heading_id, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (user_id, note_key)
+       DO UPDATE SET
+         outline_collapsed = EXCLUDED.outline_collapsed,
+         scroll_top = EXCLUDED.scroll_top,
+         anchor_heading_id = EXCLUDED.anchor_heading_id,
+         updated_at = NOW()`,
+      [
+        userId,
+        noteKey,
+        next.outlineCollapsed,
+        next.scrollTop,
+        next.anchorHeadingId ?? null
+      ]
+    )
+  } catch {
+    return next
+  }
+  return next
+}
+
+function normalizeHeadingId(value?: string): string | undefined {
+  const headingId = value?.trim()
+  return headingId ? headingId : undefined
 }

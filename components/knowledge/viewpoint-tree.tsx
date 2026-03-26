@@ -18,6 +18,7 @@ import {
   FileText,
   FilePlus,
   FolderOpen,
+  GripVertical,
   Pencil,
   Plus,
   Trash2,
@@ -29,11 +30,15 @@ import {
 } from "@/components/ui/context-menu"
 import {
   buildViewpointTree,
+  resolveViewpointDropIntent,
   type ViewpointDropTarget,
   type ViewpointTreeNode,
 } from "@/components/knowledge/viewpoint-tree-utils"
 import { cn } from "@/src/lib/utils"
 import type { Viewpoint } from "@/src/server/store/types"
+const AUTO_EXPAND_DELAY = 420
+const AUTO_SCROLL_EDGE = 44
+const AUTO_SCROLL_STEP = 14
 
 /**
  * 主题树组件
@@ -88,6 +93,10 @@ export function ViewpointTree({
     nodeId: string
     position: { x: number; y: number }
   } | null>(null)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const expandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoScrollFrameRef = useRef<number | null>(null)
+  const autoScrollDirectionRef = useRef<-1 | 0 | 1>(0)
 
   const tree = useMemo(() => buildViewpointTree(viewpoints), [viewpoints])
 
@@ -100,16 +109,67 @@ export function ViewpointTree({
     setCtxMenu(null)
   }, [])
 
+  const stopAutoScroll = useCallback(() => {
+    autoScrollDirectionRef.current = 0
+    if (autoScrollFrameRef.current) {
+      cancelAnimationFrame(autoScrollFrameRef.current)
+      autoScrollFrameRef.current = null
+    }
+  }, [])
+
+  const startAutoScroll = useCallback(() => {
+    if (autoScrollFrameRef.current) {
+      return
+    }
+    const tick = () => {
+      const container = scrollContainerRef.current
+      const direction = autoScrollDirectionRef.current
+      if (!container || direction === 0) {
+        autoScrollFrameRef.current = null
+        return
+      }
+      container.scrollTop += direction * AUTO_SCROLL_STEP
+      autoScrollFrameRef.current = window.requestAnimationFrame(tick)
+    }
+    autoScrollFrameRef.current = window.requestAnimationFrame(tick)
+  }, [])
+
+  const updateAutoScroll = useCallback((clientY: number) => {
+    const container = scrollContainerRef.current
+    if (!container) {
+      return
+    }
+    const rect = container.getBoundingClientRect()
+    if (clientY < rect.top + AUTO_SCROLL_EDGE) {
+      autoScrollDirectionRef.current = -1
+      startAutoScroll()
+      return
+    }
+    if (clientY > rect.bottom - AUTO_SCROLL_EDGE) {
+      autoScrollDirectionRef.current = 1
+      startAutoScroll()
+      return
+    }
+    stopAutoScroll()
+  }, [startAutoScroll, stopAutoScroll])
+
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      stopAutoScroll()
+      if (expandTimerRef.current) {
+        clearTimeout(expandTimerRef.current)
+        expandTimerRef.current = null
+      }
       if (draggingId && dropTarget) {
         onReorder(dropTarget, draggingId)
       }
       setDraggingId(null)
       setDropTarget(null)
     },
-    [draggingId, dropTarget, onReorder]
+    [draggingId, dropTarget, onReorder, stopAutoScroll]
   )
+
+  useEffect(() => () => stopAutoScroll(), [stopAutoScroll])
 
   /** 键盘快捷键 */
   useEffect(() => {
@@ -200,8 +260,26 @@ export function ViewpointTree({
         sensors={sensors}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
+        onDragCancel={() => {
+          stopAutoScroll()
+          if (expandTimerRef.current) {
+            clearTimeout(expandTimerRef.current)
+            expandTimerRef.current = null
+          }
+          setDraggingId(null)
+          setDropTarget(null)
+        }}
       >
-        <div className="flex-1 overflow-y-auto py-1 px-1">
+        <div
+          ref={scrollContainerRef}
+          className="flex-1 overflow-y-auto py-1 px-1"
+          onPointerMove={
+            draggingId
+              ? ((event) => updateAutoScroll(event.clientY))
+              : undefined
+          }
+          onPointerLeave={draggingId ? stopAutoScroll : undefined}
+        >
           {/* 全部主题 */}
           <button
             className={cn(
@@ -240,7 +318,26 @@ export function ViewpointTree({
               onSetExpanded={(id, val) =>
                 setExpanded((c) => ({ ...c, [id]: val }))
               }
+              onQueueExpand={(id) => {
+                if (expanded[id]) {
+                  return
+                }
+                if (expandTimerRef.current) {
+                  clearTimeout(expandTimerRef.current)
+                }
+                expandTimerRef.current = setTimeout(() => {
+                  setExpanded((current) => ({ ...current, [id]: true }))
+                  expandTimerRef.current = null
+                }, AUTO_EXPAND_DELAY)
+              }}
+              onClearQueuedExpand={() => {
+                if (expandTimerRef.current) {
+                  clearTimeout(expandTimerRef.current)
+                  expandTimerRef.current = null
+                }
+              }}
               onSetDropTarget={setDropTarget}
+              onTrackPointer={updateAutoScroll}
               onContextMenu={(nodeId, pos) =>
                 setCtxMenu({ nodeId, position: pos })
               }
@@ -259,9 +356,11 @@ export function ViewpointTree({
             <RootDropZone
               active={dropTarget?.type === "root"}
               onSetDropTarget={setDropTarget}
+              onTrackPointer={updateAutoScroll}
               onDrop={() => {
                 if (draggingId) {
                   onReorder({ type: "root" }, draggingId)
+                  stopAutoScroll()
                   setDraggingId(null)
                   setDropTarget(null)
                 }
@@ -334,7 +433,10 @@ function TreeNodeItem({
   draftTitle,
   onSelect,
   onSetExpanded,
+  onQueueExpand,
+  onClearQueuedExpand,
   onSetDropTarget,
+  onTrackPointer,
   onContextMenu,
   onRenameChange,
   onRenameConfirm,
@@ -356,7 +458,10 @@ function TreeNodeItem({
   draftTitle: string
   onSelect: (id: string) => void
   onSetExpanded: (id: string, val: boolean) => void
+  onQueueExpand: (id: string) => void
+  onClearQueuedExpand: () => void
   onSetDropTarget: (t: ViewpointDropTarget | null) => void
+  onTrackPointer: (clientY: number) => void
   onContextMenu: (nodeId: string, pos: { x: number; y: number }) => void
   onRenameChange: (title: string) => void
   onRenameConfirm: (id: string) => void
@@ -383,7 +488,7 @@ function TreeNodeItem({
     data: { nodeId: node.id },
   })
 
-  /** 计算 drop 位置：上25% = before, 中50% = inside, 下25% = after */
+  /** 默认更容易排序；只有明显向右拖入时才判定为子项 */
   const handleDragOver = useCallback(
     (e: React.DragEvent | React.PointerEvent | MouseEvent) => {
       if (!nodeRef.current || !draggingId) {
@@ -391,16 +496,25 @@ function TreeNodeItem({
       }
       const rect = nodeRef.current.getBoundingClientRect()
       const y = ("clientY" in e ? e.clientY : 0) - rect.top
-      const ratio = y / rect.height
-      if (ratio < 0.25) {
+      const x = ("clientX" in e ? e.clientX : 0) - rect.left
+      const intent = resolveViewpointDropIntent({
+        relativeX: x,
+        relativeY: y,
+        height: rect.height,
+        indentLeft
+      })
+      if (intent === "before") {
+        onClearQueuedExpand()
         onSetDropTarget({ type: "before", targetId: node.id })
-      } else if (ratio > 0.75) {
+      } else if (intent === "after") {
+        onClearQueuedExpand()
         onSetDropTarget({ type: "after", targetId: node.id })
       } else {
+        onQueueExpand(node.id)
         onSetDropTarget({ type: "inside", targetId: node.id })
       }
     },
-    [draggingId, node.id, onSetDropTarget]
+    [draggingId, indentLeft, node.id, onClearQueuedExpand, onQueueExpand, onSetDropTarget]
   )
 
   // 判断当前是否是 drop target
@@ -424,13 +538,28 @@ function TreeNodeItem({
         setDropRef(el)
       }}
       className="relative"
-      onPointerMove={draggingId ? handleDragOver as unknown as React.PointerEventHandler : undefined}
+      onPointerMove={
+        draggingId
+          ? ((event: React.PointerEvent<HTMLDivElement>) => {
+              onTrackPointer(event.clientY)
+              handleDragOver(event)
+            }) as unknown as React.PointerEventHandler
+          : undefined
+      }
+      onPointerLeave={
+        draggingId
+          ? () => {
+              onClearQueuedExpand()
+            }
+          : undefined
+      }
     >
       {/* 上方 drop 指示线 */}
       {isDropBefore && (
-        <div
-          className="absolute left-0 right-0 top-0 z-10 h-[3px] rounded-full bg-primary/70"
-          style={{ marginLeft: indentLeft }}
+        <DropIndicator
+          align="top"
+          label="排到上方"
+          offset={indentLeft}
         />
       )}
 
@@ -444,16 +573,14 @@ function TreeNodeItem({
 
       <div
         ref={setDragRef}
-        {...attributes}
-        {...listeners}
         role="button"
         tabIndex={0}
         className={cn(
-          "group relative flex w-full items-center gap-1.5 rounded-lg py-[7px] pr-2 text-left text-[13px] transition-colors",
+          "group viewpoint-tree-item relative flex w-full items-center gap-1.5 rounded-lg py-[7px] pr-2 text-left text-[13px] transition-colors",
           active
             ? "bg-overlay/80 text-foreground before:absolute before:left-0 before:top-1 before:bottom-1 before:w-[2px] before:rounded-full before:bg-primary/80 before:content-['']"
             : isDropInside
-              ? "bg-primary/8 text-foreground ring-1 ring-primary/20"
+              ? "bg-primary/8 text-foreground ring-1 ring-primary/20 viewpoint-tree-item--inside"
               : "text-secondary hover:bg-overlay/50 hover:text-foreground",
           isDragging && "opacity-30"
         )}
@@ -524,6 +651,26 @@ function TreeNodeItem({
           </span>
         )}
 
+        {isDropInside ? (
+          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+            子主题
+          </span>
+        ) : null}
+
+        <button
+          {...attributes}
+          {...listeners}
+          className={cn(
+            "inline-flex h-5 w-5 shrink-0 cursor-grab items-center justify-center rounded-md text-muted/35 opacity-0 transition-all hover:bg-overlay/80 hover:text-foreground group-hover:opacity-100",
+            isDragging && "cursor-grabbing opacity-100",
+            isDropInside && "opacity-100 text-primary/80"
+          )}
+          onClick={(e) => e.stopPropagation()}
+          title="拖动排序"
+        >
+          <GripVertical className="h-3 w-3" />
+        </button>
+
         {/* hover 时的 + 按钮 */}
         <span
           className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-muted/40 opacity-0 transition-all hover:bg-overlay/80 hover:text-foreground group-hover:opacity-100"
@@ -575,7 +722,10 @@ function TreeNodeItem({
               draftTitle={draftTitle}
               onSelect={onSelect}
               onSetExpanded={onSetExpanded}
+              onQueueExpand={onQueueExpand}
+              onClearQueuedExpand={onClearQueuedExpand}
               onSetDropTarget={onSetDropTarget}
+              onTrackPointer={onTrackPointer}
               onContextMenu={onContextMenu}
               onRenameChange={onRenameChange}
               onRenameConfirm={onRenameConfirm}
@@ -590,9 +740,10 @@ function TreeNodeItem({
 
       {/* 下方 drop 指示线 */}
       {isDropAfter && (
-        <div
-          className="absolute left-0 right-0 bottom-0 z-10 h-[3px] rounded-full bg-primary/70"
-          style={{ marginLeft: indentLeft }}
+        <DropIndicator
+          align="bottom"
+          label="排到下方"
+          offset={indentLeft}
         />
       )}
     </div>
@@ -603,10 +754,12 @@ function TreeNodeItem({
 function RootDropZone({
   active,
   onSetDropTarget,
+  onTrackPointer,
   onDrop,
 }: {
   active: boolean
   onSetDropTarget: (t: ViewpointDropTarget | null) => void
+  onTrackPointer: (clientY: number) => void
   onDrop: () => void
 }) {
   const { setNodeRef } = useDroppable({ id: "drop-root" })
@@ -617,13 +770,45 @@ function RootDropZone({
       className={cn(
         "mx-2 mt-2 rounded-lg border border-dashed p-3 text-center transition-colors",
         active
-          ? "border-primary/40 bg-primary/5"
+          ? "border-primary/50 bg-primary/10"
           : "border-border/30 bg-transparent"
       )}
-      onPointerMove={() => onSetDropTarget({ type: "root" })}
+      onPointerMove={(event: React.PointerEvent<HTMLDivElement>) => {
+        onTrackPointer(event.clientY)
+        onSetDropTarget({ type: "root" })
+      }}
       onPointerUp={onDrop}
     >
-      <p className="text-[11px] text-muted">拖到这里放到根目录</p>
+      <p className={cn("text-[11px]", active ? "text-primary" : "text-muted")}>
+        {active ? "松手，移回根目录" : "拖到这里放到根目录"}
+      </p>
+    </div>
+  )
+}
+
+function DropIndicator({
+  align,
+  label,
+  offset
+}: {
+  align: "top" | "bottom"
+  label: string
+  offset: number
+}) {
+  return (
+    <div
+      className={cn(
+        "absolute left-0 right-0 z-10",
+        align === "top" ? "top-0" : "bottom-0"
+      )}
+      style={{ marginLeft: offset }}
+    >
+      <div className="flex items-center gap-2">
+        <div className="h-[3px] flex-1 rounded-full bg-primary/70" />
+        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+          {label}
+        </span>
+      </div>
     </div>
   )
 }

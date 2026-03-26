@@ -8,16 +8,26 @@
  */
 "use client"
 
-import { useEffect, useState } from "react"
+import {
+  type RefObject,
+  useEffect,
+  useState
+} from "react"
 import { FileText, Loader2, Tag } from "lucide-react"
 import { ImportedBlockList } from "@/components/import/imported-note-blocks"
 import type { ImportedNote } from "@/src/server/store/types"
 
 interface Props {
   noteId: string
+  scrollContainerRef?: RefObject<HTMLDivElement>
+  onReady?: () => void
 }
 
-export function ImportedNoteViewer({ noteId }: Props) {
+export function ImportedNoteViewer({
+  noteId,
+  scrollContainerRef,
+  onReady
+}: Props) {
   const [note, setNote] = useState<ImportedNote | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -37,6 +47,12 @@ export function ImportedNoteViewer({ noteId }: Props) {
       }
     })()
   }, [noteId])
+
+  useEffect(() => {
+    if (!loading && note) {
+      onReady?.()
+    }
+  }, [loading, note, onReady])
 
   if (loading) {
     return (
@@ -91,7 +107,10 @@ export function ImportedNoteViewer({ noteId }: Props) {
       </div>
 
       {/* 笔记内容 */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div
+        ref={scrollContainerRef}
+        className="min-h-0 flex-1 overflow-y-auto"
+      >
         <div className="mx-auto max-w-2xl px-8 py-8">
           <ImportedBlockList blocks={note.blocks} />
         </div>

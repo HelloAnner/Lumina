@@ -17043,6 +17043,146 @@
               ]
             }
           ]
+        },
+        {
+          "type": "frame",
+          "id": "aDBoH",
+          "x": 950,
+          "y": 112,
+          "name": "OutlineDock",
+          "width": 212,
+          "fill": "$bg-overlay",
+          "cornerRadius": "$radius-xl",
+          "stroke": {
+            "thickness": 1,
+            "fill": "$border-default"
+          },
+          "effect": {
+            "type": "background_blur",
+            "radius": 14
+          },
+          "layout": "vertical",
+          "gap": 10,
+          "padding": 12,
+          "children": [
+            {
+              "type": "frame",
+              "id": "8PoQJ",
+              "name": "outlineHead",
+              "width": "fill_container",
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "94i7V",
+                  "name": "outlineTitle",
+                  "fill": "$text-secondary",
+                  "content": "目录",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "frame",
+                  "id": "XHSHt",
+                  "name": "outlineToggle",
+                  "height": 24,
+                  "fill": "$bg-surface-2",
+                  "cornerRadius": "$radius-sm",
+                  "gap": 6,
+                  "padding": [
+                    0,
+                    8
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "1ZxT3",
+                      "name": "outlineToggleIcon",
+                      "width": 14,
+                      "height": 14,
+                      "iconFontName": "panel-right-close",
+                      "iconFontFamily": "lucide",
+                      "fill": "$text-muted"
+                    },
+                    {
+                      "type": "text",
+                      "id": "7hXmD",
+                      "name": "outlineToggleText",
+                      "fill": "$text-muted",
+                      "content": "收起",
+                      "fontFamily": "Inter",
+                      "fontSize": 11,
+                      "fontWeight": "500"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "hlvgI",
+              "name": "outlineItem1",
+              "width": "fill_container",
+              "fill": "$selected-bg",
+              "cornerRadius": "$radius-md",
+              "layout": "vertical",
+              "gap": 8,
+              "padding": [
+                10,
+                12
+              ],
+              "children": [
+                {
+                  "type": "text",
+                  "id": "sJ1je",
+                  "name": "outlineItem1Text",
+                  "fill": "$text-primary",
+                  "content": "前馈神经网络",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fontWeight": "500"
+                },
+                {
+                  "type": "rectangle",
+                  "id": "5PPl6",
+                  "name": "outlineRail1",
+                  "fill": "$accent-blue",
+                  "width": 32,
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "id": "XsDfI",
+              "name": "outlineItem2",
+              "fill": "$text-secondary",
+              "content": "隐藏层与参数流动",
+              "fontFamily": "Inter",
+              "fontSize": 12
+            },
+            {
+              "type": "text",
+              "id": "nuP5a",
+              "name": "outlineItem3",
+              "fill": "$text-secondary",
+              "content": "激活函数",
+              "fontFamily": "Inter",
+              "fontSize": 12
+            },
+            {
+              "type": "text",
+              "id": "bR3vK",
+              "name": "outlineItem4",
+              "fill": "$text-muted",
+              "content": "反向传播前的准备",
+              "fontFamily": "Inter",
+              "fontSize": 12
+            }
+          ]
         }
       ]
     },
