@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">
+  <rect width="256" height="256" rx="64" fill="#0A0A0B"/>
+  <rect x="24" y="24" width="208" height="208" rx="52" fill="url(#surface)"/>
+  <path
+    d="M170 74C187.673 86.1797 199 106.578 199 129.621C199 166.937 168.967 197 131.949 197C112.368 197 94.7488 188.586 82.5 175.156"
+    stroke="url(#orbit)"
+    stroke-width="10"
+    stroke-linecap="round"
+    opacity="0.9"
+  />
+  <circle cx="109" cy="108" r="34" fill="url(#core)"/>
+  <circle cx="109" cy="108" r="18" fill="#CFC4FF" fill-opacity="0.18"/>
+  <circle cx="175" cy="83" r="7" fill="#A78BFA" fill-opacity="0.9"/>
+  <defs>
+    <linearGradient id="surface" x1="42" y1="38" x2="214" y2="224" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#121216"/>
+      <stop offset="1" stop-color="#0E0E12"/>
+    </linearGradient>
+    <linearGradient id="core" x1="84" y1="80" x2="140" y2="144" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A78BFA"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="orbit" x1="82.5" y1="74" x2="199" y2="197" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7C3AED" stop-opacity="0.1"/>
+      <stop offset="0.52" stop-color="#A78BFA" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#C4B5FD" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
+</svg>

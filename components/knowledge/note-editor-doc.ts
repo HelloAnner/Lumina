@@ -27,11 +27,33 @@ const MARK_NAME_MAP: Record<string, InlineMark["type"]> = {
  * 块数组转换为 TipTap 文档
  */
 export function blocksToTipTapDoc(blocks: NoteBlock[]): JSONContent {
+  const content: JSONContent[] = []
+  const sortedBlocks = sortBlocks(blocks)
+
+  for (let index = 0; index < sortedBlocks.length; index += 1) {
+    const block = sortedBlocks[index]
+    const nextBlock = sortedBlocks[index + 1]
+    if (
+      (block.type === "quote" || block.type === "highlight") &&
+      nextBlock?.type === "insight"
+    ) {
+      const combinedNode = blockToNode(block, nextBlock)
+      if (isContentNode(combinedNode)) {
+        content.push(combinedNode)
+      }
+      index += 1
+      continue
+    }
+
+    const node = blockToNode(block)
+    if (isContentNode(node)) {
+      content.push(node)
+    }
+  }
+
   return {
     type: "doc",
-    content: sortBlocks(blocks)
-      .map((block) => blockToNode(block))
-      .filter(isContentNode)
+    content
   }
 }
 
@@ -49,9 +71,16 @@ export function normalizeBlockOrder(blocks: NoteBlock[]): NoteBlock[] {
  * TipTap 文档转换回块数组
  */
 export function tipTapDocToBlocks(doc: JSONContent): NoteBlock[] {
-  return (doc.content ?? [])
-    .map((node, index) => nodeToBlock(node, index))
-    .filter(isBlock)
+  const blocks: NoteBlock[] = []
+  let sortOrder = 0
+
+  for (const node of doc.content ?? []) {
+    const nodeBlocks = nodeToBlocks(node, sortOrder)
+    blocks.push(...nodeBlocks)
+    sortOrder += nodeBlocks.length
+  }
+
+  return blocks
 }
 
 /**
@@ -136,7 +165,10 @@ export function replaceBlockInDoc(
   return { ...doc, content }
 }
 
-function blockToNode(block: NoteBlock): JSONContent | null {
+function blockToNode(
+  block: NoteBlock,
+  pairedInsight?: Extract<NoteBlock, { type: "insight" }>
+): JSONContent | null {
   switch (block.type) {
     case "heading":
       return createTextNode("heading", block.id, {
@@ -148,14 +180,22 @@ function blockToNode(block: NoteBlock): JSONContent | null {
       return createTextNode("quoteBlock", block.id, {
         sourceBookTitle: block.sourceBookTitle ?? "",
         sourceLocation: block.sourceLocation ?? "",
-        highlightId: block.highlightId ?? null
+        highlightId: block.highlightId ?? null,
+        pairedInsightBlockId: pairedInsight?.id ?? null,
+        pairedInsightText: pairedInsight?.text ?? "",
+        pairedInsightLabel: pairedInsight?.label ?? "",
+        pairedInsightRichText: serializeRichTextSegments(pairedInsight?.richText)
       }, block.richText, block.text)
     case "highlight":
       return createTextNode("highlightBlock", block.id, {
         label: block.label ?? "",
         sourceBookTitle: block.sourceBookTitle ?? "",
         sourceLocation: block.sourceLocation ?? "",
-        highlightId: block.highlightId ?? null
+        highlightId: block.highlightId ?? null,
+        pairedInsightBlockId: pairedInsight?.id ?? null,
+        pairedInsightText: pairedInsight?.text ?? "",
+        pairedInsightLabel: pairedInsight?.label ?? "",
+        pairedInsightRichText: serializeRichTextSegments(pairedInsight?.richText)
       }, block.richText, block.text)
     case "insight":
       return createTextNode("insightBlock", block.id, {
@@ -223,27 +263,27 @@ function richTextToTipTap(
   return [{ type: "text", text: fallbackText }]
 }
 
-function nodeToBlock(node: JSONContent, sortOrder: number): NoteBlock | null {
+function nodeToBlocks(node: JSONContent, sortOrder: number): NoteBlock[] {
   switch (node.type) {
     case "heading":
-      return {
+      return [{
         id: getBlockId(node),
         type: "heading",
         level: toHeadingLevel(node.attrs?.level),
         text: collectPlainText(node.content),
         richText: tipTapToRichText(node.content),
         sortOrder
-      }
+      }]
     case "paragraph":
-      return {
+      return [{
         id: getBlockId(node),
         type: "paragraph",
         text: collectPlainText(node.content),
         richText: tipTapToRichText(node.content),
         sortOrder
-      }
+      }]
     case "quoteBlock":
-      return {
+      return appendPairedInsight(node, [{
         id: getBlockId(node),
         type: "quote",
         text: collectPlainText(node.content),
@@ -252,9 +292,9 @@ function nodeToBlock(node: JSONContent, sortOrder: number): NoteBlock | null {
         sourceLocation: toStringAttr(node.attrs?.sourceLocation),
         highlightId: toNullableString(node.attrs?.highlightId),
         sortOrder
-      }
+      }], sortOrder)
     case "highlightBlock":
-      return {
+      return appendPairedInsight(node, [{
         id: getBlockId(node),
         type: "highlight",
         text: collectPlainText(node.content),
@@ -264,34 +304,34 @@ function nodeToBlock(node: JSONContent, sortOrder: number): NoteBlock | null {
         sourceLocation: toStringAttr(node.attrs?.sourceLocation),
         highlightId: toNullableString(node.attrs?.highlightId),
         sortOrder
-      }
+      }], sortOrder)
     case "insightBlock":
-      return {
+      return [{
         id: getBlockId(node),
         type: "insight",
         text: collectPlainText(node.content),
         richText: tipTapToRichText(node.content),
         label: toStringAttr(node.attrs?.label),
         sortOrder
-      }
+      }]
     case "codeBlock":
-      return {
+      return [{
         id: getBlockId(node),
         type: "code",
         code: collectPlainText(node.content),
         language: toStringAttr(node.attrs?.language),
         sortOrder
-      }
+      }]
     case "horizontalRule":
-      return {
+      return [{
         id: getBlockId(node),
         type: "divider",
         sortOrder
-      }
+      }]
     case "importedBlock":
-      return parseImportedBlock(node, sortOrder)
+      return wrapImportedBlock(parseImportedBlock(node, sortOrder))
     default:
-      return null
+      return []
   }
 }
 
@@ -390,6 +430,48 @@ function isContentNode(node: JSONContent | null): node is JSONContent {
   return Boolean(node)
 }
 
-function isBlock(block: NoteBlock | null): block is NoteBlock {
-  return Boolean(block)
+function wrapImportedBlock(block: NoteBlock | null) {
+  return block ? [block] : []
+}
+
+function appendPairedInsight(
+  node: JSONContent,
+  blocks: NoteBlock[],
+  sortOrder: number
+) {
+  const pairedInsightBlockId = toNullableString(node.attrs?.pairedInsightBlockId)
+  const pairedInsightText = toStringAttr(node.attrs?.pairedInsightText)
+  if (!pairedInsightBlockId || !pairedInsightText) {
+    return blocks
+  }
+
+  blocks.push({
+    id: pairedInsightBlockId,
+    type: "insight",
+    text: pairedInsightText,
+    richText:
+      parseRichTextSegments(node.attrs?.pairedInsightRichText)
+      ?? [{ text: pairedInsightText }],
+    label: toStringAttr(node.attrs?.pairedInsightLabel),
+    sortOrder: sortOrder + 1
+  })
+  return blocks
+}
+
+function serializeRichTextSegments(richText: RichTextSegment[] | undefined) {
+  if (!richText?.length) {
+    return ""
+  }
+  return JSON.stringify(richText)
+}
+
+function parseRichTextSegments(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) {
+    return undefined
+  }
+  try {
+    return JSON.parse(value) as RichTextSegment[]
+  } catch {
+    return undefined
+  }
 }

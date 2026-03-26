@@ -36,7 +36,7 @@ import {
 } from "@/components/knowledge/viewpoint-tree-utils"
 import { cn } from "@/src/lib/utils"
 import type { Viewpoint } from "@/src/server/store/types"
-const AUTO_EXPAND_DELAY = 420
+const AUTO_EXPAND_DELAY = 220
 const AUTO_SCROLL_EDGE = 44
 const AUTO_SCROLL_STEP = 14
 
@@ -101,7 +101,7 @@ export function ViewpointTree({
   const tree = useMemo(() => buildViewpointTree(viewpoints), [viewpoints])
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
   )
 
   const handleDragStart = useCallback((event: DragStartEvent) => {

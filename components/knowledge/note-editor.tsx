@@ -23,14 +23,11 @@ import { EditorContent, useEditor } from "@tiptap/react"
 import { common, createLowlight } from "lowlight"
 import {
   BookOpen,
-  ChevronLeft,
   ChevronRight,
   Copy,
   ExternalLink,
-  GripVertical,
   Highlighter,
   Link2,
-  Plus,
   Trash2
 } from "lucide-react"
 import { ContextMenu } from "@/components/ui/context-menu"
@@ -38,7 +35,9 @@ import {
   findNoteEditorCommand,
   type NoteEditorCommand
 } from "@/components/knowledge/note-editor-commands"
+import { NoteBlockHoverActions } from "@/components/knowledge/note-block-hover-actions"
 import { NoteEditorCommandMenu } from "@/components/knowledge/note-editor-command-menu"
+import { NoteOutlineToggle } from "@/components/knowledge/note-outline-toggle"
 import {
   BlockIdExtension,
   HighlightBlock,
@@ -133,7 +132,7 @@ export function NoteEditor({
   keyboardShortcuts,
   selectedBlockId,
   scrollContainerRef,
-  outlineCollapsed = false,
+  outlineCollapsed = true,
   onBlocksChange,
   onSelectText,
   onBlockClick,
@@ -407,10 +406,11 @@ export function NoteEditor({
         <div ref={rootRef} className="note-editor-shell note-editor-main">
           <EditorContent editor={editor} />
           {gutter ? (
-            <BlockGutter
+            <NoteBlockHoverActions
               top={gutter.top}
               onOpenInsert={() => setSlashMenu(createInsertMenuState(gutter.blockId, hoveredElementRef.current))}
               onOpenMenu={(x, y) => setBlockMenu({ blockId: gutter.blockId, x, y })}
+              onDelete={() => applyBlocks(deleteBlock(currentBlocks, gutter.blockId))}
               onDragStart={(event) => startDragging(event, gutter.blockId)}
             />
           ) : null}
@@ -422,17 +422,10 @@ export function NoteEditor({
             outlineCollapsed && "is-collapsed"
           )}
         >
-          <button
-            className="note-outline-toggle"
-            onClick={() => onOutlineCollapsedChange?.(!outlineCollapsed)}
-          >
-            {outlineCollapsed ? (
-              <ChevronRight className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronLeft className="h-3.5 w-3.5" />
-            )}
-            <span>{outlineCollapsed ? "展开目录" : "收起目录"}</span>
-          </button>
+          <NoteOutlineToggle
+            collapsed={outlineCollapsed}
+            onToggle={() => onOutlineCollapsedChange?.(!outlineCollapsed)}
+          />
           {!outlineCollapsed ? (
             <div className="note-outline-card">
               <div className="note-outline-head">
@@ -662,35 +655,6 @@ function ToolbarButton({
     >
       {children}
     </button>
-  )
-}
-
-function BlockGutter({
-  top,
-  onOpenInsert,
-  onOpenMenu,
-  onDragStart
-}: {
-  top: number
-  onOpenInsert: () => void
-  onOpenMenu: (x: number, y: number) => void
-  onDragStart: (event: React.DragEvent<HTMLButtonElement>) => void
-}) {
-  return (
-    <div className="note-block-gutter" style={{ top }}>
-      <button className="gutter-button" onMouseDown={preventFocusLoss} onClick={onOpenInsert}>
-        <Plus className="h-3.5 w-3.5" />
-      </button>
-      <button
-        draggable
-        className="gutter-button"
-        onMouseDown={preventFocusLoss}
-        onClick={(event) => onOpenMenu(event.clientX, event.clientY)}
-        onDragStart={onDragStart}
-      >
-        <GripVertical className="h-3.5 w-3.5" />
-      </button>
-    </div>
   )
 }
 

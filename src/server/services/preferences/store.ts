@@ -27,7 +27,7 @@ const DEFAULT_PREFERENCES: UiPreferences = {
 }
 
 const DEFAULT_KNOWLEDGE_NOTE_STATE: KnowledgeNoteState = {
-  outlineCollapsed: false,
+  outlineCollapsed: true,
   scrollTop: 0
 }
 
@@ -77,7 +77,7 @@ async function ensurePreferenceSchema() {
           CREATE TABLE IF NOT EXISTS user_knowledge_note_state (
             user_id TEXT NOT NULL,
             note_key TEXT NOT NULL,
-            outline_collapsed BOOLEAN NOT NULL DEFAULT FALSE,
+            outline_collapsed BOOLEAN NOT NULL DEFAULT TRUE,
             scroll_top INTEGER NOT NULL DEFAULT 0,
             anchor_heading_id TEXT,
             updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -88,8 +88,16 @@ async function ensurePreferenceSchema() {
       .then(() =>
         getBookPool().query(`
           ALTER TABLE user_knowledge_note_state
-          ADD COLUMN IF NOT EXISTS outline_collapsed BOOLEAN NOT NULL DEFAULT FALSE
+          ADD COLUMN IF NOT EXISTS outline_collapsed BOOLEAN NOT NULL DEFAULT TRUE
         `)
+      )
+      .then(() =>
+        getBookPool()
+          .query(`
+            ALTER TABLE user_knowledge_note_state
+            ALTER COLUMN outline_collapsed SET DEFAULT TRUE
+          `)
+          .catch(() => undefined)
       )
       .then(() =>
         getBookPool().query(`

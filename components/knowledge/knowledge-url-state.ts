@@ -17,7 +17,7 @@ export interface KnowledgeNoteState {
 }
 
 export const DEFAULT_KNOWLEDGE_NOTE_STATE: KnowledgeNoteState = {
-  outlineCollapsed: false,
+  outlineCollapsed: true,
   scrollTop: 0
 }
 

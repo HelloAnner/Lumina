@@ -130,6 +130,53 @@ test("blocksToTipTapDoc 会为旧数据自动降级为单段纯文本", () => {
   })
 })
 
+test("blocksToTipTapDoc 会把紧跟引用后的 insight 折叠为组合展示", () => {
+  const blocks: NoteBlock[] = [
+    {
+      id: "quote-1",
+      type: "quote",
+      text: "引用正文",
+      sourceBookTitle: "原则",
+      sourceLocation: "P.12",
+      sortOrder: 0
+    },
+    {
+      id: "insight-1",
+      type: "insight",
+      text: "这是我的观点备注",
+      label: "观点备注",
+      sortOrder: 1
+    }
+  ]
+
+  const doc = blocksToTipTapDoc(blocks)
+
+  assert.equal(doc.content?.length, 1)
+  assert.equal(doc.content?.[0]?.type, "quoteBlock")
+  assert.equal(doc.content?.[0]?.attrs?.pairedInsightBlockId, "insight-1")
+  assert.equal(doc.content?.[0]?.attrs?.pairedInsightText, "这是我的观点备注")
+  assert.deepEqual(tipTapDocToBlocks(doc), [
+    {
+      id: "quote-1",
+      type: "quote",
+      text: "引用正文",
+      sourceBookTitle: "原则",
+      sourceLocation: "P.12",
+      highlightId: undefined,
+      richText: [{ text: "引用正文" }],
+      sortOrder: 0
+    },
+    {
+      id: "insight-1",
+      type: "insight",
+      text: "这是我的观点备注",
+      label: "观点备注",
+      richText: [{ text: "这是我的观点备注" }],
+      sortOrder: 1
+    }
+  ])
+})
+
 test("moveBlockInDoc 会按目标块前后重排顶层块", () => {
   const doc = blocksToTipTapDoc([
     { id: "a", type: "paragraph", text: "A", sortOrder: 0 },

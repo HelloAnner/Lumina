@@ -29,6 +29,10 @@ import { ImportedNoteViewer } from "@/components/import/imported-note-viewer"
 import { AddSourceDialog } from "@/components/import/add-source-dialog"
 import { type SelectionContext } from "@/components/knowledge/annotation-sidebar"
 import {
+  shouldBootstrapEmptyViewpoint,
+  shouldRenderViewpointEditor
+} from "@/components/knowledge/knowledge-view-state"
+import {
   DEFAULT_KNOWLEDGE_NOTE_STATE,
   buildKnowledgeNoteKey,
   buildKnowledgeSearch,
@@ -96,6 +100,9 @@ export function KnowledgeClient({
   const [blocks, setBlocks] = useState<NoteBlock[]>(
     initialSelected?.articleBlocks ?? []
   )
+  const [readyViewpointId, setReadyViewpointId] = useState(
+    initialImportedNoteId ? "" : (initialSelected?.id ?? "")
+  )
   const [treeWidth, setTreeWidth] = useState(initialWidths.knowledgeTreeWidth)
   const [annoWidth, setAnnoWidth] = useState(initialWidths.knowledgeListWidth)
   const [draftNode, setDraftNode] = useState<DraftNode | null>(null)
@@ -128,6 +135,8 @@ export function KnowledgeClient({
   const editsRef = useRef<Map<string, string>>(new Map())
   const blocksRef = useRef(blocks)
   blocksRef.current = blocks
+  const readyViewpointIdRef = useRef(readyViewpointId)
+  readyViewpointIdRef.current = readyViewpointId
   const noteStateRef = useRef(noteState)
   noteStateRef.current = noteState
   const selectedIdRef = useRef(selectedId)
@@ -197,17 +206,33 @@ export function KnowledgeClient({
   useEffect(() => {
     if (!selectedId) {
       setBlocks([])
+      setReadyViewpointId("")
       return
     }
+    if (readyViewpointIdRef.current !== selectedId) {
+      setBlocks([])
+      setReadyViewpointId("")
+    }
+    let cancelled = false
     void (async () => {
       try {
         const res = await fetch(`/api/viewpoints/${selectedId}/blocks`)
         const data = await res.json()
+        if (cancelled) {
+          return
+        }
         setBlocks(data.blocks ?? [])
+        setReadyViewpointId(selectedId)
       } catch {
+        if (cancelled) {
+          return
+        }
         setBlocks([])
       }
     })()
+    return () => {
+      cancelled = true
+    }
   }, [selectedId])
 
   useEffect(() => {
@@ -911,14 +936,18 @@ export function KnowledgeClient({
 
   /** 空页面自动初始化一个空段落 */
   useEffect(() => {
-    if (selectedId && blocks.length === 0) {
+    if (shouldBootstrapEmptyViewpoint({
+      selectedId,
+      readyViewpointId,
+      blockCount: blocks.length
+    })) {
       const newId = crypto.randomUUID()
       const initBlock = { type: "paragraph", text: "", id: newId, sortOrder: 0 } as NoteBlock
       blocksRef.current = [initBlock]
       setBlocks([initBlock])
       setFocusBlockId(newId)
     }
-  }, [selectedId, blocks.length])
+  }, [selectedId, readyViewpointId, blocks.length])
 
   // ---- 元信息 ----
   const blockCount = blocks.length
@@ -932,6 +961,10 @@ export function KnowledgeClient({
     return sum
   }, 0)
   const pendingAnnoCount = [...annotatedBlockIds].length
+  const viewpointEditorReady = shouldRenderViewpointEditor({
+    selectedId,
+    readyViewpointId
+  })
 
   return (
     <>
@@ -1093,26 +1126,32 @@ export function KnowledgeClient({
           >
             <div className="w-full px-8 py-8">
               {selectedId ? (
-                <NoteEditor
-                  viewpointId={selectedId}
-                  blocks={blocks}
-                  annotatedBlockIds={annotatedBlockIds}
-                  keyboardShortcuts={keyboardShortcuts}
-                  outlineCollapsed={noteState.outlineCollapsed}
-                  selectedBlockId={activeRightTab === "chat" ? selectedBlockForChat?.id : undefined}
-                  scrollContainerRef={contentScrollRef}
-                  onBlocksChange={setBlocks}
-                  onSelectText={handleSelectText}
-                  onActiveHeadingChange={setActiveHeadingId}
-                  onOutlineCollapsedChange={(collapsed) => {
-                    scheduleNoteStateSave({ outlineCollapsed: collapsed })
-                  }}
-                  onSaveStatusChange={setSaveStatus}
-                  onBlockClick={activeRightTab === "chat" ? (blockId) => {
-                    const block = blocks.find((item) => item.id === blockId)
-                    setSelectedBlockForChat(block ?? null)
-                  } : undefined}
-                />
+                viewpointEditorReady ? (
+                  <NoteEditor
+                    viewpointId={selectedId}
+                    blocks={blocks}
+                    annotatedBlockIds={annotatedBlockIds}
+                    keyboardShortcuts={keyboardShortcuts}
+                    outlineCollapsed={noteState.outlineCollapsed}
+                    selectedBlockId={activeRightTab === "chat" ? selectedBlockForChat?.id : undefined}
+                    scrollContainerRef={contentScrollRef}
+                    onBlocksChange={setBlocks}
+                    onSelectText={handleSelectText}
+                    onActiveHeadingChange={setActiveHeadingId}
+                    onOutlineCollapsedChange={(collapsed) => {
+                      scheduleNoteStateSave({ outlineCollapsed: collapsed })
+                    }}
+                    onSaveStatusChange={setSaveStatus}
+                    onBlockClick={activeRightTab === "chat" ? (blockId) => {
+                      const block = blocks.find((item) => item.id === blockId)
+                      setSelectedBlockForChat(block ?? null)
+                    } : undefined}
+                  />
+                ) : (
+                  <div className="mx-auto max-w-[1120px] rounded-[22px] border border-border/30 bg-elevated/20 px-6 py-8 text-[13px] text-muted">
+                    正在切换观点…
+                  </div>
+                )
               ) : null}
             </div>
           </div>

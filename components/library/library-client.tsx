@@ -19,6 +19,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
+  BOOK_COVER_PALETTES,
+  PatternBookCoverArt,
+  buildBookCoverArtSpec
+} from "@/components/library/book-cover-art"
+import {
   formatLibraryProgressText,
   normalizeLibraryProgress
 } from "@/components/library/library-progress"
@@ -27,30 +32,6 @@ import Image from "next/image"
 
 type LibraryBook = Book & {
   coverUrl?: string
-}
-
-/**
- * 封面配色方案 - 温暖大地色系
- * 灵感：Swan Song 的宁静近未来美学
- * 每组：背景色、装饰线色、文字色
- */
-const COVER_PALETTES = [
-  { bg: "#1E1C19", accent: "#C4A882", text: "#D4C8B8" },
-  { bg: "#171C18", accent: "#7BA878", text: "#B4C8AF" },
-  { bg: "#1C1816", accent: "#B88868", text: "#D4B8A0" },
-  { bg: "#18181E", accent: "#7880A8", text: "#B0B8D0" },
-  { bg: "#1C1A14", accent: "#C4A050", text: "#D8C898" },
-  { bg: "#1C1718", accent: "#A87878", text: "#D0B0B0" },
-  { bg: "#161C1C", accent: "#689898", text: "#A8C8C8" },
-  { bg: "#1A1918", accent: "#989088", text: "#C8C0B8" },
-]
-
-function hashTitle(title: string): number {
-  let h = 5381
-  for (let i = 0; i < title.length; i++) {
-    h = ((h << 5) + h) ^ title.charCodeAt(i)
-  }
-  return Math.abs(h)
 }
 
 /** 极简书籍封面 — 温暖大地色系，以排版为核心 */
@@ -68,8 +49,7 @@ function BookCover({
   isComplete: boolean
 }) {
   const [imgError, setImgError] = useState(false)
-  const hash = hashTitle(title)
-  const palette = COVER_PALETTES[(hash + (coverVariant || 0)) % COVER_PALETTES.length]
+  const palette = buildBookCoverArtSpec(title, coverVariant).palette
   const normalizedProgress = normalizeLibraryProgress(progress)
   const showCover = coverUrl && !imgError
 
@@ -89,20 +69,7 @@ function BookCover({
             onError={() => setImgError(true)}
           />
         ) : (
-          <div className="flex h-full flex-col justify-between p-6">
-            {/* 顶部装饰线 */}
-            <div
-              className="h-[2px] w-6 rounded-full"
-              style={{ background: palette.accent }}
-            />
-            {/* 书名 */}
-            <p
-              className="line-clamp-4 text-lg font-medium leading-snug"
-              style={{ color: palette.text }}
-            >
-              {title}
-            </p>
-          </div>
+          <PatternBookCoverArt title={title} coverVariant={coverVariant} />
         )}
 
         {/* 已读完标记 */}
@@ -133,8 +100,7 @@ function ContinueReadingCard({
   onClick: () => void
 }) {
   const [imgError, setImgError] = useState(false)
-  const hash = hashTitle(book.title)
-  const palette = COVER_PALETTES[(hash + (book.coverVariant || 0)) % COVER_PALETTES.length]
+  const palette = buildBookCoverArtSpec(book.title, book.coverVariant).palette
   const normalizedProgress = normalizeLibraryProgress(book.readProgress)
   const showCover = book.coverUrl && !imgError
 
@@ -159,18 +125,7 @@ function ContinueReadingCard({
             onError={() => setImgError(true)}
           />
         ) : (
-          <div className="flex h-full flex-col justify-between p-5">
-            <div
-              className="h-[2px] w-5 rounded-full"
-              style={{ background: palette.accent }}
-            />
-            <p
-              className="line-clamp-3 text-[13px] font-medium leading-snug"
-              style={{ color: palette.text }}
-            >
-              {book.title}
-            </p>
-          </div>
+          <PatternBookCoverArt title={book.title} coverVariant={book.coverVariant} />
         )}
       </div>
 
@@ -311,7 +266,7 @@ function EditBookDialog({
   }
 
   const handleRefreshVariant = () => {
-    const next = (coverVariant + 1) % COVER_PALETTES.length
+    const next = (coverVariant + 1) % BOOK_COVER_PALETTES.length
     setCoverVariant(next)
     setCoverPreview(null)
     setCoverBase64(null)
@@ -329,8 +284,10 @@ function EditBookDialog({
     onClose()
   }
 
-  const previewHash = hashTitle(title.trim() || book.title)
-  const previewPalette = COVER_PALETTES[(previewHash + coverVariant) % COVER_PALETTES.length]
+  const previewPalette = buildBookCoverArtSpec(
+    title.trim() || book.title,
+    coverVariant
+  ).palette
   const displayCoverUrl = coverPreview || book.coverUrl
 
   return (
@@ -361,18 +318,10 @@ function EditBookDialog({
                 unoptimized
               />
             ) : (
-              <div className="flex h-full flex-col justify-between p-4">
-                <div
-                  className="h-[2px] w-5 rounded-full"
-                  style={{ background: previewPalette.accent }}
-                />
-                <p
-                  className="line-clamp-3 text-xs font-medium leading-snug"
-                  style={{ color: previewPalette.text }}
-                >
-                  {title || book.title}
-                </p>
-              </div>
+              <PatternBookCoverArt
+                title={title || book.title}
+                coverVariant={coverVariant}
+              />
             )}
           </div>
           <div className="flex flex-col justify-center gap-2">

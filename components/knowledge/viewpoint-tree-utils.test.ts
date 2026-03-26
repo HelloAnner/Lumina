@@ -94,6 +94,31 @@ test("moveViewpointNode 支持把节点放到另一个节点下面", () => {
   ])
 })
 
+test("moveViewpointNode 拖入子主题时保持追加到子级末尾", () => {
+  const moved = moveViewpointNode(
+    [
+      createViewpoint("a", "A", 1),
+      createViewpoint("b", "B", 2),
+      createViewpoint("c", "C", 3),
+      createViewpoint("d", "D", 4, "c")
+    ],
+    {
+      sourceId: "b",
+      target: {
+        type: "inside",
+        targetId: "c"
+      }
+    }
+  )
+
+  assert.deepEqual(serializeViewpointOrder(moved), [
+    { id: "a", parentId: undefined, sortOrder: 1 },
+    { id: "c", parentId: undefined, sortOrder: 2 },
+    { id: "d", parentId: "c", sortOrder: 3 },
+    { id: "b", parentId: "c", sortOrder: 4 }
+  ])
+})
+
 test("moveViewpointNode 支持把节点拖到根目录底部", () => {
   const moved = moveViewpointNode(
     [
@@ -164,6 +189,18 @@ test("resolveViewpointDropIntent 默认更偏向排到下方", () => {
   assert.equal(
     resolveViewpointDropIntent({
       relativeX: 60,
+      relativeY: 18,
+      height: 36,
+      indentLeft: 24
+    }),
+    "inside"
+  )
+})
+
+test("resolveViewpointDropIntent 在中部区域更容易命中子主题", () => {
+  assert.equal(
+    resolveViewpointDropIntent({
+      relativeX: 34,
       relativeY: 18,
       height: 36,
       indentLeft: 24

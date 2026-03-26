@@ -28,7 +28,7 @@ export interface ViewpointDropIntentInput {
 }
 
 export const DROP_EDGE_RATIO = 0.24
-export const DROP_CHILD_X_OFFSET = 28
+export const DROP_CHILD_X_OFFSET = 10
 
 export function buildViewpointTree(nodes: Viewpoint[]) {
   const map = new Map<string, ViewpointTreeNode>()
@@ -91,7 +91,6 @@ export function moveViewpointNode(
     }
     node.parentId = targetNode.id
     targetNode.children.push(node)
-    sortTreeNodes(nextTree)
     return serializeTree(nextTree)
   }
 
@@ -139,7 +138,7 @@ export function resolveViewpointDropIntent(
   if (ratio > 1 - DROP_EDGE_RATIO) {
     return "after"
   }
-  const childThreshold = input.indentLeft + DROP_CHILD_X_OFFSET
+  const childThreshold = Math.max(18, input.indentLeft + DROP_CHILD_X_OFFSET)
   return input.relativeX >= childThreshold ? "inside" : "after"
 }
 

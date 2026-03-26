@@ -18,7 +18,7 @@ import {
 import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight"
 import { ReactNodeViewRenderer, NodeViewContent, NodeViewWrapper } from "@tiptap/react"
 import { Plugin } from "@tiptap/pm/state"
-import { BookOpen, Copy, Highlighter, Lightbulb, Quote } from "lucide-react"
+import { BookOpen, Copy, Highlighter, Lightbulb, MessageSquareMore, Quote } from "lucide-react"
 import { ImportedBlockItem } from "@/components/import/imported-note-blocks"
 import type { NoteBlock } from "@/src/server/store/types"
 
@@ -40,7 +40,11 @@ export const QuoteBlock = Node.create({
     return createBlockAttrs({
       sourceBookTitle: { default: "" },
       sourceLocation: { default: "" },
-      highlightId: { default: null }
+      highlightId: { default: null },
+      pairedInsightBlockId: { default: null },
+      pairedInsightText: { default: "" },
+      pairedInsightLabel: { default: "" },
+      pairedInsightRichText: { default: "" }
     })
   },
   parseHTML() {
@@ -69,7 +73,11 @@ export const HighlightBlock = Node.create({
       label: { default: "" },
       sourceBookTitle: { default: "" },
       sourceLocation: { default: "" },
-      highlightId: { default: null }
+      highlightId: { default: null },
+      pairedInsightBlockId: { default: null },
+      pairedInsightText: { default: "" },
+      pairedInsightLabel: { default: "" },
+      pairedInsightRichText: { default: "" }
     })
   },
   parseHTML() {
@@ -229,6 +237,8 @@ function QuoteBlockView(props: Parameters<typeof ReactNodeViewRenderer>[0] exten
         label="原文引用"
         meta={buildSourceMeta(props.node.attrs.sourceBookTitle, props.node.attrs.sourceLocation)}
         icon={<Quote className="h-3 w-3" />}
+        remark={props.node.attrs.pairedInsightText}
+        remarkLabel={props.node.attrs.pairedInsightLabel}
       >
         <NodeViewContent as="div" className="note-block-content note-block-quote" />
       </DecorativeBlock>
@@ -244,6 +254,8 @@ function HighlightBlockView(props: Parameters<typeof ReactNodeViewRenderer>[0] e
         label={props.node.attrs.label || "关键洞察"}
         meta={buildSourceMeta(props.node.attrs.sourceBookTitle, props.node.attrs.sourceLocation)}
         icon={<Highlighter className="h-3 w-3" />}
+        remark={props.node.attrs.pairedInsightText}
+        remarkLabel={props.node.attrs.pairedInsightLabel}
       >
         <NodeViewContent as="div" className="note-block-content note-block-highlight" />
       </DecorativeBlock>
@@ -314,21 +326,44 @@ function DecorativeBlock({
   icon,
   label,
   meta,
-  tone
+  tone,
+  remark,
+  remarkLabel
 }: {
   children: React.ReactNode
   icon: React.ReactNode
   label: string
   meta?: string
   tone: "quote" | "highlight" | "insight"
+  remark?: string
+  remarkLabel?: string
 }) {
   return (
     <div className={`note-decorative-block note-decorative-${tone}`}>
       <div className="note-decorative-rail" />
       <div className="note-decorative-body">
-        <div className="note-decorative-label">
-          {icon}
-          <span>{label}</span>
+        <div className="note-decorative-head">
+          <div className="note-decorative-label">
+            {icon}
+            <span>{label}</span>
+          </div>
+          {remark ? (
+            <div className="note-inline-remark" contentEditable={false}>
+              <button
+                type="button"
+                className="note-inline-remark-trigger"
+                title={remarkLabel || "观点备注"}
+              >
+                <MessageSquareMore className="h-3 w-3" />
+              </button>
+              <div className="note-inline-remark-popover">
+                <div className="note-inline-remark-title">
+                  {remarkLabel || "观点备注"}
+                </div>
+                <p>{remark}</p>
+              </div>
+            </div>
+          ) : null}
         </div>
         {children}
         {meta ? (
