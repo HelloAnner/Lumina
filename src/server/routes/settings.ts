@@ -1,5 +1,9 @@
 import { Hono } from "hono"
 import { z } from "zod"
+import {
+  getEffectiveKeyboardShortcuts,
+  validateKeyboardShortcuts
+} from "@/src/lib/keyboard-shortcuts"
 import { maskSecret } from "@/src/lib/utils"
 import { decryptValue } from "@/src/server/lib/crypto"
 import type { AppEnv } from "@/src/server/lib/hono"
@@ -271,9 +275,54 @@ app.put("/reader", async (c) => {
         blue: z.string().min(1).max(20),
         pink: z.string().min(1).max(20),
         note: z.string().min(1).max(20)
+      }).optional(),
+      keyboardShortcuts: z.object({
+        reader: z.object({
+          yellow: z.string().min(1).max(40),
+          green: z.string().min(1).max(40),
+          blue: z.string().min(1).max(40),
+          pink: z.string().min(1).max(40),
+          note: z.string().min(1).max(40)
+        }),
+        noteEditor: z.object({
+          annotate: z.string().min(1).max(40),
+          bold: z.string().min(1).max(40),
+          italic: z.string().min(1).max(40),
+          highlight: z.string().min(1).max(40),
+          strike: z.string().min(1).max(40),
+          code: z.string().min(1).max(40),
+          link: z.string().min(1).max(40),
+          duplicateBlock: z.string().min(1).max(40),
+          moveBlockUp: z.string().min(1).max(40),
+          moveBlockDown: z.string().min(1).max(40),
+          heading1: z.string().min(1).max(40),
+          heading2: z.string().min(1).max(40),
+          heading3: z.string().min(1).max(40),
+          paragraph: z.string().min(1).max(40)
+        })
       }).optional()
     })
     .parse(await c.req.json())
+  const shortcuts = getEffectiveKeyboardShortcuts(
+    payload.keyboardShortcuts,
+    payload.highlightShortcuts
+  )
+  const issues = validateKeyboardShortcuts(shortcuts)
+  if (issues.length > 0) {
+    const reserved = issues.find((item) => item.code === "reserved")
+    if (reserved) {
+      return c.json({
+        error: `快捷键 ${reserved.shortcut} 为系统或浏览器保留，不允许保存`
+      }, 400)
+    }
+    const duplicate = issues.find((item) => item.code === "duplicate")
+    if (duplicate) {
+      return c.json({
+        error: `快捷键 ${duplicate.shortcut} 存在重复绑定，不允许保存`
+      }, 400)
+    }
+    return c.json({ error: "快捷键配置无效" }, 400)
+  }
   const item = repository.updateReaderSettings(c.get("userId"), payload)
   return c.json({ item })
 })
@@ -297,6 +346,24 @@ app.put("/archive", async (c) => {
     .parse(await c.req.json())
   const user = repository.updateUser(c.get("userId"), payload)
   return c.json({ item: user })
+})
+
+app.get("/share-endpoint", (c) => {
+  return c.json({
+    item: repository.getShareEndpointConfig()
+  })
+})
+
+app.put("/share-endpoint", async (c) => {
+  const payload = z
+    .object({
+      host: z.string().trim().min(1).max(255),
+      port: z.number().int().min(1).max(65535)
+    })
+    .parse(await c.req.json())
+  return c.json({
+    item: repository.saveShareEndpointConfig(payload)
+  })
 })
 
 export default app

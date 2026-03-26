@@ -1,5 +1,6 @@
 import { hashSync } from "bcryptjs"
 import { randomUUID } from "node:crypto"
+import { DEFAULT_APP_KEYBOARD_SHORTCUTS } from "@/src/lib/keyboard-shortcuts"
 import type {
   AggregateJob,
   Annotation,
@@ -15,6 +16,7 @@ import type {
   PublishTarget,
   PublishTask,
   ReaderSettings,
+  ShareLink,
   StorageConfig,
   User,
   Viewpoint,
@@ -295,9 +297,13 @@ export function buildSeedDatabase(): Database {
       fontFamily: "serif",
       theme: "night",
       navigationMode: "horizontal",
-      translationView: "original"
+      translationView: "original",
+      highlightShortcuts: DEFAULT_APP_KEYBOARD_SHORTCUTS.reader,
+      keyboardShortcuts: DEFAULT_APP_KEYBOARD_SHORTCUTS
     }
   ]
+
+  const shareLinks: ShareLink[] = []
 
   const publishTargets: PublishTarget[] = [
     {
@@ -358,6 +364,7 @@ export function buildSeedDatabase(): Database {
     modelConfigs,
     modelBindings,
     storageConfigs,
+    shareLinks,
     readerSettings,
     translations: [],
     tocTranslations: [],

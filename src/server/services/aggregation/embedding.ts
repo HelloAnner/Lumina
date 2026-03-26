@@ -80,8 +80,9 @@ function resolveChapterName(highlight: Highlight, toc: TocItem[]): string | unde
  */
 export function buildHighlightText(userId: string, highlight: Highlight): string {
   const book = repository.getBook(userId, highlight.bookId)
-  const bookTitle = book?.title ?? ""
-  const chapterName = book ? resolveChapterName(highlight, book.toc) : undefined
+  const bookTitle = highlight.sourceTitle ?? book?.title ?? ""
+  const chapterName =
+    highlight.sourceSectionTitle ?? (book ? resolveChapterName(highlight, book.toc) : undefined)
 
   const parts: string[] = []
   if (bookTitle) {
@@ -89,6 +90,9 @@ export function buildHighlightText(userId: string, highlight: Highlight): string
   }
   if (chapterName) {
     parts.push(`章节：${chapterName}`)
+  }
+  if (highlight.assetType === "image") {
+    parts.push(`图片描述：${highlight.imageAlt || highlight.content}`)
   }
   parts.push(`内容：${highlight.content}`)
   if (highlight.note) {

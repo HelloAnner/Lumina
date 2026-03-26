@@ -13,6 +13,7 @@
 - 聚合频率配置：手动 / 每天 / 每周
 - 手动触发聚合：设置页可直接触发一次全量聚合
 - MinIO 存储配置：支持使用平台默认存储或自定义 MinIO
+- 全局分享地址配置：配置阅读分享链接使用的 IP 与端口
 - 账户信息：修改基本信息、修改密码、全量数据导出、账户注销
 
 ---
@@ -160,6 +161,8 @@ interface StorageConfig {
 | POST | `/api/settings/models/test` | 连通性测试 |
 | GET | `/api/settings/storage` | 获取存储配置 |
 | PUT | `/api/settings/storage` | 保存存储配置 |
+| GET | `/api/settings/share-endpoint` | 获取全局分享地址配置 |
+| PUT | `/api/settings/share-endpoint` | 保存全局分享地址配置 |
 | GET | `/api/settings/schedule` | 获取聚合频率配置 |
 | PUT | `/api/settings/schedule` | 保存聚合频率（触发重新注册定时任务） |
 | GET | `/api/account/profile` | 获取个人信息 |

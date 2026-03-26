@@ -20,6 +20,7 @@ import {
   Sun,
   Type
 } from "lucide-react"
+import { ShareLinkButton } from "@/components/share/share-link-button"
 import { Switch } from "@/components/ui/switch"
 import { Toast } from "@/components/ui/toast"
 import { ReaderSidebar } from "@/components/reader/reader-sidebar"
@@ -55,6 +56,7 @@ function PdfSourcePlaceholder({
 }
 
 export function PdfReaderClient(props: ReaderClientProps) {
+  const readOnly = props.sharedView?.readOnly ?? false
   const [mode, setMode] = useState<PdfDisplayMode>("parsed")
   const [parsedBook, setParsedBook] = useState(props.book)
   const [isBackfillingImages, setIsBackfillingImages] = useState(false)
@@ -80,7 +82,7 @@ export function PdfReaderClient(props: ReaderClientProps) {
   }, [props.book])
 
   useEffect(() => {
-    if (!needsPageImages || isBackfillingImages || pageImageAttempted) {
+    if (readOnly || !needsPageImages || isBackfillingImages || pageImageAttempted) {
       return
     }
     let disposed = false
@@ -110,7 +112,7 @@ export function PdfReaderClient(props: ReaderClientProps) {
     return () => {
       disposed = true
     }
-  }, [isBackfillingImages, needsPageImages, pageImageAttempted, props.book.id])
+  }, [isBackfillingImages, needsPageImages, pageImageAttempted, props.book.id, readOnly])
 
   const isSourceMode = mode === "source"
   const activeToast = isSourceMode ? sourceReader.toast : parsedReader.toast
@@ -178,6 +180,11 @@ export function PdfReaderClient(props: ReaderClientProps) {
           <span className="text-[14px] font-medium text-foreground">
             {isSourceMode ? sourceReader.book.title : parsedReader.book.title}
           </span>
+          {readOnly ? (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
+              共享查看 · {props.sharedView?.ownerName}
+            </span>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           {!isSourceMode ? (
@@ -215,6 +222,19 @@ export function PdfReaderClient(props: ReaderClientProps) {
           >
             {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
           </button>
+          {!readOnly ? (
+            <ShareLinkButton
+              resourceType="book"
+              resourceId={props.book.id}
+              onToast={(message) => {
+                if (isSourceMode) {
+                  sourceReader.setToast(message)
+                  return
+                }
+                parsedReader.setToast(message)
+              }}
+            />
+          ) : null}
           <Switch
             checked={isSourceMode}
             onCheckedChange={toggleMode}
@@ -285,11 +305,13 @@ export function PdfReaderClient(props: ReaderClientProps) {
           )}
           {isSourceMode ? (
             <>
-              <ReaderSelectionToolbar
-                selectionRect={sourceReader.selectionRect}
-                onHighlight={(color) => sourceReader.createHighlight(color)}
-                onNote={() => sourceReader.setComposerOpen(true)}
-              />
+              {!readOnly ? (
+                <ReaderSelectionToolbar
+                  selectionRect={sourceReader.selectionRect}
+                  onHighlight={(color) => sourceReader.createHighlight(color)}
+                  onNote={() => sourceReader.setComposerOpen(true)}
+                />
+              ) : null}
               {sourceReader.fallbackMessage ? (
                 <PdfSourcePlaceholder
                   title={sourceReader.book.title}
@@ -320,11 +342,13 @@ export function PdfReaderClient(props: ReaderClientProps) {
             </>
           ) : (
             <>
-              <ReaderSelectionToolbar
-                selectionRect={parsedReader.selectionRect}
-                onHighlight={(color) => parsedReader.createHighlight(color)}
-                onNote={() => parsedReader.setComposerOpen(true)}
-              />
+              {!readOnly ? (
+                <ReaderSelectionToolbar
+                  selectionRect={parsedReader.selectionRect}
+                  onHighlight={(color) => parsedReader.createHighlight(color)}
+                  onNote={() => parsedReader.setComposerOpen(true)}
+                />
+              ) : null}
               <ReaderContent
                 book={parsedReader.book}
                 displayContent={parsedReader.displayContent}
@@ -343,6 +367,12 @@ export function PdfReaderClient(props: ReaderClientProps) {
                 onScroll={parsedReader.handleScroll}
                 onParagraphMouseUp={parsedReader.handleMouseUp}
                 renderParagraphContent={parsedReader.renderParagraphContent}
+                onImageCollect={(input) => {
+                  void parsedReader.createImageHighlight(input, false)
+                }}
+                onImageTransfer={(input) => {
+                  void parsedReader.createImageHighlight(input, true)
+                }}
               />
 
               {/* 翻译失败中间提示 */}
@@ -380,13 +410,15 @@ export function PdfReaderClient(props: ReaderClientProps) {
           )}
         </main>
 
-        {isSourceMode ? (
+        {!readOnly && isSourceMode ? (
           <PdfHighlightPanel
             width={activeHighlightsWidth}
             collapsed={highlightsCollapsed}
             items={sourceReader.panelItems}
             currentPageIndex={sourceReader.currentPageIndex}
+            readOnly={readOnly}
             onOpenHighlight={sourceReader.openHighlight}
+            onEditHighlight={sourceReader.openHighlightNoteComposer}
             onDeleteHighlight={sourceReader.deleteHighlight}
             onResizeStart={sourceReader.createResizeHandler(
               sourceReader.highlightsWidth,
@@ -396,14 +428,16 @@ export function PdfReaderClient(props: ReaderClientProps) {
             )}
             onToggleCollapse={() => setHighlightsCollapsed(true)}
           />
-        ) : (
+        ) : !readOnly ? (
           <ReaderHighlightPanel
             width={activeHighlightsWidth}
             collapsed={highlightsCollapsed}
             items={parsedReader.groupedHighlights}
             currentPageIndex={parsedReader.currentSection?.pageIndex}
             resolvedHighlights={parsedReader.resolvedHighlights}
+            readOnly={readOnly}
             onOpenHighlight={parsedReader.openHighlight}
+            onEditHighlight={parsedReader.openHighlightNoteComposer}
             onDeleteHighlight={parsedReader.deleteHighlight}
             onResizeStart={parsedReader.createResizeHandler(
               parsedReader.highlightsWidth,
@@ -413,29 +447,33 @@ export function PdfReaderClient(props: ReaderClientProps) {
             )}
             onToggleCollapse={() => setHighlightsCollapsed(true)}
           />
-        )}
+        ) : null}
       </div>
 
-      <ReaderNoteComposer
-        open={isSourceMode ? sourceReader.composerOpen : parsedReader.composerOpen}
-        selectedText={isSourceMode ? sourceReader.selectedText : parsedReader.selectedText}
-        noteDraft={isSourceMode ? sourceReader.noteDraft : parsedReader.noteDraft}
-        onChange={isSourceMode ? sourceReader.setNoteDraft : parsedReader.setNoteDraft}
-        onCancel={() => {
-          if (isSourceMode) {
-            sourceReader.setComposerOpen(false)
-            return
-          }
-          parsedReader.setComposerOpen(false)
-        }}
-        onSave={() => {
-          if (isSourceMode) {
-            void sourceReader.createHighlight("yellow", sourceReader.noteDraft)
-            return
-          }
-          void parsedReader.createHighlight("yellow", parsedReader.noteDraft)
-        }}
-      />
+      {!readOnly ? (
+        <ReaderNoteComposer
+          open={isSourceMode ? sourceReader.composerOpen : parsedReader.composerOpen}
+          selectedText={isSourceMode ? sourceReader.selectedText : parsedReader.selectedText}
+          noteDraft={isSourceMode ? sourceReader.noteDraft : parsedReader.noteDraft}
+          onChange={isSourceMode ? sourceReader.setNoteDraft : parsedReader.setNoteDraft}
+          onCancel={() => {
+            if (isSourceMode) {
+              sourceReader.setComposerOpen(false)
+              sourceReader.setEditingHighlightId(null)
+              return
+            }
+            parsedReader.setComposerOpen(false)
+            parsedReader.setEditingHighlightId(null)
+          }}
+          onSave={() => {
+            if (isSourceMode) {
+              void sourceReader.saveNote()
+              return
+            }
+            void parsedReader.saveNote()
+          }}
+        />
+      ) : null}
     </div>
   )
 }

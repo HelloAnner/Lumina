@@ -523,7 +523,7 @@ export interface ScoutArticle {
   content: ArticleSection[]
   /** 阅读进度 0~1 */
   readProgress: number
-  /** 上次阅读位置（滚动偏移 or section index） */
+  /** 上次阅读位置（当前正文块 ID） */
   lastReadPosition?: string
   /** 上次阅读时间 */
   lastReadAt?: string

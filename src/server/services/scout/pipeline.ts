@@ -6,7 +6,9 @@
  * @since 0.1.0
  * Created on 2026/3/25
  */
+import { randomUUID } from "node:crypto"
 import { repository } from "@/src/server/repositories"
+import { persistArticleAssets } from "@/src/server/services/articles/assets"
 import { fetchRss } from "@/src/server/services/scout/rss-fetcher"
 import { fetchAndExtract } from "@/src/server/services/scout/content-extractor"
 import { normalizeUrl, contentHash } from "@/src/server/services/scout/url-utils"
@@ -104,7 +106,16 @@ export async function runPipeline(userId: string, task: ScoutTask, jobId: string
         summary = raw.content.slice(0, 200)
       }
 
+      const articleId = randomUUID()
+      const withAssets = await persistArticleAssets({
+        userId,
+        articleId,
+        content: sections,
+        coverImage
+      })
+
       repository.createArticle({
+        id: articleId,
         userId,
         entryId: entry.id,
         sourceId: sources[0]?.id ?? "",
@@ -116,11 +127,11 @@ export async function runPipeline(userId: string, task: ScoutTask, jobId: string
         publishedAt: raw.publishedAt,
         topics: [],
         summary,
-        content: sections,
+        content: withAssets.content,
         readProgress: 0,
         highlightCount: 0,
         siteName,
-        coverImage,
+        coverImage: withAssets.coverImage,
         status: "ready"
       })
 

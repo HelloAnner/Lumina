@@ -1,6 +1,15 @@
 import { randomUUID, createHash } from "node:crypto"
 import { readDatabase, mutateDatabase } from "@/src/server/store/db"
+import {
+  DEFAULT_APP_KEYBOARD_SHORTCUTS,
+  getEffectiveKeyboardShortcuts
+} from "@/src/lib/keyboard-shortcuts"
 import { encryptValue } from "@/src/server/lib/crypto"
+import {
+  getDefaultShareEndpointConfig,
+  shareLinkExpired
+} from "@/src/server/services/share/share-links"
+import { normalizeUrl } from "@/src/server/services/scout/url-utils"
 import type {
   AggregateJob,
   Annotation,
@@ -32,6 +41,8 @@ import type {
   ScoutPatch,
   ScoutSource,
   ScoutTask,
+  ShareEndpointConfig,
+  ShareLink,
   StorageConfig,
   User,
   Viewpoint,
@@ -49,6 +60,37 @@ function normalizeHighlight<T extends Partial<Highlight>>(highlight: T): T & Pic
   }
 }
 
+function samePdfRects(left?: Highlight["pdfRects"], right?: Highlight["pdfRects"]) {
+  return JSON.stringify(left ?? []) === JSON.stringify(right ?? [])
+}
+
+function isSameHighlightIdentity(
+  current: Highlight,
+  incoming: Omit<Highlight, "id" | "createdAt" | "status">
+) {
+  return (
+    current.userId === incoming.userId &&
+    current.bookId === incoming.bookId &&
+    (current.sourceType ?? "book") === (incoming.sourceType ?? "book") &&
+    (current.articleId ?? "") === (incoming.articleId ?? "") &&
+    current.format === incoming.format &&
+    current.contentMode === (incoming.contentMode ?? "original") &&
+    (current.targetLanguage ?? "") === (incoming.targetLanguage ?? "") &&
+    (current.pageIndex ?? -1) === (incoming.pageIndex ?? -1) &&
+    (current.chapterHref ?? "") === (incoming.chapterHref ?? "") &&
+    (current.cfiRange ?? "") === (incoming.cfiRange ?? "") &&
+    (current.paraOffsetStart ?? -1) === (incoming.paraOffsetStart ?? -1) &&
+    (current.paraOffsetEnd ?? -1) === (incoming.paraOffsetEnd ?? -1) &&
+    (current.counterpartParaOffsetStart ?? -1) === (incoming.counterpartParaOffsetStart ?? -1) &&
+    (current.counterpartParaOffsetEnd ?? -1) === (incoming.counterpartParaOffsetEnd ?? -1) &&
+    (current.content ?? "") === incoming.content &&
+    (current.counterpartContent ?? "") === (incoming.counterpartContent ?? "") &&
+    (current.imageUrl ?? "") === (incoming.imageUrl ?? "") &&
+    (current.imageObjectKey ?? "") === (incoming.imageObjectKey ?? "") &&
+    samePdfRects(current.pdfRects, incoming.pdfRects)
+  )
+}
+
 function sortByDate<T>(
   items: T[],
   ...dateFields: string[]
@@ -63,6 +105,43 @@ function sortByDate<T>(
     const lVal = fields.reduce<string>((acc, f) => acc || (l[f] as string) || "", "")
     return rVal.localeCompare(lVal)
   })
+}
+
+function pruneArticleAssociatedRecords(
+  database: ReturnType<typeof readDatabase>,
+  userId: string,
+  articleIds: string[],
+  options: {
+    keepShareLinks?: boolean
+  } = {}
+) {
+  if (articleIds.length === 0) {
+    return
+  }
+  const articleIdSet = new Set(articleIds)
+  database.highlights = database.highlights.filter((item) => {
+    if (item.userId !== userId) {
+      return true
+    }
+    return !(
+      item.articleId && articleIdSet.has(item.articleId)
+    ) && !(
+      item.sourceType === "article" && articleIdSet.has(item.bookId)
+    )
+  })
+  database.articleTranslations = (database.articleTranslations || []).filter(
+    (item) => !(item.userId === userId && articleIdSet.has(item.articleId))
+  )
+  if (!options.keepShareLinks) {
+    database.shareLinks = (database.shareLinks || []).filter(
+      (item) =>
+        !(
+          item.ownerUserId === userId &&
+          item.resourceType === "article" &&
+          articleIdSet.has(item.resourceId)
+        )
+    )
+  }
 }
 
 export const repository = {
@@ -90,7 +169,9 @@ export const repository = {
         fontFamily: "serif",
         theme: "night",
         navigationMode: "horizontal",
-        translationView: "original"
+        translationView: "original",
+        highlightShortcuts: DEFAULT_APP_KEYBOARD_SHORTCUTS.reader,
+        keyboardShortcuts: DEFAULT_APP_KEYBOARD_SHORTCUTS
       })
       database.storageConfigs.push({
         userId: user.id,
@@ -214,13 +295,28 @@ export const repository = {
   },
   createHighlight(input: Omit<Highlight, "id" | "createdAt" | "status">) {
     return mutateDatabase((database) => {
+      const normalized = normalizeHighlight(input)
+      const existing = database.highlights.find((item) =>
+        isSameHighlightIdentity(item, normalized)
+      )
+      if (existing) {
+        return normalizeHighlight(existing)
+      }
       const highlight: Highlight = {
-        ...normalizeHighlight(input),
+        ...normalized,
         id: randomUUID(),
         createdAt: now(),
         status: "PENDING"
       }
       database.highlights.push(highlight)
+      if (highlight.sourceType === "article" && highlight.articleId) {
+        const article = database.scoutArticles.find(
+          (item) => item.id === highlight.articleId && item.userId === highlight.userId
+        )
+        if (article) {
+          article.highlightCount += 1
+        }
+      }
       return highlight
     })
   },
@@ -260,15 +356,15 @@ export const repository = {
         }
 
         const removedIds = new Set<string>()
-        // 标记引用此划线的块
-        for (const block of viewpoint.articleBlocks) {
-          if (
-            (block.type === "quote" || block.type === "highlight") &&
-            "highlightId" in block &&
-            block.highlightId === highlightId
-          ) {
-            removedIds.add(block.id)
-          }
+      // 标记引用此划线的块
+      for (const block of viewpoint.articleBlocks) {
+        if (
+          (block.type === "quote" || block.type === "highlight" || block.type === "image") &&
+          "highlightId" in block &&
+          block.highlightId === highlightId
+        ) {
+          removedIds.add(block.id)
+        }
         }
 
         // 同时移除紧跟在引用块后面的 insight 批注块
@@ -416,7 +512,21 @@ export const repository = {
     }
   },
   getReaderSettings(userId: string) {
-    return readDatabase().readerSettings.find((item) => item.userId === userId)
+    const settings = readDatabase().readerSettings.find((item) => item.userId === userId)
+    if (!settings) {
+      return settings
+    }
+    return {
+      ...settings,
+      highlightShortcuts: getEffectiveKeyboardShortcuts(
+        settings.keyboardShortcuts,
+        settings.highlightShortcuts
+      ).reader,
+      keyboardShortcuts: getEffectiveKeyboardShortcuts(
+        settings.keyboardShortcuts,
+        settings.highlightShortcuts
+      )
+    }
   },
   updateReaderSettings(userId: string, updates: Partial<ReaderSettings>) {
     return mutateDatabase((database) => {
@@ -425,6 +535,12 @@ export const repository = {
         return null
       }
       Object.assign(settings, updates)
+      const shortcuts = getEffectiveKeyboardShortcuts(
+        settings.keyboardShortcuts,
+        settings.highlightShortcuts
+      )
+      settings.keyboardShortcuts = shortcuts
+      settings.highlightShortcuts = shortcuts.reader
       return settings
     })
   },
@@ -641,6 +757,56 @@ export const repository = {
         secretKey: input.secretKey ? encryptValue(input.secretKey) : ""
       })
       return input
+    })
+  },
+  getShareEndpointConfig() {
+    return readDatabase().shareEndpointConfig ?? getDefaultShareEndpointConfig()
+  },
+  saveShareEndpointConfig(input: ShareEndpointConfig) {
+    return mutateDatabase((database) => {
+      database.shareEndpointConfig = {
+        host: input.host.trim(),
+        port: input.port
+      }
+      return database.shareEndpointConfig
+    })
+  },
+  createShareLink(input: Omit<ShareLink, "id" | "createdAt" | "lastAccessedAt" | "revokedAt">) {
+    return mutateDatabase((database) => {
+      const item: ShareLink = {
+        id: randomUUID(),
+        token: input.token,
+        ownerUserId: input.ownerUserId,
+        resourceType: input.resourceType,
+        resourceId: input.resourceId,
+        expiresAt: input.expiresAt ?? null,
+        createdAt: now()
+      }
+      database.shareLinks.push(item)
+      return item
+    })
+  },
+  getShareLinkByToken(token: string) {
+    return readDatabase().shareLinks.find((item) => item.token === token) ?? null
+  },
+  getActiveShareLinkByToken(token: string) {
+    const item = readDatabase().shareLinks.find((entry) => entry.token === token)
+    if (!item) {
+      return null
+    }
+    if (item.revokedAt || shareLinkExpired(item.expiresAt)) {
+      return null
+    }
+    return item
+  },
+  touchShareLink(token: string) {
+    return mutateDatabase((database) => {
+      const item = database.shareLinks.find((entry) => entry.token === token)
+      if (!item) {
+        return null
+      }
+      item.lastAccessedAt = now()
+      return item
     })
   },
   listPublishTargets(userId: string) {
@@ -891,6 +1057,9 @@ export const repository = {
         if (filter === "reading") {
           return !!item.reading && !item.archived
         }
+        if (filter === "favorite") {
+          return !!item.favorite && !item.archived
+        }
         if (filter === "archived") {
           return !!item.archived
         }
@@ -917,11 +1086,17 @@ export const repository = {
       (item) => item.userId === userId && item.id === articleId
     )
   },
-  createArticle(input: Omit<ScoutArticle, "id" | "createdAt">) {
+  findArticleBySourceUrl(userId: string, sourceUrl: string) {
+    const normalized = normalizeUrl(sourceUrl)
+    return readDatabase().scoutArticles.find(
+      (item) => item.userId === userId && normalizeUrl(item.sourceUrl) === normalized
+    ) ?? null
+  },
+  createArticle(input: Omit<ScoutArticle, "id" | "createdAt"> & { id?: string }) {
     return mutateDatabase((database) => {
       const article: ScoutArticle = {
         ...input,
-        id: randomUUID(),
+        id: input.id || randomUUID(),
         createdAt: now()
       }
       database.scoutArticles.push(article)
@@ -942,24 +1117,57 @@ export const repository = {
   },
   deleteArticle(userId: string, articleId: string) {
     return mutateDatabase((database) => {
+      const article = database.scoutArticles.find(
+        (item) => item.userId === userId && item.id === articleId
+      ) || null
       database.scoutArticles = database.scoutArticles.filter(
         (item) => !(item.userId === userId && item.id === articleId)
       )
+      pruneArticleAssociatedRecords(database, userId, [articleId])
+      return article
+    })
+  },
+  clearArticleDerivedData(
+    userId: string,
+    articleId: string,
+    options: {
+      keepShareLinks?: boolean
+    } = {}
+  ) {
+    return mutateDatabase((database) => {
+      pruneArticleAssociatedRecords(database, userId, [articleId], options)
+      return database.scoutArticles.find(
+        (item) => item.userId === userId && item.id === articleId
+      ) || null
     })
   },
   /** 清理超过保留天数的归档文章 */
   purgeExpiredArchives(userId: string, retentionDays: number) {
     const cutoff = Date.now() - retentionDays * 86_400_000
     return mutateDatabase((database) => {
+      const purged: ScoutArticle[] = []
       database.scoutArticles = database.scoutArticles.filter((item) => {
         if (item.userId !== userId || !item.archived) {
+          return true
+        }
+        if (item.favorite) {
           return true
         }
         const archivedTime = item.archivedAt
           ? new Date(item.archivedAt).getTime()
           : new Date(item.createdAt).getTime()
-        return archivedTime > cutoff
+        if (archivedTime > cutoff) {
+          return true
+        }
+        purged.push(item)
+        return false
       })
+      pruneArticleAssociatedRecords(
+        database,
+        userId,
+        purged.map((item) => item.id)
+      )
+      return purged
     })
   },
   /** 将已读完超过指定天数的文章自动归档 */
@@ -985,8 +1193,21 @@ export const repository = {
   // ─── Scout: 主题 ───
 
   listArticleTopics(userId: string) {
-    return readDatabase().articleTopics
+    const database = readDatabase()
+    const counts = new Map<string, number>()
+    database.scoutArticles
       .filter((item) => item.userId === userId)
+      .forEach((article) => {
+        article.topics.forEach((topicId) => {
+          counts.set(topicId, (counts.get(topicId) ?? 0) + 1)
+        })
+      })
+    return database.articleTopics
+      .filter((item) => item.userId === userId)
+      .map((item) => ({
+        ...item,
+        articleCount: counts.get(item.id) ?? 0
+      }))
       .sort((a, b) => a.sortOrder - b.sortOrder)
   },
   createArticleTopic(userId: string, input: Omit<ArticleTopic, "id" | "userId" | "createdAt" | "articleCount">) {

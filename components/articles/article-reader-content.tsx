@@ -10,6 +10,7 @@
 
 import type React from "react"
 import { buildArticleTextBlocks } from "@/components/articles/article-highlight-utils"
+import { ImageActionBar } from "@/components/reader/image-action-bar"
 import type { ArticleSection, ReaderSettings } from "@/src/server/store/types"
 
 const FONT_FAMILY_MAP: Record<ReaderSettings["fontFamily"], string> = {
@@ -33,6 +34,18 @@ interface Props {
     start: number,
     sectionIndex: number
   ) => React.ReactNode
+  onImageCollect?: (input: {
+    sectionIndex: number
+    imageUrl: string
+    imageAlt?: string
+    imageObjectKey?: string
+  }) => void
+  onImageTransfer?: (input: {
+    sectionIndex: number
+    imageUrl: string
+    imageAlt?: string
+    imageObjectKey?: string
+  }) => void
 }
 
 export function ArticleReaderContent({
@@ -45,7 +58,9 @@ export function ArticleReaderContent({
   paragraphRefs,
   onScroll,
   onParagraphMouseUp,
-  renderParagraphContent
+  renderParagraphContent,
+  onImageCollect,
+  onImageTransfer
 }: Props) {
   const textBlocks = buildArticleTextBlocks(sections)
   const textBlockMap = new Map(textBlocks.map((b) => [b.blockIndex, b]))
@@ -85,6 +100,8 @@ export function ArticleReaderContent({
                   <Tag
                     key={section.id}
                     ref={(el) => { paragraphRefs.current[`0-${refIdx}`] = el }}
+                    data-article-section-index={idx}
+                    data-article-section-id={section.id}
                     data-section-index={0}
                     data-paragraph-start={tb?.start ?? 0}
                     className={cls}
@@ -100,6 +117,8 @@ export function ArticleReaderContent({
                   <p
                     key={section.id}
                     ref={(el) => { paragraphRefs.current[`0-${refIdx}`] = el }}
+                    data-article-section-index={idx}
+                    data-article-section-id={section.id}
                     data-section-index={0}
                     data-paragraph-start={tb?.start ?? 0}
                     className="mb-4 text-[15px] leading-[1.75] text-foreground/90"
@@ -115,6 +134,8 @@ export function ArticleReaderContent({
                   <blockquote
                     key={section.id}
                     ref={(el) => { paragraphRefs.current[`0-${refIdx}`] = el }}
+                    data-article-section-index={idx}
+                    data-article-section-id={section.id}
                     data-section-index={0}
                     data-paragraph-start={tb?.start ?? 0}
                     className="mb-4 border-l-2 border-primary/30 pl-4 text-[14px] italic text-muted"
@@ -137,6 +158,8 @@ export function ArticleReaderContent({
                         <li
                           key={i}
                           ref={(el) => { paragraphRefs.current[`0-${refIdx}`] = el }}
+                          data-article-section-index={idx}
+                          data-article-section-id={section.id}
                           data-section-index={0}
                           data-paragraph-start={itemTb?.start ?? 0}
                         >
@@ -150,13 +173,38 @@ export function ArticleReaderContent({
 
               case "image":
                 return (
-                  <figure key={section.id} className="mb-4">
+                  <figure
+                    key={section.id}
+                    className="mb-4"
+                    data-article-section-index={idx}
+                    data-article-section-id={section.id}
+                  >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={section.src}
                       alt={section.alt ?? ""}
                       className="max-w-full rounded-lg"
                     />
+                    {onImageCollect && onImageTransfer && section.src ? (
+                      <ImageActionBar
+                        onCollect={() =>
+                          onImageCollect({
+                            sectionIndex: idx,
+                            imageUrl: section.src!,
+                            imageAlt: section.alt,
+                            imageObjectKey: section.objectKey
+                          })
+                        }
+                        onTransfer={() =>
+                          onImageTransfer({
+                            sectionIndex: idx,
+                            imageUrl: section.src!,
+                            imageAlt: section.alt,
+                            imageObjectKey: section.objectKey
+                          })
+                        }
+                      />
+                    ) : null}
                     {section.alt && (
                       <figcaption className="mt-1 text-center text-[12px] text-muted">
                         {section.alt}
@@ -167,7 +215,12 @@ export function ArticleReaderContent({
 
               case "code":
                 return (
-                  <pre key={section.id} className="mb-4 overflow-x-auto rounded-lg bg-overlay/60 p-4 text-[13px]">
+                  <pre
+                    key={section.id}
+                    className="mb-4 overflow-x-auto rounded-lg bg-overlay/60 p-4 text-[13px]"
+                    data-article-section-index={idx}
+                    data-article-section-id={section.id}
+                  >
                     <code>{section.text}</code>
                   </pre>
                 )

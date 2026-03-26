@@ -20,11 +20,14 @@ export interface ExtractedArticle {
   content: ArticleSection[]
   summary: string
   siteName?: string
+  publishedAt?: string
   coverImage?: string
 }
 
 const SKIP_TAGS = new Set(["script", "style", "noscript", "svg", "nav", "footer"])
 const HEADING_TAGS = new Set(["h1", "h2", "h3"])
+const IMAGE_PLACEHOLDER_PREFIX = "[[LUMINA_IMAGE:"
+const IMAGE_PLACEHOLDER_SUFFIX = "]]"
 
 /** 抓取 URL 并提取正文，失败返回 null */
 export async function fetchAndExtract(url: string): Promise<ExtractedArticle | null> {
@@ -43,6 +46,8 @@ export async function fetchAndExtract(url: string): Promise<ExtractedArticle | n
 export function extractFromHtml(html: string, baseUrl?: string): ExtractedArticle | null {
   try {
     const { document } = parseHTML(html)
+    const publishedAt = extractPublishedAt(document as unknown as Document)
+    injectImagePlaceholders(document as unknown as Document, baseUrl)
     const reader = new Readability(document as unknown as Document, {
       charThreshold: 100
     })
@@ -68,6 +73,7 @@ export function extractFromHtml(html: string, baseUrl?: string): ExtractedArticl
       content: sections,
       summary: (article.excerpt ?? textContent.slice(0, 200)).slice(0, 300),
       siteName: article.siteName ?? undefined,
+      publishedAt,
       coverImage
     }
   } catch {
@@ -145,6 +151,11 @@ function getAttr(el: DefaultTreeAdapterTypes.Element, name: string): string | un
   return el.attrs.find((a) => a.name === name)?.value?.trim()
 }
 
+function getNodeAttribute(node: Element, name: string) {
+  const value = node.getAttribute(name)
+  return value?.trim() || undefined
+}
+
 /** 解析相对 URL 为绝对 URL */
 function resolveUrl(src: string, baseUrl?: string): string {
   if (!src || src.startsWith("data:")) {
@@ -161,6 +172,171 @@ function resolveUrl(src: string, baseUrl?: string): string {
   } catch {
     return src
   }
+}
+
+function pickLargestSrcFromSrcset(srcset?: string) {
+  if (!srcset) {
+    return ""
+  }
+  const candidates = srcset
+    .split(",")
+    .map((item) => item.trim())
+    .map((item) => {
+      const [url, descriptor] = item.split(/\s+/, 2)
+      const width = descriptor?.endsWith("w") ? Number(descriptor.slice(0, -1)) : 0
+      return {
+        url,
+        width: Number.isFinite(width) ? width : 0
+      }
+    })
+    .filter((item) => Boolean(item.url))
+    .sort((left, right) => right.width - left.width)
+  return candidates[0]?.url ?? ""
+}
+
+function pickImageSourceFromElement(node: Element, baseUrl?: string) {
+  const directSrc =
+    getNodeAttribute(node, "src") ||
+    getNodeAttribute(node, "data-src") ||
+    getNodeAttribute(node, "data-original") ||
+    getNodeAttribute(node, "data-lazy-src")
+  const srcsetSrc = pickLargestSrcFromSrcset(
+    getNodeAttribute(node, "srcset") ||
+      getNodeAttribute(node, "data-srcset") ||
+      getNodeAttribute(node, "data-lazy-srcset")
+  )
+  const chosenSrc = srcsetSrc || directSrc || ""
+  return chosenSrc ? resolveUrl(chosenSrc, baseUrl) : ""
+}
+
+function buildImagePlaceholder(src: string, alt?: string) {
+  return `${IMAGE_PLACEHOLDER_PREFIX}${encodeURIComponent(
+    JSON.stringify({ src, alt: alt ?? "" })
+  )}${IMAGE_PLACEHOLDER_SUFFIX}`
+}
+
+function parseImagePlaceholder(text: string) {
+  const trimmed = text.trim()
+  if (!trimmed.startsWith(IMAGE_PLACEHOLDER_PREFIX) || !trimmed.endsWith(IMAGE_PLACEHOLDER_SUFFIX)) {
+    return null
+  }
+  try {
+    return JSON.parse(
+      decodeURIComponent(
+        trimmed.slice(IMAGE_PLACEHOLDER_PREFIX.length, -IMAGE_PLACEHOLDER_SUFFIX.length)
+      )
+    ) as { src: string; alt?: string }
+  } catch {
+    return null
+  }
+}
+
+function injectImagePlaceholders(document: Document, baseUrl?: string) {
+  const images = Array.from(document.querySelectorAll("img"))
+  images.forEach((imageNode) => {
+    const src = pickImageSourceFromElement(imageNode, baseUrl)
+    if (!src) {
+      imageNode.remove()
+      return
+    }
+    const placeholderNode = document.createElement("p")
+    placeholderNode.textContent = buildImagePlaceholder(src, getNodeAttribute(imageNode, "alt"))
+    imageNode.replaceWith(placeholderNode)
+  })
+}
+
+function extractPublishedAt(document: Document) {
+  const candidates = [
+    readMetaPublishedAt(document),
+    readJsonLdPublishedAt(document),
+    readTimePublishedAt(document)
+  ]
+  for (const candidate of candidates) {
+    const normalized = normalizePublishedAt(candidate)
+    if (normalized) {
+      return normalized
+    }
+  }
+  return undefined
+}
+
+function readMetaPublishedAt(document: Document) {
+  const selectors = [
+    'meta[property="article:published_time"]',
+    'meta[name="article:published_time"]',
+    'meta[property="og:published_time"]',
+    'meta[name="og:published_time"]',
+    'meta[name="pubdate"]',
+    'meta[name="publish-date"]',
+    'meta[name="publish_date"]',
+    'meta[name="date"]',
+    'meta[itemprop="datePublished"]'
+  ]
+  for (const selector of selectors) {
+    const value = document.querySelector(selector)?.getAttribute("content")?.trim()
+    if (value) {
+      return value
+    }
+  }
+  return undefined
+}
+
+function readJsonLdPublishedAt(document: Document) {
+  const scripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
+  for (const script of scripts) {
+    const value = extractJsonLdPublishedAt(script.textContent ?? "")
+    if (value) {
+      return value
+    }
+  }
+  return undefined
+}
+
+function extractJsonLdPublishedAt(rawText: string): string | undefined {
+  try {
+    return findStructuredDate(JSON.parse(rawText) as unknown)
+  } catch {
+    return undefined
+  }
+}
+
+function findStructuredDate(payload: unknown): string | undefined {
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const value = findStructuredDate(item)
+      if (value) {
+        return value
+      }
+    }
+    return undefined
+  }
+  if (!payload || typeof payload !== "object") {
+    return undefined
+  }
+  const record = payload as Record<string, unknown>
+  for (const key of ["datePublished", "dateCreated", "uploadDate"]) {
+    const value = record[key]
+    if (typeof value === "string" && value.trim()) {
+      return value.trim()
+    }
+  }
+  return record["@graph"] ? findStructuredDate(record["@graph"]) : undefined
+}
+
+function readTimePublishedAt(document: Document) {
+  const value = document.querySelector("time[datetime]")?.getAttribute("datetime")?.trim()
+  return value || undefined
+}
+
+function normalizePublishedAt(rawValue?: string) {
+  if (!rawValue) {
+    return undefined
+  }
+  const timestamp = Date.parse(rawValue)
+  if (Number.isNaN(timestamp)) {
+    return undefined
+  }
+  return new Date(timestamp).toISOString()
 }
 
 /** 收集元素内所有行内文本 */
@@ -199,7 +375,12 @@ function walkNodes(
   const flushInline = () => {
     const merged = collapseWhitespace(inlineBuffer.join(" "))
     if (merged) {
-      sections.push({ id: nextId(), type: "paragraph", text: merged })
+      const image = parseImagePlaceholder(merged)
+      if (image?.src) {
+        sections.push({ id: nextId(), type: "image", src: image.src, alt: image.alt })
+      } else {
+        sections.push({ id: nextId(), type: "paragraph", text: merged })
+      }
     }
     inlineBuffer.length = 0
   }
@@ -305,7 +486,12 @@ function walkNodes(
       } else {
         const text = collapseWhitespace(collectInlineText(node))
         if (text) {
-          sections.push({ id: nextId(), type: "paragraph", text })
+          const image = parseImagePlaceholder(text)
+          if (image?.src) {
+            sections.push({ id: nextId(), type: "image", src: image.src, alt: image.alt })
+          } else {
+            sections.push({ id: nextId(), type: "paragraph", text })
+          }
         }
       }
       continue

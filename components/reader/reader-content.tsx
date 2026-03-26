@@ -8,6 +8,7 @@
 "use client"
 
 import type React from "react"
+import { ImageActionBar } from "@/components/reader/image-action-bar"
 import { buildParagraphLayouts } from "@/components/reader/reader-highlight-utils"
 import type {
   Book,
@@ -25,6 +26,7 @@ interface RenderableBlock {
   alt?: string
   width?: number
   height?: number
+  objectKey?: string
 }
 
 function buildRenderableBlocks(section: Book["content"][number]): RenderableBlock[] {
@@ -49,7 +51,8 @@ function buildRenderableBlocks(section: Book["content"][number]): RenderableBloc
         src: block.src,
         alt: block.alt,
         width: block.width,
-        height: block.height
+        height: block.height,
+        objectKey: "objectKey" in block ? block.objectKey : undefined
       })
       return
     }
@@ -87,7 +90,9 @@ export function ReaderContent({
   paragraphRefs,
   onScroll,
   onParagraphMouseUp,
-  renderParagraphContent
+  renderParagraphContent,
+  onImageCollect,
+  onImageTransfer
 }: {
   book: Book
   displayContent: Book["content"]
@@ -110,19 +115,57 @@ export function ReaderContent({
     paragraphStart: number,
     sectionIndex: number
   ) => React.ReactNode
+  onImageCollect?: (input: {
+    sectionIndex: number
+    sectionTitle: string
+    imageUrl: string
+    imageAlt?: string
+    imageObjectKey?: string
+  }) => void
+  onImageTransfer?: (input: {
+    sectionIndex: number
+    sectionTitle: string
+    imageUrl: string
+    imageAlt?: string
+    imageObjectKey?: string
+  }) => void
 }) {
   function renderBlock(block: RenderableBlock, sectionIndex: number) {
     if (block.type === "image") {
       return (
         <div key={block.key} className="my-6 flex justify-center">
-          <img
-            src={block.src}
-            alt={block.alt ?? "章节插图"}
-            width={block.width}
-            height={block.height}
-            className="max-h-[70vh] max-w-full rounded-lg border border-border/50 bg-surface/40 object-contain"
-            draggable={false}
-          />
+          <div className="flex flex-col items-center">
+            <img
+              src={block.src}
+              alt={block.alt ?? "章节插图"}
+              width={block.width}
+              height={block.height}
+              className="max-h-[70vh] max-w-full rounded-lg border border-border/50 bg-surface/40 object-contain"
+              draggable={false}
+            />
+            {onImageCollect && onImageTransfer && block.src ? (
+              <ImageActionBar
+                onCollect={() =>
+                  onImageCollect({
+                    sectionIndex,
+                    sectionTitle: displayContent[sectionIndex]?.title ?? book.title,
+                    imageUrl: block.src!,
+                    imageAlt: block.alt,
+                    imageObjectKey: block.objectKey
+                  })
+                }
+                onTransfer={() =>
+                  onImageTransfer({
+                    sectionIndex,
+                    sectionTitle: displayContent[sectionIndex]?.title ?? book.title,
+                    imageUrl: block.src!,
+                    imageAlt: block.alt,
+                    imageObjectKey: block.objectKey
+                  })
+                }
+              />
+            ) : null}
+          </div>
         </div>
       )
     }

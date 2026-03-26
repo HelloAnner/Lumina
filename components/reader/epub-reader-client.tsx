@@ -9,6 +9,7 @@
 
 import Link from "next/link"
 import { AlertTriangle, ArrowLeft, Languages, Moon, PanelLeftOpen, PanelRightOpen, Sun, Type } from "lucide-react"
+import { ShareLinkButton } from "@/components/share/share-link-button"
 import { Toast } from "@/components/ui/toast"
 import { ReaderSidebar } from "@/components/reader/reader-sidebar"
 import { ReaderSelectionToolbar } from "@/components/reader/reader-selection-toolbar"
@@ -24,6 +25,7 @@ import { useState } from "react"
 
 export function EpubReaderClient(props: ReaderClientProps) {
   const reader = useReaderController(props)
+  const readOnly = props.sharedView?.readOnly ?? false
   const { theme, setTheme } = useTheme()
   const [tocCollapsed, setTocCollapsed] = useState(false)
   const [highlightsCollapsed, setHighlightsCollapsed] = useState(false)
@@ -31,6 +33,7 @@ export function EpubReaderClient(props: ReaderClientProps) {
   useReaderShortcuts({
     selectedText: reader.selectedText,
     shortcuts: props.settings?.highlightShortcuts,
+    keyboardShortcuts: props.settings?.keyboardShortcuts,
     onHighlight: reader.createHighlight,
     onNote: () => reader.setComposerOpen(true)
   })
@@ -66,6 +69,11 @@ export function EpubReaderClient(props: ReaderClientProps) {
           </Link>
           <span className="h-4 w-px bg-border/60" />
           <span className="text-[14px] font-medium text-foreground">{reader.book.title}</span>
+          {readOnly ? (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
+              共享查看 · {props.sharedView?.ownerName}
+            </span>
+          ) : null}
           {reader.currentSection?.title ? (
             <span className="hidden text-[13px] text-muted md:inline">
               ·&nbsp;&nbsp;{reader.currentSection.title}
@@ -104,6 +112,13 @@ export function EpubReaderClient(props: ReaderClientProps) {
           >
             {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
           </button>
+          {!readOnly ? (
+            <ShareLinkButton
+              resourceType="book"
+              resourceId={reader.book.id}
+              onToast={reader.setToast}
+            />
+          ) : null}
           <span className="text-xs tabular-nums text-muted">
             {progress}%&nbsp;&nbsp;·&nbsp;&nbsp;{reader.pageIndex + 1} / {total}
           </span>
@@ -160,11 +175,13 @@ export function EpubReaderClient(props: ReaderClientProps) {
               <PanelRightOpen className="h-3.5 w-3.5" />
             </button>
           )}
-          <ReaderSelectionToolbar
-            selectionRect={reader.selectionRect}
-            onHighlight={(color) => reader.createHighlight(color)}
-            onNote={() => reader.setComposerOpen(true)}
-          />
+          {!readOnly ? (
+            <ReaderSelectionToolbar
+              selectionRect={reader.selectionRect}
+              onHighlight={(color) => reader.createHighlight(color)}
+              onNote={() => reader.setComposerOpen(true)}
+            />
+          ) : null}
 
           <ReaderContent
             book={reader.book}
@@ -184,6 +201,12 @@ export function EpubReaderClient(props: ReaderClientProps) {
             onScroll={reader.handleScroll}
             onParagraphMouseUp={reader.handleMouseUp}
             renderParagraphContent={reader.renderParagraphContent}
+            onImageCollect={(input) => {
+              void reader.createImageHighlight(input, false)
+            }}
+            onImageTransfer={(input) => {
+              void reader.createImageHighlight(input, true)
+            }}
           />
 
           {/* 翻译失败中间提示 */}
@@ -220,32 +243,41 @@ export function EpubReaderClient(props: ReaderClientProps) {
           />
         </main>
 
-        <ReaderHighlightPanel
-          width={reader.highlightsWidth}
-          collapsed={highlightsCollapsed}
-          items={reader.groupedHighlights}
-          currentPageIndex={reader.currentSection?.pageIndex}
-          resolvedHighlights={reader.resolvedHighlights}
-          onOpenHighlight={reader.openHighlight}
-          onDeleteHighlight={reader.deleteHighlight}
-          onToggleCollapse={() => setHighlightsCollapsed(true)}
-          onResizeStart={reader.createResizeHandler(
-            reader.highlightsWidth,
-            reader.setHighlightsWidth,
-            { min: 260, max: 480 },
-            true
-          )}
-        />
+        {!readOnly ? (
+          <ReaderHighlightPanel
+            width={reader.highlightsWidth}
+            collapsed={highlightsCollapsed}
+            items={reader.groupedHighlights}
+            currentPageIndex={reader.currentSection?.pageIndex}
+            resolvedHighlights={reader.resolvedHighlights}
+            readOnly={readOnly}
+            onOpenHighlight={reader.openHighlight}
+            onEditHighlight={reader.openHighlightNoteComposer}
+            onDeleteHighlight={reader.deleteHighlight}
+            onToggleCollapse={() => setHighlightsCollapsed(true)}
+            onResizeStart={reader.createResizeHandler(
+              reader.highlightsWidth,
+              reader.setHighlightsWidth,
+              { min: 260, max: 480 },
+              true
+            )}
+          />
+        ) : null}
       </div>
 
-      <ReaderNoteComposer
-        open={reader.composerOpen}
-        selectedText={reader.selectedText}
-        noteDraft={reader.noteDraft}
-        onChange={reader.setNoteDraft}
-        onCancel={() => reader.setComposerOpen(false)}
-        onSave={() => reader.createHighlight("yellow", reader.noteDraft)}
-      />
+      {!readOnly ? (
+        <ReaderNoteComposer
+          open={reader.composerOpen}
+          selectedText={reader.selectedText}
+          noteDraft={reader.noteDraft}
+          onChange={reader.setNoteDraft}
+          onCancel={() => {
+            reader.setComposerOpen(false)
+            reader.setEditingHighlightId(null)
+          }}
+          onSave={reader.saveNote}
+        />
+      ) : null}
     </div>
   )
 }

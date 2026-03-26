@@ -49,6 +49,13 @@ import {
   QuoteBlock
 } from "@/components/knowledge/note-editor-nodes"
 import {
+  DEFAULT_NOTE_EDITOR_SHORTCUTS,
+  detectShortcutPlatform,
+  formatShortcutForDisplay,
+  getEffectiveKeyboardShortcuts,
+  matchesShortcut
+} from "@/src/lib/keyboard-shortcuts"
+import {
   blocksToTipTapDoc,
   normalizeBlockOrder,
   tipTapDocToBlocks
@@ -59,7 +66,10 @@ import {
   type HeadingOutlineItem
 } from "@/components/knowledge/note-outline-utils"
 import { cn } from "@/src/lib/utils"
-import type { NoteBlock } from "@/src/server/store/types"
+import type {
+  AppKeyboardShortcuts,
+  NoteBlock
+} from "@/src/server/store/types"
 
 const lowlight = createLowlight(common)
 
@@ -101,6 +111,7 @@ interface NoteEditorProps {
   viewpointId: string
   blocks: NoteBlock[]
   annotatedBlockIds: Set<string>
+  keyboardShortcuts?: AppKeyboardShortcuts
   selectedBlockId?: string
   scrollContainerRef?: React.RefObject<HTMLDivElement>
   outlineCollapsed?: boolean
@@ -119,6 +130,7 @@ export function NoteEditor({
   viewpointId,
   blocks,
   annotatedBlockIds,
+  keyboardShortcuts,
   selectedBlockId,
   scrollContainerRef,
   outlineCollapsed = false,
@@ -144,6 +156,11 @@ export function NoteEditor({
   const [linkMenu, setLinkMenu] = useState<LinkMenuState | null>(null)
   const [linkDraft, setLinkDraft] = useState("")
   const [activeOutlineBlockId, setActiveOutlineBlockId] = useState<string>()
+  const shortcutPlatform = useMemo(() => detectShortcutPlatform(), [])
+  const noteEditorShortcuts = useMemo(
+    () => getEffectiveKeyboardShortcuts(keyboardShortcuts).noteEditor,
+    [keyboardShortcuts]
+  )
 
   const editor = useEditor({
     immediatelyRender: true,
@@ -350,14 +367,14 @@ export function NoteEditor({
     }
     const dom = editor.view.dom
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (handleEditorShortcuts(event, editor, currentBlocks, applyBlocks, setLinkMenu, setLinkDraft, onSelectText)) {
+      if (handleEditorShortcuts(event, editor, currentBlocks, applyBlocks, setLinkMenu, setLinkDraft, noteEditorShortcuts, onSelectText)) {
         event.preventDefault()
         event.stopPropagation()
       }
     }
     dom.addEventListener("keydown", handleKeyDown, true)
     return () => dom.removeEventListener("keydown", handleKeyDown, true)
-  }, [applyBlocks, currentBlocks, editor, onSelectText])
+  }, [applyBlocks, currentBlocks, editor, noteEditorShortcuts, onSelectText])
 
   if (!editor) {
     return null
@@ -458,6 +475,8 @@ export function NoteEditor({
         <BubbleToolbar
           editor={editor}
           anchorRect={bubbleRect}
+          shortcutPlatform={shortcutPlatform}
+          shortcuts={noteEditorShortcuts}
           onAnnotate={() => triggerSelectionAnnotation(editor, onSelectText)}
           onLinkEdit={() => openLinkEditor(editor, setLinkMenu, setLinkDraft)}
           onTurnInto={(x, y) => {
@@ -508,7 +527,10 @@ export function NoteEditor({
             { type: "divider" },
             {
               label: "复制块",
-              shortcut: "⌘D",
+              shortcut: formatShortcutForDisplay(
+                noteEditorShortcuts.duplicateBlock,
+                shortcutPlatform
+              ),
               icon: <Copy className="h-3.5 w-3.5" />,
               onClick: () => applyBlocks(duplicateBlock(currentBlocks, blockMenu.blockId))
             },
@@ -540,12 +562,16 @@ export function NoteEditor({
 function BubbleToolbar({
   editor,
   anchorRect,
+  shortcutPlatform,
+  shortcuts,
   onAnnotate,
   onLinkEdit,
   onTurnInto
 }: {
   editor: NonNullable<ReturnType<typeof useEditor>>
   anchorRect: AnchorRect
+  shortcutPlatform: "mac" | "windows"
+  shortcuts: AppKeyboardShortcuts["noteEditor"]
   onAnnotate: () => void
   onLinkEdit: () => void
   onTurnInto: (x: number, y: number) => void
@@ -558,45 +584,53 @@ function BubbleToolbar({
     <div className="note-bubble-menu" style={style}>
       <ToolbarButton
         active={editor.isActive("bold")}
-        hint="加粗 ⌘B"
+        hint={`加粗 ${formatShortcutForDisplay(shortcuts.bold, shortcutPlatform)}`}
         onClick={() => editor.chain().focus().toggleBold().run()}
       >
         B
       </ToolbarButton>
       <ToolbarButton
         active={editor.isActive("italic")}
-        hint="斜体 ⌘I"
+        hint={`斜体 ${formatShortcutForDisplay(shortcuts.italic, shortcutPlatform)}`}
         onClick={() => editor.chain().focus().toggleItalic().run()}
       >
         I
       </ToolbarButton>
       <ToolbarButton
         active={editor.isActive("highlight")}
-        hint="高亮 ⌘⇧H"
+        hint={`高亮 ${formatShortcutForDisplay(shortcuts.highlight, shortcutPlatform)}`}
         onClick={() => editor.chain().focus().toggleHighlight().run()}
       >
         <Highlighter className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
         active={editor.isActive("strike")}
-        hint="删除线 ⌘⇧S"
+        hint={`删除线 ${formatShortcutForDisplay(shortcuts.strike, shortcutPlatform)}`}
         onClick={() => editor.chain().focus().toggleStrike().run()}
       >
         S
       </ToolbarButton>
       <ToolbarButton
         active={editor.isActive("code")}
-        hint="行内代码 ⌘⇧E"
+        hint={`行内代码 ${formatShortcutForDisplay(shortcuts.code, shortcutPlatform)}`}
         onClick={() => editor.chain().focus().toggleCode().run()}
       >
         &lt;&gt;
       </ToolbarButton>
-      <ToolbarButton active={editor.isActive("link")} hint="链接 ⌘K" onClick={onLinkEdit}>
+      <ToolbarButton
+        active={editor.isActive("link")}
+        hint={`链接 ${formatShortcutForDisplay(shortcuts.link, shortcutPlatform)}`}
+        onClick={onLinkEdit}
+      >
         <Link2 className="h-3.5 w-3.5" />
       </ToolbarButton>
       <span className="separator" />
-      <button className="note-bubble-action" title="批注 C" onClick={onAnnotate}>
-        批注 C
+      <button
+        className="note-bubble-action"
+        title={`批注 ${formatShortcutForDisplay(shortcuts.annotate, shortcutPlatform)}`}
+        onClick={onAnnotate}
+      >
+        批注 {formatShortcutForDisplay(shortcuts.annotate, shortcutPlatform)}
       </button>
       <button
         className="note-bubble-action"
@@ -792,55 +826,63 @@ function handleEditorShortcuts(
   applyBlocks: (blocks: NoteBlock[], focusBlockId?: string) => void,
   setLinkMenu: (menu: LinkMenuState | null) => void,
   setLinkDraft: (value: string) => void,
+  bindings: AppKeyboardShortcuts["noteEditor"] = DEFAULT_NOTE_EDITOR_SHORTCUTS,
   onSelectText?: (blockId: string, text: string) => void
 ) {
   if (event.key === "Escape" && !editor.state.selection.empty) {
     collapseSelection(editor)
     return true
   }
-  if (isMeta(event) && !event.shiftKey && event.key.toLowerCase() === "b") {
+  if (matchesShortcut(event, bindings.bold)) {
     editor.chain().focus().toggleBold().run()
     return true
   }
-  if (isMeta(event) && !event.shiftKey && event.key.toLowerCase() === "i") {
+  if (matchesShortcut(event, bindings.italic)) {
     editor.chain().focus().toggleItalic().run()
     return true
   }
-  if (isMeta(event) && event.shiftKey && event.key.toLowerCase() === "h") {
+  if (matchesShortcut(event, bindings.highlight)) {
     editor.chain().focus().toggleHighlight().run()
     return true
   }
-  if (isMeta(event) && event.shiftKey && event.key.toLowerCase() === "s") {
+  if (matchesShortcut(event, bindings.strike)) {
     editor.chain().focus().toggleStrike().run()
     return true
   }
-  if (isMeta(event) && event.shiftKey && event.key.toLowerCase() === "e") {
+  if (matchesShortcut(event, bindings.code)) {
     editor.chain().focus().toggleCode().run()
     return true
   }
-  if (!isMeta(event) && !event.altKey && event.key.toLowerCase() === "c") {
+  if (matchesShortcut(event, bindings.annotate)) {
     return triggerSelectionAnnotation(editor, onSelectText)
   }
-  if (isMeta(event) && event.key.toLowerCase() === "k") {
+  if (matchesShortcut(event, bindings.link)) {
     openLinkEditor(editor, setLinkMenu, setLinkDraft)
     return true
   }
-  if (isMeta(event) && event.key.toLowerCase() === "d") {
+  if (matchesShortcut(event, bindings.duplicateBlock)) {
     const blockId = getCurrentBlockId(editor)
     if (blockId) {
       applyBlocks(duplicateBlock(blocks, blockId))
       return true
     }
   }
-  if (isMeta(event) && event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+  if (matchesShortcut(event, bindings.moveBlockUp) || matchesShortcut(event, bindings.moveBlockDown)) {
     const blockId = getCurrentBlockId(editor)
     if (blockId) {
-      applyBlocks(moveBlockByOffset(blocks, blockId, event.key === "ArrowUp" ? -1 : 1), blockId)
+      applyBlocks(
+        moveBlockByOffset(
+          blocks,
+          blockId,
+          matchesShortcut(event, bindings.moveBlockUp) ? -1 : 1
+        ),
+        blockId
+      )
       return true
     }
   }
-  if (isMeta(event) && event.altKey) {
-    const commandKey = { "1": "heading-1", "2": "heading-2", "3": "heading-3", "0": "paragraph" }[event.key]
+  const commandKey = resolveShortcutCommandKey(event, bindings)
+  if (commandKey) {
     const command = commandKey ? findNoteEditorCommand(commandKey) : undefined
     const blockId = getCurrentBlockId(editor)
     if (command && blockId) {
@@ -1210,4 +1252,23 @@ function preventFocusLoss(event: React.MouseEvent) {
 
 function isMeta(event: KeyboardEvent) {
   return event.metaKey || event.ctrlKey
+}
+
+function resolveShortcutCommandKey(
+  event: KeyboardEvent,
+  bindings: AppKeyboardShortcuts["noteEditor"]
+) {
+  if (matchesShortcut(event, bindings.heading1)) {
+    return "heading-1"
+  }
+  if (matchesShortcut(event, bindings.heading2)) {
+    return "heading-2"
+  }
+  if (matchesShortcut(event, bindings.heading3)) {
+    return "heading-3"
+  }
+  if (matchesShortcut(event, bindings.paragraph)) {
+    return "paragraph"
+  }
+  return undefined
 }

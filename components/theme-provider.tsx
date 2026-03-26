@@ -12,12 +12,12 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
-  theme: "dark",
+  theme: "system",
   setTheme: () => {}
 })
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<AppTheme>("dark")
+  const [theme, setThemeState] = useState<AppTheme>("system")
 
   // 初始化：从 localStorage 读取用户偏好
   useEffect(() => {

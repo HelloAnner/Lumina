@@ -36,6 +36,18 @@ test("buildModelRequest 会透传目标语言并保留段落索引", async () =>
   ])
 })
 
+test("buildModelRequest 会要求模型输出保留信息密度的润色译文", async () => {
+  const { buildModelRequest } = await import("./request")
+
+  const request = buildModelRequest(["Artificial intelligence is accelerating."], demoModel, "zh-CN")
+  const systemPrompt = String(request.body.messages[0]?.content ?? "")
+
+  assert.match(systemPrompt, /润色/)
+  assert.match(systemPrompt, /信息密度/)
+  assert.match(systemPrompt, /可读性/)
+  assert.match(systemPrompt, /通俗说明/)
+})
+
 test("buildTranslationBatches 会按段落数和字符数拆分批次", async () => {
   const { buildTranslationBatches } = await import("./request")
 

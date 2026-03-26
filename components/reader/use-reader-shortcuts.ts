@@ -9,24 +9,27 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import type { HighlightColor, HighlightShortcuts } from "@/src/server/store/types"
-
-const DEFAULT_SHORTCUTS: HighlightShortcuts = {
-  yellow: "1",
-  green: "2",
-  blue: "3",
-  pink: "4",
-  note: "n"
-}
+import {
+  DEFAULT_READER_SHORTCUTS,
+  getEffectiveKeyboardShortcuts,
+  matchesShortcut
+} from "@/src/lib/keyboard-shortcuts"
+import type {
+  AppKeyboardShortcuts,
+  HighlightColor,
+  HighlightShortcuts
+} from "@/src/server/store/types"
 
 export function useReaderShortcuts({
   selectedText,
   shortcuts,
+  keyboardShortcuts,
   onHighlight,
   onNote
 }: {
   selectedText: string
   shortcuts?: HighlightShortcuts
+  keyboardShortcuts?: AppKeyboardShortcuts
   onHighlight: (color: HighlightColor) => void
   onNote: () => void
 }) {
@@ -53,19 +56,21 @@ export function useReaderShortcuts({
         return
       }
 
-      const bindings = shortcuts ?? DEFAULT_SHORTCUTS
-      const key = event.key.toLowerCase()
+      const bindings = getEffectiveKeyboardShortcuts(
+        keyboardShortcuts,
+        shortcuts
+      ).reader
       const colors: HighlightColor[] = ["yellow", "green", "blue", "pink"]
 
       for (const color of colors) {
-        if (key === bindings[color].toLowerCase()) {
+        if (matchesShortcut(event, bindings[color])) {
           event.preventDefault()
           onHighlight(color)
           return
         }
       }
 
-      if (key === bindings.note.toLowerCase()) {
+      if (matchesShortcut(event, bindings.note)) {
         event.preventDefault()
         onNote()
       }
@@ -73,9 +78,9 @@ export function useReaderShortcuts({
 
     window.addEventListener("keydown", handleKeydown)
     return () => window.removeEventListener("keydown", handleKeydown)
-  }, [selectedText, shortcuts, onHighlight, onNote])
+  }, [keyboardShortcuts, onHighlight, onNote, selectedText, shortcuts])
 
   return { showShortcutHint: showHint, dismissShortcutHint: dismissHint }
 }
 
-export { DEFAULT_SHORTCUTS }
+export { DEFAULT_READER_SHORTCUTS as DEFAULT_SHORTCUTS }

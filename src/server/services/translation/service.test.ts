@@ -191,6 +191,7 @@ test("prefetchBookTranslations 会复用同章节的进行中翻译任务", asyn
   }
 
   let fetchCount = 0
+  const targetLanguage = `unit-test-dedupe-${Date.now()}`
   context.mock.method(globalThis, "fetch", async (_url: string | URL | Request, init?: RequestInit) => {
     fetchCount += 1
     const body = JSON.parse(String(init?.body)) as {
@@ -225,14 +226,14 @@ test("prefetchBookTranslations 会复用同章节的进行中翻译任务", asyn
         userId: demo!.id,
         book,
         sectionIndexes: [0],
-        targetLanguage: "unit-test-dedupe",
+        targetLanguage,
         model
       }),
       prefetchBookTranslations({
         userId: demo!.id,
         book,
         sectionIndexes: [0],
-        targetLanguage: "unit-test-dedupe",
+        targetLanguage,
         model
       })
     ])

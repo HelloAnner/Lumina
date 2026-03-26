@@ -18,7 +18,10 @@ app.post("/", async (c) => {
     .object({
       bookId: z.string(),
       format: z.enum(["PDF", "EPUB"]),
+      assetType: z.enum(["text", "image"]).optional(),
       contentMode: z.enum(["original", "translation"]).optional(),
+      sourceTitle: z.string().optional(),
+      sourceSectionTitle: z.string().optional(),
       targetLanguage: z.string().optional(),
       counterpartContent: z.string().optional(),
       counterpartParaOffsetStart: z.number().optional(),
@@ -29,9 +32,13 @@ app.post("/", async (c) => {
       paraOffsetEnd: z.number().optional(),
       cfiRange: z.string().optional(),
       chapterHref: z.string().optional(),
+      imageUrl: z.string().optional(),
+      imageObjectKey: z.string().optional(),
+      imageAlt: z.string().optional(),
       content: z.string().min(1),
       note: z.string().optional(),
-      color: z.enum(["yellow", "green", "blue", "pink"])
+      color: z.enum(["yellow", "green", "blue", "pink"]),
+      immediateSync: z.boolean().optional()
     })
     .parse(await c.req.json())
   const userId = c.get("userId")
@@ -41,10 +48,16 @@ app.post("/", async (c) => {
     contentMode: payload.contentMode ?? "original"
   })
 
-  // 后台同步划线到主题树（不阻塞响应，不弹通知）
-  void syncPendingHighlights(userId).catch((err) => {
-    console.error("[highlight-sync] sync failed:", err)
-  })
+  if (payload.immediateSync) {
+    await syncPendingHighlights(userId).catch((err) => {
+      console.error("[highlight-sync] sync failed:", err)
+    })
+  } else {
+    // 后台同步划线到主题树（不阻塞响应，不弹通知）
+    void syncPendingHighlights(userId).catch((err) => {
+      console.error("[highlight-sync] sync failed:", err)
+    })
+  }
 
   return c.json({ item: highlight })
 })

@@ -9,8 +9,20 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { Highlight, HighlightColor, ReaderSettings, ReaderTheme, ScoutArticle } from "@/src/server/store/types"
-import type { ResolvedHighlight } from "@/components/reader/reader-types"
+import type {
+  ArticleTranslation,
+  Highlight,
+  HighlightColor,
+  ReaderSettings,
+  ReaderTheme,
+  ScoutArticle
+} from "@/src/server/store/types"
+import type { ResolvedHighlight, SharedReaderView } from "@/components/reader/reader-types"
+import {
+  buildArticleProgressSnapshot,
+  resolveArticleProgressSectionIndex,
+  type ArticleProgressRecord
+} from "@/src/server/services/reading/progress"
 import { buildParagraphSegments } from "@/components/reader/reader-highlight-utils"
 import {
   buildArticleHighlightPayload,
@@ -18,8 +30,14 @@ import {
   buildArticleVirtualContent,
   resolveArticleHighlight
 } from "@/components/articles/article-highlight-utils"
+import { buildArticleOutlineEntries } from "@/components/articles/article-outline-utils"
+import {
+  readGuestArticleOutlineWidth,
+  saveGuestArticleOutlineWidth
+} from "@/components/reader/reader-width-storage"
 import { useArticleTranslation } from "@/components/articles/use-article-translation"
 import type { UiPreferences } from "@/src/server/services/preferences/store"
+import { buildHighlightNoteState } from "@/components/reader/highlight-note-state"
 
 const COLORS = {
   yellow: "rgba(251,191,36,0.35)",
@@ -31,16 +49,24 @@ const COLORS = {
 export interface ArticleReaderProps {
   article: ScoutArticle
   highlights: Highlight[]
+  initialProgress: ArticleProgressRecord
   initialWidths: UiPreferences
   settings?: ReaderSettings
+  initialTranslation?: ArticleTranslation | null
+  sharedView?: SharedReaderView
 }
 
 export function useArticleReaderController({
   article,
   highlights,
+  initialProgress,
   initialWidths,
-  settings
+  settings,
+  initialTranslation,
+  sharedView
 }: ArticleReaderProps) {
+  const readOnly = sharedView?.readOnly ?? false
+  const [articleState, setArticleState] = useState(article)
   const [selectedText, setSelectedText] = useState("")
   const [selectedRange, setSelectedRange] = useState<{ start: number; end: number } | null>(null)
   const [selectionRect, setSelectionRect] = useState<{
@@ -50,15 +76,20 @@ export function useArticleReaderController({
     containerWidth: number
   } | null>(null)
   const [noteDraft, setNoteDraft] = useState("")
+  const [editingHighlightId, setEditingHighlightId] = useState<string | null>(null)
   const [composerOpen, setComposerOpen] = useState(false)
-  const [panelItems, setPanelItems] = useState(highlights)
+  const [panelItems, setPanelItems] = useState(() => sortHighlightsByCreatedAt(highlights))
   const [toast, setToast] = useState("")
+  const [scrollProgress, setScrollProgress] = useState(() =>
+    Math.round((initialProgress.progress || article.readProgress) * 100)
+  )
   const [fontSize, setFontSize] = useState<ReaderSettings["fontSize"]>(settings?.fontSize ?? 16)
   const [lineHeight, setLineHeight] = useState<ReaderSettings["lineHeight"]>(settings?.lineHeight ?? 2)
   const [letterSpacing, setLetterSpacing] = useState(0)
   const [fontFamily, setFontFamily] = useState<ReaderSettings["fontFamily"]>(settings?.fontFamily ?? "system")
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(settings?.theme ?? "day")
   const [showFontPanel, setShowFontPanel] = useState(false)
+  const [outlineWidth, setOutlineWidth] = useState(initialWidths.articleOutlineWidth)
   const [highlightsWidth, setHighlightsWidth] = useState(initialWidths.readerHighlightsWidth)
   const [refetching, setRefetching] = useState(false)
 
@@ -68,13 +99,26 @@ export function useArticleReaderController({
   const paragraphRefs = useRef<Record<string, HTMLElement | null>>({})
   const prefTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const progressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const preferredSectionIndex = useMemo(
+    () => resolveArticleProgressSectionIndex(articleState, initialProgress),
+    [articleState, initialProgress]
+  )
+
+  useEffect(() => {
+    if (!readOnly) {
+      return
+    }
+    setOutlineWidth(readGuestArticleOutlineWidth(initialWidths.articleOutlineWidth))
+  }, [initialWidths.articleOutlineWidth, readOnly])
 
   const translation = useArticleTranslation({
-    articleId: article.id,
-    articleTitle: article.title,
-    originalSections: article.content,
-    initialView: article.translationView ?? "original",
-    initialTranslatedTitle: article.translatedTitle,
+    articleId: articleState.id,
+    articleTitle: articleState.title,
+    originalSections: articleState.content,
+    initialView: articleState.translationView ?? "original",
+    initialTranslatedContent: initialTranslation?.content ?? null,
+    initialTranslatedTitle: articleState.translatedTitle,
+    readOnly,
     onError: setToast
   })
 
@@ -117,6 +161,21 @@ export function useArticleReaderController({
     [resolvedHighlights]
   )
 
+  const openHighlightNoteComposer = useCallback((highlightId: string) => {
+    const target = panelItems.find((item) => item.id === highlightId)
+    if (!target) {
+      return
+    }
+    const nextState = buildHighlightNoteState(target)
+    setSelectedText(nextState.selectedText)
+    setNoteDraft(nextState.noteDraft)
+    setEditingHighlightId(nextState.editingHighlightId)
+    setComposerOpen(true)
+    setSelectionRect(null)
+    setSelectedRange(null)
+    window.getSelection()?.removeAllRanges()
+  }, [panelItems])
+
   // 渲染段落（带高亮标记）
   const renderParagraphContent = useCallback(
     (paragraphText: string, paragraphStart: number, sectionIndex: number) => {
@@ -126,8 +185,13 @@ export function useArticleReaderController({
         segment.activeHighlightId ? (
           <mark
             key={`${segment.activeHighlightId}-${paragraphStart}-${index}`}
-            className="rounded-[4px] px-[1px] text-inherit"
+            className="cursor-pointer rounded-[4px] px-[1px] text-inherit"
             style={{ backgroundColor: COLORS[segment.color!] }}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              openHighlightNoteComposer(segment.activeHighlightId!)
+            }}
           >
             {segment.text}
           </mark>
@@ -136,11 +200,17 @@ export function useArticleReaderController({
         )
       )
     },
-    [highlightsBySection]
+    [highlightsBySection, openHighlightNoteComposer]
   )
 
   // 选区捕获
   const handleMouseUp = useCallback(() => {
+    if (readOnly) {
+      setSelectedText("")
+      setSelectedRange(null)
+      setSelectionRect(null)
+      return
+    }
     const selection = window.getSelection()
     const rawText = selection?.toString() ?? ""
     const text = rawText.trim()
@@ -193,25 +263,28 @@ export function useArticleReaderController({
       selectionCenterX: rect.left - mainRect.left + rect.width / 2,
       containerWidth: mainRect.width
     })
-  }, [])
+  }, [readOnly])
 
   // 进入阅读器时标记为「阅读中」（归档文章同时恢复）
   useEffect(() => {
+    if (readOnly) {
+      return
+    }
     const updates: Record<string, unknown> = {}
-    if (!article.reading) {
+    if (!articleState.reading) {
       updates.reading = true
     }
-    if (article.archived) {
+    if (articleState.archived) {
       updates.archived = false
     }
     if (Object.keys(updates).length > 0) {
-      fetch(`/api/articles/${article.id}`, {
+      fetch(`/api/articles/${articleState.id}`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(updates)
       }).catch(() => undefined)
     }
-  }, [article.id, article.reading, article.archived])
+  }, [articleState.archived, articleState.id, articleState.reading, readOnly])
 
   // 点击工具栏外清除选区（想法编辑器打开时保留选区）
   useEffect(() => {
@@ -263,10 +336,17 @@ export function useArticleReaderController({
       clearTimeout(prefTimer.current)
     }
     prefTimer.current = setTimeout(async () => {
+      if (readOnly) {
+        saveGuestArticleOutlineWidth(outlineWidth)
+        return
+      }
       await fetch("/api/preferences/ui", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ readerHighlightsWidth: Math.round(highlightsWidth) })
+        body: JSON.stringify({
+          readerHighlightsWidth: Math.round(highlightsWidth),
+          articleOutlineWidth: Math.round(outlineWidth)
+        })
       })
     }, 180)
     return () => {
@@ -274,10 +354,27 @@ export function useArticleReaderController({
         clearTimeout(prefTimer.current)
       }
     }
-  }, [highlightsWidth])
+  }, [highlightsWidth, outlineWidth, readOnly])
+
+  useEffect(() => {
+    if (preferredSectionIndex <= 0) {
+      return
+    }
+    const timer = window.requestAnimationFrame(() => {
+      const container = scrollContainerRef.current
+      const target = container?.querySelector(
+        `[data-article-section-index="${preferredSectionIndex}"]`
+      ) as HTMLElement | null
+      target?.scrollIntoView({ behavior: "auto", block: "start" })
+    })
+    return () => window.cancelAnimationFrame(timer)
+  }, [preferredSectionIndex])
 
   // 进度追踪
   const persistProgress = useCallback(() => {
+    if (readOnly) {
+      return
+    }
     if (progressTimer.current) {
       clearTimeout(progressTimer.current)
     }
@@ -289,36 +386,55 @@ export function useArticleReaderController({
       const scrollPercent = container.scrollHeight > container.clientHeight
         ? container.scrollTop / (container.scrollHeight - container.clientHeight)
         : 0
-      fetch(`/api/articles/${article.id}`, {
+      const activeSectionIndex = findCurrentArticleSectionIndex(container, preferredSectionIndex)
+      const nextProgress = buildArticleProgressSnapshot(
+        articleState,
+        activeSectionIndex,
+        scrollPercent
+      )
+      setScrollProgress(Math.round(nextProgress.progress * 100))
+      setArticleState((current) => ({
+        ...current,
+        readProgress: nextProgress.progress,
+        lastReadPosition: nextProgress.currentPageId,
+        lastReadAt: new Date().toISOString()
+      }))
+      fetch(`/api/articles/${articleState.id}/progress`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          readProgress: Math.min(1, Math.max(0, scrollPercent)),
-          lastReadAt: new Date().toISOString()
-        })
+        body: JSON.stringify(nextProgress)
       }).catch(() => undefined)
     }, 300)
-  }, [article.id])
+  }, [articleState, preferredSectionIndex, readOnly])
 
   const handleScroll = useCallback(() => {
     persistProgress()
   }, [persistProgress])
 
+  // 文章大纲（从 heading blocks 提取）
+  const outlineEntries = useMemo(
+    () => buildArticleOutlineEntries(translation.displayContent),
+    [translation.displayContent]
+  )
+
   // 创建高亮
   const createHighlight = useCallback(
     async (color: keyof typeof COLORS, note?: string) => {
+      if (readOnly) {
+        return
+      }
       if (!selectedText || !selectedRange) {
         return
       }
       const counterpartVirtualContent =
-        activeContentMode === "translation" && article.content
-          ? buildArticleVirtualContent(article.content)
+        activeContentMode === "translation" && articleState.content
+          ? buildArticleVirtualContent(articleState.content)
           : activeContentMode === "original" && translation.translatedContent
             ? buildArticleVirtualContent(translation.translatedContent)
             : undefined
 
       const payload = buildArticleHighlightPayload({
-        articleId: article.id,
+        articleId: articleState.id,
         selectedText,
         selectedRange,
         contentMode: activeContentMode,
@@ -335,7 +451,7 @@ export function useArticleReaderController({
       })
       const data = await response.json()
       if (response.ok) {
-        setPanelItems((current) => [data.item, ...current])
+        setPanelItems((current) => mergeHighlightItem(current, data.item))
         if (note) {
           setToast("想法已记录")
         }
@@ -344,18 +460,70 @@ export function useArticleReaderController({
       setSelectedRange(null)
       setSelectionRect(null)
       setComposerOpen(false)
+      setEditingHighlightId(null)
       setNoteDraft("")
       window.getSelection()?.removeAllRanges()
     },
-    [activeContentMode, article.content, article.id, selectedRange, selectedText, translation.targetLanguage, translation.translatedContent]
+    [activeContentMode, articleState.content, articleState.id, readOnly, selectedRange, selectedText, translation.targetLanguage, translation.translatedContent]
+  )
+
+  const resolveSectionTitle = useCallback((sectionIndex: number) => {
+    const nearestOutline = [...outlineEntries]
+      .reverse()
+      .find((item) => item.index <= sectionIndex)
+    return nearestOutline?.title || articleState.title
+  }, [articleState.title, outlineEntries])
+
+  const createImageHighlight = useCallback(
+    async (
+      input: {
+        sectionIndex: number
+        imageUrl: string
+        imageAlt?: string
+        imageObjectKey?: string
+      },
+      immediateSync = false
+    ) => {
+      const sectionTitle = resolveSectionTitle(input.sectionIndex)
+      const response = await fetch("/api/highlights", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          bookId: articleState.id,
+          format: "EPUB",
+          assetType: "image",
+          sourceType: "article",
+          articleId: articleState.id,
+          sourceTitle: articleState.title,
+          sourceSectionTitle: sectionTitle,
+          imageUrl: input.imageUrl,
+          imageObjectKey: input.imageObjectKey,
+          imageAlt: input.imageAlt,
+          content: input.imageAlt?.trim() || `${sectionTitle} 图片`,
+          color: immediateSync ? "blue" : "yellow",
+          immediateSync
+        })
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data.item) {
+        setToast(data.error || "图片操作失败")
+        return
+      }
+      setPanelItems((current) => mergeHighlightItem(current, data.item))
+      setToast(immediateSync ? "图片已转入知识库" : "图片已收藏")
+    },
+    [articleState.id, articleState.title, outlineEntries, resolveSectionTitle]
   )
 
   const deleteHighlight = useCallback(async (highlightId: string) => {
+    if (readOnly) {
+      return
+    }
     const response = await fetch(`/api/highlights/${highlightId}`, { method: "DELETE" })
     if (response.ok) {
       setPanelItems((current) => current.filter((item) => item.id !== highlightId))
     }
-  }, [])
+  }, [readOnly])
 
   const openHighlight = useCallback((item: ResolvedHighlight) => {
     // 滚动到高亮位置
@@ -367,14 +535,34 @@ export function useArticleReaderController({
     }
   }, [translation.displayContent])
 
+  const saveNote = useCallback(async () => {
+    if (editingHighlightId) {
+      const response = await fetch(`/api/highlights/${editingHighlightId}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ note: noteDraft })
+      })
+      const data = await response.json().catch(() => ({}))
+      if (response.ok && data.item) {
+        setPanelItems((current) => mergeHighlightItem(current, data.item))
+        setToast("想法已更新")
+      }
+      setComposerOpen(false)
+      setEditingHighlightId(null)
+      setNoteDraft("")
+      return
+    }
+    await createHighlight("yellow", noteDraft)
+  }, [createHighlight, editingHighlightId, noteDraft])
+
   // 重新获取正文
   const handleRefetch = useCallback(async () => {
-    if (!article.sourceUrl) {
+    if (!articleState.sourceUrl) {
       return
     }
     setRefetching(true)
     try {
-      const res = await fetch(`/api/articles/${article.id}/refetch`, { method: "POST" })
+      const res = await fetch(`/api/articles/${articleState.id}/refetch`, { method: "POST" })
       if (res.ok) {
         window.location.reload()
         return
@@ -387,7 +575,24 @@ export function useArticleReaderController({
     } finally {
       setRefetching(false)
     }
-  }, [article.id, article.sourceUrl])
+  }, [articleState.id, articleState.sourceUrl])
+
+  const toggleFavorite = useCallback(async () => {
+    if (readOnly) {
+      return
+    }
+    const response = await fetch(
+      `/api/articles/${articleState.id}/${articleState.favorite ? "unfavorite" : "favorite"}`,
+      { method: "POST" }
+    )
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok || !data.item) {
+      setToast(data.error || "收藏操作失败")
+      return
+    }
+    setArticleState(data.item)
+    setToast(articleState.favorite ? "已取消收藏" : "已收藏")
+  }, [articleState.favorite, articleState.id, readOnly])
 
   const createResizeHandler = useCallback(
     (
@@ -415,25 +620,9 @@ export function useArticleReaderController({
     []
   )
 
-  // 文章大纲（从 heading blocks 提取）
-  const outlineEntries = useMemo(() => {
-    return translation.displayContent
-      .map((section, idx) => {
-        if (section.type !== "heading") {
-          return null
-        }
-        return { index: idx, title: section.text ?? "", level: section.level ?? 1 }
-      })
-      .filter(Boolean) as { index: number; title: string; level: number }[]
-  }, [translation.displayContent])
-
   // 读进度百分比
-  const scrollProgress = useMemo(() => {
-    return Math.round(article.readProgress * 100)
-  }, [article.readProgress])
-
   return {
-    article,
+    article: articleState,
     displayTitle: translation.displayTitle,
     displayContent: translation.displayContent,
     outlineEntries,
@@ -443,6 +632,7 @@ export function useArticleReaderController({
     selectionRect,
     selectedText,
     noteDraft,
+    editingHighlightId,
     composerOpen,
     toast,
     refetching,
@@ -456,6 +646,7 @@ export function useArticleReaderController({
     fontFamily,
     readerTheme,
     showFontPanel,
+    outlineWidth,
     highlightsWidth,
     fontPanelRef,
     readerMainRef,
@@ -465,13 +656,18 @@ export function useArticleReaderController({
     handleScroll,
     handleMouseUp,
     handleRefetch,
+    toggleFavorite,
+    createImageHighlight,
     openHighlight,
+    openHighlightNoteComposer,
     toggleTranslationView: translation.toggleTranslationView,
     createHighlight,
+    saveNote,
     deleteHighlight,
     createResizeHandler,
     setToast,
     setNoteDraft,
+    setEditingHighlightId,
     setComposerOpen,
     setShowFontPanel,
     setFontSize,
@@ -479,6 +675,34 @@ export function useArticleReaderController({
     setLetterSpacing,
     setFontFamily,
     setReaderTheme,
+    setOutlineWidth,
     setHighlightsWidth
   }
+}
+
+function findCurrentArticleSectionIndex(container: HTMLDivElement, fallback: number) {
+  const containerTop = container.getBoundingClientRect().top
+  const nodes = Array.from(
+    container.querySelectorAll<HTMLElement>("[data-article-section-index]")
+  )
+  let activeIndex = fallback
+  for (const node of nodes) {
+    const rect = node.getBoundingClientRect()
+    if (rect.top - containerTop <= 160) {
+      activeIndex = Number(node.dataset.articleSectionIndex ?? activeIndex)
+    }
+  }
+  return activeIndex
+}
+
+function sortHighlightsByCreatedAt(items: Highlight[]) {
+  return [...items].sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+}
+
+function mergeHighlightItem(items: Highlight[], nextItem: Highlight) {
+  const exists = items.some((item) => item.id === nextItem.id)
+  if (!exists) {
+    return [...items, nextItem]
+  }
+  return items.map((item) => (item.id === nextItem.id ? nextItem : item))
 }

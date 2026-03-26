@@ -9,7 +9,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { encryptValue } from "@/src/server/lib/crypto"
 import { repository } from "@/src/server/repositories"
-import type { ModelConfig } from "@/src/server/store/types"
+import type { ModelConfig, ShareEndpointConfig } from "@/src/server/store/types"
 
 import app from "./settings"
 
@@ -189,4 +189,46 @@ test("PUT /models/:id 在 apiKey 留空时不会把已有密文再次传回保�
   assert.equal(response.status, 200)
   assert.equal(savedPayloads.length, 1)
   assert.equal(savedPayloads[0]?.apiKey, "")
+})
+
+test("GET /share-endpoint 返回全局分享地址配置", async (context) => {
+  context.mock.method(repository, "getShareEndpointConfig", () => ({
+    host: "192.168.31.18",
+    port: 80
+  }))
+
+  const response = await app.request("/share-endpoint")
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), {
+    item: {
+      host: "192.168.31.18",
+      port: 80
+    }
+  })
+})
+
+test("PUT /share-endpoint 会保存全局分享地址配置", async (context) => {
+  const savedPayloads: Array<Record<string, unknown>> = []
+
+  context.mock.method(repository, "saveShareEndpointConfig", (input: ShareEndpointConfig) => {
+    savedPayloads.push({ ...input })
+    return input
+  })
+
+  const response = await app.request("/share-endpoint", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      host: "192.168.31.20",
+      port: 8080
+    })
+  })
+
+  assert.equal(response.status, 200)
+  assert.equal(savedPayloads.length, 1)
+  assert.deepEqual(savedPayloads[0], {
+    host: "192.168.31.20",
+    port: 8080
+  })
 })

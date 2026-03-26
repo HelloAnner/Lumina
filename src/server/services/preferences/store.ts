@@ -7,6 +7,7 @@ export interface UiPreferences {
   knowledgeListWidth: number
   readerTocWidth: number
   readerHighlightsWidth: number
+  articleOutlineWidth: number
   articleSortBy: ArticleSortBy
 }
 
@@ -21,6 +22,7 @@ const DEFAULT_PREFERENCES: UiPreferences = {
   knowledgeListWidth: 280,
   readerTocWidth: 240,
   readerHighlightsWidth: 320,
+  articleOutlineWidth: 220,
   articleSortBy: "lastRead"
 }
 
@@ -42,6 +44,7 @@ async function ensurePreferenceSchema() {
           knowledge_list_width INTEGER NOT NULL DEFAULT 280,
           reader_toc_width INTEGER NOT NULL DEFAULT 240,
           reader_highlights_width INTEGER NOT NULL DEFAULT 320,
+          article_outline_width INTEGER NOT NULL DEFAULT 220,
           updated_at TIMESTAMPTZ DEFAULT NOW()
         )
       `)
@@ -61,6 +64,12 @@ async function ensurePreferenceSchema() {
         getBookPool().query(`
           ALTER TABLE user_ui_preferences
           ADD COLUMN IF NOT EXISTS article_sort_by TEXT NOT NULL DEFAULT 'lastRead'
+        `)
+      )
+      .then(() =>
+        getBookPool().query(`
+          ALTER TABLE user_ui_preferences
+          ADD COLUMN IF NOT EXISTS article_outline_width INTEGER NOT NULL DEFAULT 220
         `)
       )
       .then(() =>
@@ -104,7 +113,7 @@ export async function getUiPreferences(userId: string): Promise<UiPreferences> {
     await ensurePreferenceSchema()
     const result = await getBookPool().query(
       `SELECT knowledge_tree_width, knowledge_list_width,
-              reader_toc_width, reader_highlights_width, article_sort_by
+              reader_toc_width, reader_highlights_width, article_outline_width, article_sort_by
        FROM user_ui_preferences WHERE user_id = $1 LIMIT 1`,
       [userId]
     )
@@ -118,6 +127,8 @@ export async function getUiPreferences(userId: string): Promise<UiPreferences> {
       readerTocWidth: row.reader_toc_width ?? DEFAULT_PREFERENCES.readerTocWidth,
       readerHighlightsWidth:
         row.reader_highlights_width ?? DEFAULT_PREFERENCES.readerHighlightsWidth,
+      articleOutlineWidth:
+        row.article_outline_width ?? DEFAULT_PREFERENCES.articleOutlineWidth,
       articleSortBy: row.article_sort_by ?? DEFAULT_PREFERENCES.articleSortBy
     }
   } catch {
@@ -136,6 +147,8 @@ export async function saveUiPreferences(
     readerTocWidth: preferences.readerTocWidth ?? current.readerTocWidth,
     readerHighlightsWidth:
       preferences.readerHighlightsWidth ?? current.readerHighlightsWidth,
+    articleOutlineWidth:
+      preferences.articleOutlineWidth ?? current.articleOutlineWidth,
     articleSortBy: preferences.articleSortBy ?? current.articleSortBy
   }
   try {
@@ -143,14 +156,15 @@ export async function saveUiPreferences(
     await getBookPool().query(
       `INSERT INTO user_ui_preferences
         (user_id, knowledge_tree_width, knowledge_list_width,
-         reader_toc_width, reader_highlights_width, article_sort_by, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+         reader_toc_width, reader_highlights_width, article_outline_width, article_sort_by, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
        ON CONFLICT (user_id)
        DO UPDATE SET
          knowledge_tree_width = EXCLUDED.knowledge_tree_width,
          knowledge_list_width = EXCLUDED.knowledge_list_width,
          reader_toc_width = EXCLUDED.reader_toc_width,
          reader_highlights_width = EXCLUDED.reader_highlights_width,
+         article_outline_width = EXCLUDED.article_outline_width,
          article_sort_by = EXCLUDED.article_sort_by,
          updated_at = NOW()`,
       [
@@ -159,6 +173,7 @@ export async function saveUiPreferences(
         next.knowledgeListWidth,
         next.readerTocWidth,
         next.readerHighlightsWidth,
+        next.articleOutlineWidth,
         next.articleSortBy
       ]
     )

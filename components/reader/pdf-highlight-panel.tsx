@@ -27,12 +27,16 @@ function HighlightCard({
   item,
   active,
   onClick,
-  onDelete
+  onDoubleClick,
+  onDelete,
+  readOnly
 }: {
   item: Highlight
   active: boolean
   onClick: () => void
+  onDoubleClick?: () => void
   onDelete: (e: React.MouseEvent) => void
+  readOnly?: boolean
 }) {
   const [showDelete, setShowDelete] = useState(false)
 
@@ -43,25 +47,42 @@ function HighlightCard({
         active ? "border-primary/30 bg-elevated/70" : "border-border hover:border-border/80"
       )}
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
       onMouseEnter={() => setShowDelete(true)}
       onMouseLeave={() => setShowDelete(false)}
     >
-      <button
-        onClick={onDelete}
-        className={cn(
-          "absolute right-2 top-2 rounded p-1.5 text-muted opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive",
-          showDelete && "opacity-100"
-        )}
-        title="删除"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
-      <div
-        className="rounded-md px-3 py-2 text-sm leading-6 text-foreground"
-        style={{ backgroundColor: COLORS[item.color] }}
-      >
-        {item.content}
-      </div>
+      {!readOnly ? (
+        <button
+          onClick={onDelete}
+          className={cn(
+            "absolute right-2 top-2 rounded p-1.5 text-muted opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive",
+            showDelete && "opacity-100"
+          )}
+          title="删除"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
+      {item.assetType === "image" && item.imageUrl ? (
+        <div className="space-y-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={item.imageUrl}
+            alt={item.imageAlt ?? item.content}
+            className="max-h-32 w-full rounded-md border border-border/50 bg-surface/40 object-cover"
+          />
+          <div className="text-[12px] leading-5 text-secondary">
+            {item.imageAlt?.trim() || item.content}
+          </div>
+        </div>
+      ) : (
+        <div
+          className="rounded-md px-3 py-2 text-sm leading-6 text-foreground"
+          style={{ backgroundColor: COLORS[item.color] }}
+        >
+          {item.content}
+        </div>
+      )}
       <div className="text-[11px] text-muted">第 {item.pageIndex ?? 1} 页</div>
       {item.note ? <div className="text-sm leading-6 text-secondary">{item.note}</div> : null}
     </Card>
@@ -74,18 +95,22 @@ export function PdfHighlightPanel({
   items,
   currentPageIndex,
   onOpenHighlight,
+  onEditHighlight,
   onDeleteHighlight,
   onResizeStart,
-  onToggleCollapse
+  onToggleCollapse,
+  readOnly
 }: {
   width: number
   collapsed: boolean
   items: Highlight[]
   currentPageIndex: number
   onOpenHighlight: (item: Highlight) => void
+  onEditHighlight?: (id: string) => void
   onDeleteHighlight: (id: string) => void
   onResizeStart: (event: React.MouseEvent) => void
   onToggleCollapse: () => void
+  readOnly?: boolean
 }) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -159,7 +184,9 @@ export function PdfHighlightPanel({
               <HighlightCard
                 item={item}
                 active={active}
+                readOnly={readOnly}
                 onClick={() => onOpenHighlight(item)}
+                onDoubleClick={() => onEditHighlight?.(item.id)}
                 onDelete={(e) => {
                   e.stopPropagation()
                   onDeleteHighlight(item.id)

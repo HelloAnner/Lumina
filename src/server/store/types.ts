@@ -24,6 +24,8 @@ export type ScoutPatchStatus = "pending" | "approved" | "merged" | "rejected" | 
 export type ScoutEntryStatus = "raw" | "analyzing" | "matched" | "discarded"
 export type PublishFormat = "markdown" | "html" | "pdf"
 export type AnnotationStatus = "pending" | "processing" | "done" | "failed"
+export type ShareResourceType = "book" | "article"
+export type ShareDurationOption = "24h" | "7d" | "30d" | "never"
 
 /**
  * 笔记块类型
@@ -152,6 +154,10 @@ export interface ImageBlock extends NoteBlockBase {
   externalUrl?: string
   originalName: string
   alt?: string
+  highlightId?: string
+  sourceBookId?: string
+  sourceBookTitle?: string
+  sourceLocation?: string
   /** Obsidian 指定的显示宽度 */
   displayWidth?: number
   width?: number
@@ -359,6 +365,8 @@ export type ReaderSectionBlock =
   | {
       type: "image"
       src: string
+      objectKey?: string
+      externalUrl?: string
       alt?: string
       width?: number
       height?: number
@@ -369,10 +377,13 @@ export interface Highlight {
   userId: string
   bookId: string
   format: BookFormat
+  assetType?: "text" | "image"
   /** 来源类型：书籍或文章 */
   sourceType?: "book" | "article"
   /** 关联的文章 ID（sourceType=article 时有效） */
   articleId?: string
+  sourceTitle?: string
+  sourceSectionTitle?: string
   contentMode: TranslationDisplayMode
   targetLanguage?: string
   counterpartContent?: string
@@ -384,6 +395,9 @@ export interface Highlight {
   paraOffsetEnd?: number
   cfiRange?: string
   chapterHref?: string
+  imageUrl?: string
+  imageObjectKey?: string
+  imageAlt?: string
   content: string
   note?: string
   color: HighlightColor
@@ -449,12 +463,51 @@ export interface StorageConfig {
   region?: string
 }
 
+export interface ShareEndpointConfig {
+  host: string
+  port: number
+}
+
+export interface ShareLink {
+  id: string
+  token: string
+  ownerUserId: string
+  resourceType: ShareResourceType
+  resourceId: string
+  expiresAt?: string | null
+  createdAt: string
+  lastAccessedAt?: string
+  revokedAt?: string
+}
+
 export interface HighlightShortcuts {
   yellow: string
   green: string
   blue: string
   pink: string
   note: string
+}
+
+export interface NoteEditorShortcuts {
+  annotate: string
+  bold: string
+  italic: string
+  highlight: string
+  strike: string
+  code: string
+  link: string
+  duplicateBlock: string
+  moveBlockUp: string
+  moveBlockDown: string
+  heading1: string
+  heading2: string
+  heading3: string
+  paragraph: string
+}
+
+export interface AppKeyboardShortcuts {
+  reader: HighlightShortcuts
+  noteEditor: NoteEditorShortcuts
 }
 
 export interface ReaderSettings {
@@ -466,6 +519,7 @@ export interface ReaderSettings {
   navigationMode: "horizontal" | "vertical"
   translationView: TranslationDisplayMode
   highlightShortcuts?: HighlightShortcuts
+  keyboardShortcuts?: AppKeyboardShortcuts
 }
 
 export interface BookTranslation {
@@ -551,6 +605,8 @@ export interface ArticleSection {
   level?: 1 | 2 | 3
   text?: string
   src?: string
+  assetId?: string
+  objectKey?: string
   alt?: string
   language?: string
   items?: string[]
@@ -595,6 +651,10 @@ export interface ScoutArticle {
   coverImage?: string
   /** 是否正在阅读中（显式标记，点击阅读即为 true，手动归档才清除） */
   reading?: boolean
+  /** 收藏标记：收藏文章不自动清理 */
+  favorite?: boolean
+  /** 收藏时间 */
+  favoritedAt?: string
   /** 归档标记 */
   archived?: boolean
   /** 归档时间 */
@@ -862,6 +922,8 @@ export interface Database {
   modelConfigs: ModelConfig[]
   modelBindings: ModelBinding[]
   storageConfigs: StorageConfig[]
+  shareLinks: ShareLink[]
+  shareEndpointConfig?: ShareEndpointConfig
   readerSettings: ReaderSettings[]
   translations: BookTranslation[]
   tocTranslations: BookTocTranslation[]

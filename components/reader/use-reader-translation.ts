@@ -57,18 +57,28 @@ export function useReaderTranslation({
   pageIndex,
   initialView,
   initialTargetLanguage,
+  initialItems = [],
+  initialTocTranslation = null,
+  readOnly = false,
   onError
 }: {
   book: Book
   pageIndex: number
   initialView: TranslationDisplayMode
   initialTargetLanguage?: string
+  initialItems?: BookTranslation[]
+  initialTocTranslation?: BookTocTranslation | null
+  readOnly?: boolean
   onError: (message: string) => void
 }) {
   const [translationView, setTranslationView] = useState<TranslationDisplayMode>(initialView)
   const [targetLanguage, setTargetLanguage] = useState(initialTargetLanguage || DEFAULT_TARGET_LANGUAGE)
-  const [translationItems, setTranslationItems] = useState<Record<number, BookTranslation>>({})
-  const [tocTranslation, setTocTranslation] = useState<BookTocTranslation | null>(null)
+  const [translationItems, setTranslationItems] = useState<Record<number, BookTranslation>>(
+    indexItemsBySection(initialItems)
+  )
+  const [tocTranslation, setTocTranslation] = useState<BookTocTranslation | null>(
+    initialTocTranslation
+  )
   const [busyIndexes, setBusyIndexes] = useState<number[]>([])
   const [translationError, setTranslationError] = useState<string | null>(null)
   const activeBookIdRef = useRef(book.id)
@@ -78,11 +88,11 @@ export function useReaderTranslation({
       return
     }
     activeBookIdRef.current = book.id
-    setTranslationItems({})
-    setTocTranslation(null)
+    setTranslationItems(indexItemsBySection(initialItems))
+    setTocTranslation(initialTocTranslation)
     setBusyIndexes([])
     setTranslationView(initialView)
-  }, [book.id, initialView])
+  }, [book.id, initialItems, initialTocTranslation, initialView])
 
   const translatedSectionIndexes = useMemo(() => {
     return Object.keys(translationItems).map((item) => Number(item))
@@ -106,6 +116,9 @@ export function useReaderTranslation({
   const fetchTranslations = useCallback(
     async (sectionIndexes: number[], shouldFallbackToOriginal: boolean) => {
       if (sectionIndexes.length === 0) {
+        return
+      }
+      if (readOnly) {
         return
       }
       setBusyIndexes((current) => Array.from(new Set([...current, ...sectionIndexes])))
@@ -139,13 +152,16 @@ export function useReaderTranslation({
         setBusyIndexes((current) => current.filter((item) => !sectionIndexes.includes(item)))
       }
     },
-    [book.id, onError, targetLanguage]
+    [book.id, onError, readOnly, targetLanguage]
   )
 
   // 防抖：频繁滚动时聚合翻译请求，等待 400ms 稳定后再触发
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (translationView !== "translation") {
+      return
+    }
+    if (readOnly) {
       return
     }
     if (debounceTimerRef.current) {
@@ -170,16 +186,25 @@ export function useReaderTranslation({
     busyIndexes,
     fetchTranslations,
     pageIndex,
+    readOnly,
     translatedSectionIndexes,
     translationView
   ])
 
   const toggleTranslationView = useCallback(() => {
     setTranslationError(null)
+    if (
+      readOnly &&
+      translationView !== "translation" &&
+      Object.keys(translationItems).length === 0 &&
+      !tocTranslation
+    ) {
+      return
+    }
     setTranslationView((current) => {
       return current === "translation" ? "original" : "translation"
     })
-  }, [])
+  }, [readOnly, tocTranslation, translationItems, translationView])
 
   return {
     translationView,

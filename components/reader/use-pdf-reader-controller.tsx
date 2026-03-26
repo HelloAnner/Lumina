@@ -15,10 +15,22 @@ import {
   findCurrentPdfPageIndex,
   scrollElementIntoReader
 } from "@/components/reader/pdf-reader-utils"
+import {
+  readGuestReaderTocWidth,
+  saveGuestReaderTocWidth
+} from "@/components/reader/reader-width-storage"
 import type { ReaderClientProps } from "@/components/reader/reader-types"
 import type { Highlight } from "@/src/server/store/types"
+import { buildHighlightNoteState } from "@/components/reader/highlight-note-state"
+import {
+  buildBookProgressSnapshot,
+  resolveBookProgressSectionIndex
+} from "@/src/server/services/reading/progress"
 
-async function fetchPdfFileUrl(bookId: string) {
+async function fetchPdfFileUrl(bookId: string, providedUrl?: string) {
+  if (providedUrl) {
+    return providedUrl
+  }
   const response = await fetch(`/api/books/${bookId}/access-url`)
   if (!response.ok) {
     return ""
@@ -45,14 +57,20 @@ export function usePdfReaderController({
   book,
   highlights,
   initialProgress,
-  initialWidths
+  initialWidths,
+  sharedView
 }: ReaderClientProps) {
-  const initialPageIndex = Math.max(0, initialProgress.currentSectionIndex || 0)
+  const readOnly = sharedView?.readOnly ?? false
+  const initialPageIndex = Math.max(0, resolveBookProgressSectionIndex(book, initialProgress))
   const [fileUrl, setFileUrl] = useState("")
   const [pdfDocument, setPdfDocument] = useState<any>(null)
   const [pageCount, setPageCount] = useState(Math.max(book.totalPages ?? 0, book.content.length, 1))
   const [currentPageIndex, setCurrentPageIndex] = useState(initialPageIndex)
-  const [panelItems, setPanelItems] = useState(highlights.filter((item) => item.format === "PDF"))
+  const [panelItems, setPanelItems] = useState(() =>
+    highlights
+      .filter((item) => item.format === "PDF")
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+  )
   const [selectionRect, setSelectionRect] = useState<{
     selectionTop: number
     selectionBottom: number
@@ -64,6 +82,7 @@ export function usePdfReaderController({
   const [selectedRects, setSelectedRects] = useState<Highlight["pdfRects"]>([])
   const [composerOpen, setComposerOpen] = useState(false)
   const [noteDraft, setNoteDraft] = useState("")
+  const [editingHighlightId, setEditingHighlightId] = useState<string | null>(null)
   const [toast, setToast] = useState("")
   const [loading, setLoading] = useState(true)
   const [fallbackMessage, setFallbackMessage] = useState("")
@@ -76,6 +95,13 @@ export function usePdfReaderController({
   const tocItemRefs = useRef<Record<number, HTMLButtonElement | null>>({})
   const prefTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const tickingRef = useRef(false)
+
+  useEffect(() => {
+    if (!readOnly) {
+      return
+    }
+    setTocWidth(readGuestReaderTocWidth(initialWidths.readerTocWidth))
+  }, [initialWidths.readerTocWidth, readOnly])
 
   const sidebarEntries = useMemo(
     () => buildPdfSidebarNodes(book.toc, pageCount),
@@ -101,7 +127,7 @@ export function usePdfReaderController({
   useEffect(() => {
     let disposed = false
 
-    fetchPdfFileUrl(book.id)
+    fetchPdfFileUrl(book.id, sharedView?.publicFileUrl)
       .then((nextUrl) => {
         if (disposed) {
           return
@@ -123,7 +149,7 @@ export function usePdfReaderController({
     return () => {
       disposed = true
     }
-  }, [book.id])
+  }, [book.id, sharedView?.publicFileUrl])
 
   useEffect(() => {
     if (!fileUrl) {
@@ -177,6 +203,10 @@ export function usePdfReaderController({
       clearTimeout(prefTimer.current)
     }
     prefTimer.current = setTimeout(async () => {
+      if (readOnly) {
+        saveGuestReaderTocWidth(tocWidth)
+        return
+      }
       await fetch("/api/preferences/ui", {
         method: "PUT",
         headers: { "content-type": "application/json" },
@@ -191,25 +221,27 @@ export function usePdfReaderController({
         clearTimeout(prefTimer.current)
       }
     }
-  }, [highlightsWidth, tocWidth])
+  }, [highlightsWidth, readOnly, tocWidth])
 
   useEffect(() => {
-    if (!pageCount) {
+    if (readOnly || !pageCount) {
       return
     }
     const timer = setTimeout(() => {
+      const nextProgress = buildBookProgressSnapshot(
+        book,
+        currentPageIndex,
+        0,
+        (currentPageIndex + 1) / Math.max(pageCount, 1)
+      )
       fetch(`/api/books/${book.id}/progress`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          progress: (currentPageIndex + 1) / Math.max(pageCount, 1),
-          currentSectionIndex: currentPageIndex,
-          currentParagraphIndex: 0
-        })
+        body: JSON.stringify(nextProgress)
       }).catch(() => undefined)
     }, 120)
     return () => clearTimeout(timer)
-  }, [book.id, currentPageIndex, pageCount])
+  }, [book.id, currentPageIndex, pageCount, readOnly])
 
   const createResizeHandler = useCallback(
     (
@@ -262,11 +294,27 @@ export function usePdfReaderController({
     scrollElementIntoReader(container, target, 16)
   }, [])
 
+  const openHighlightNoteComposer = useCallback((highlightId: string) => {
+    const target = panelItems.find((item) => item.id === highlightId)
+    if (!target) {
+      return
+    }
+    const nextState = buildHighlightNoteState(target)
+    setSelectedText(nextState.selectedText)
+    setNoteDraft(nextState.noteDraft)
+    setEditingHighlightId(nextState.editingHighlightId)
+    setComposerOpen(true)
+    setSelectionRect(null)
+    setSelectedRects([])
+    window.getSelection()?.removeAllRanges()
+  }, [panelItems])
+
   const clearSelection = useCallback(() => {
     setSelectedText("")
     setSelectedRects([])
     setSelectionRect(null)
     setComposerOpen(false)
+    setEditingHighlightId(null)
     setNoteDraft("")
     window.getSelection()?.removeAllRanges()
   }, [])
@@ -347,6 +395,9 @@ export function usePdfReaderController({
 
   const createHighlight = useCallback(
     async (color: Highlight["color"], note?: string) => {
+      if (readOnly) {
+        return
+      }
       if (!selectedText || !selectedRects?.length) {
         return
       }
@@ -365,18 +416,21 @@ export function usePdfReaderController({
       })
       const data = await response.json()
       if (response.ok) {
-        setPanelItems((current) => [data.item, ...current])
+        setPanelItems((current) => mergeHighlightItem(current, data.item))
         if (note) {
           setToast("想法已记录")
         }
       }
       clearSelection()
     },
-    [book.id, clearSelection, selectedPageIndex, selectedRects, selectedText]
+    [book.id, clearSelection, readOnly, selectedPageIndex, selectedRects, selectedText]
   )
 
   const deleteHighlight = useCallback(
     async (highlightId: string) => {
+      if (readOnly) {
+        return
+      }
       const response = await fetch(`/api/highlights/${highlightId}`, {
         method: "DELETE"
       })
@@ -384,8 +438,28 @@ export function usePdfReaderController({
         setPanelItems((current) => current.filter((item) => item.id !== highlightId))
       }
     },
-    []
+    [readOnly]
   )
+
+  const saveNote = useCallback(async () => {
+    if (editingHighlightId) {
+      const response = await fetch(`/api/highlights/${editingHighlightId}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ note: noteDraft })
+      })
+      const data = await response.json().catch(() => ({}))
+      if (response.ok && data.item) {
+        setPanelItems((current) => mergeHighlightItem(current, data.item))
+        setToast("想法已更新")
+      }
+      setComposerOpen(false)
+      setEditingHighlightId(null)
+      setNoteDraft("")
+      return
+    }
+    await createHighlight("yellow", noteDraft)
+  }, [createHighlight, editingHighlightId, noteDraft])
 
   const handleScroll = useCallback(() => {
     if (tickingRef.current) {
@@ -418,6 +492,7 @@ export function usePdfReaderController({
     highlightsByPage,
     selectionRect,
     selectedText,
+    editingHighlightId,
     composerOpen,
     noteDraft,
     toast,
@@ -433,16 +508,27 @@ export function usePdfReaderController({
     setPageRef,
     goPage,
     openHighlight,
+    openHighlightNoteComposer,
     handlePageMouseUp,
     handlePageBoxSelect,
     createHighlight,
+    saveNote,
     deleteHighlight,
     handleScroll,
     setComposerOpen,
     setNoteDraft,
+    setEditingHighlightId,
     setToast,
     setTocWidth,
     setHighlightsWidth,
     setBoxSelectionEnabled
   }
+}
+
+function mergeHighlightItem(items: Highlight[], nextItem: Highlight) {
+  const exists = items.some((item) => item.id === nextItem.id)
+  if (!exists) {
+    return [...items, nextItem]
+  }
+  return items.map((item) => (item.id === nextItem.id ? nextItem : item))
 }

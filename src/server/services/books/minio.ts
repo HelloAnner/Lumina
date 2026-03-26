@@ -52,6 +52,15 @@ export function buildCoverObjectName(userId: string, bookId: string) {
   return `${userId}/${bookId}.jpg`
 }
 
+export function buildArticleAssetObjectName(
+  userId: string,
+  articleId: string,
+  assetId: string,
+  extension: string
+) {
+  return `articles/${userId}/${articleId}/assets/${assetId}.${extension}`
+}
+
 export function buildBookFileProxyPath(bookId: string) {
   return `/api/books/${bookId}/file`
 }
@@ -176,6 +185,29 @@ export async function uploadBookObject(params: {
   return {
     bucket,
     objectName
+  }
+}
+
+export async function uploadStoredObject(params: {
+  objectName: string
+  buffer: Buffer
+  contentType: string
+  runtimeConfig?: StorageRuntimeConfig
+}) {
+  const bucket = getBookBucket(params.runtimeConfig)
+  await ensureBucket(bucket, params.runtimeConfig)
+  await getClient(params.runtimeConfig).putObject(
+    bucket,
+    params.objectName,
+    params.buffer,
+    params.buffer.length,
+    {
+      "Content-Type": params.contentType
+    }
+  )
+  return {
+    bucket,
+    objectName: params.objectName
   }
 }
 

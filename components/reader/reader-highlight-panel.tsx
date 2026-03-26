@@ -30,12 +30,16 @@ function HighlightCard({
   item,
   active,
   onClick,
-  onDelete
+  onDoubleClick,
+  onDelete,
+  readOnly
 }: {
   item: Highlight
   active: boolean
   onClick: () => void
+  onDoubleClick?: () => void
   onDelete: (e: React.MouseEvent) => void
+  readOnly?: boolean
 }) {
   const [showDelete, setShowDelete] = useState(false)
   const stripeColor = STRIPE_COLORS[item.color] ?? STRIPE_COLORS.yellow
@@ -50,25 +54,41 @@ function HighlightCard({
       )}
       style={{ borderLeftColor: stripeColor, borderLeftWidth: 3 }}
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
       onMouseEnter={() => setShowDelete(true)}
       onMouseLeave={() => setShowDelete(false)}
     >
       <div className="p-3">
-        <button
-          onClick={onDelete}
-          className={cn(
-            "absolute right-2 top-2 rounded p-1 text-muted opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive",
-            showDelete && "opacity-100"
-          )}
-          title="删除"
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
+        {!readOnly ? (
+          <button
+            onClick={onDelete}
+            className={cn(
+              "absolute right-2 top-2 rounded p-1 text-muted opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive",
+              showDelete && "opacity-100"
+            )}
+            title="删除"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        ) : null}
 
-        {/* 引用文本 */}
-        <p className="text-xs leading-relaxed text-secondary">
-          &ldquo;{item.content}&rdquo;
-        </p>
+        {item.assetType === "image" && item.imageUrl ? (
+          <div className="space-y-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={item.imageUrl}
+              alt={item.imageAlt ?? item.content}
+              className="max-h-28 w-full rounded-md border border-border/50 bg-surface/40 object-cover"
+            />
+            <p className="text-[11px] leading-relaxed text-secondary">
+              {item.imageAlt?.trim() || item.content}
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs leading-relaxed text-secondary">
+            &ldquo;{item.content}&rdquo;
+          </p>
+        )}
 
         {/* 批注 */}
         {item.note ? (
@@ -86,9 +106,11 @@ export function ReaderHighlightPanel({
   currentPageIndex,
   resolvedHighlights,
   onOpenHighlight,
+  onEditHighlight,
   onDeleteHighlight,
   onResizeStart,
-  onToggleCollapse
+  onToggleCollapse,
+  readOnly
 }: {
   width: number
   collapsed: boolean
@@ -96,9 +118,11 @@ export function ReaderHighlightPanel({
   currentPageIndex?: number
   resolvedHighlights: ResolvedHighlight[]
   onOpenHighlight: (item: ResolvedHighlight) => void
+  onEditHighlight?: (id: string) => void
   onDeleteHighlight: (id: string) => void
   onResizeStart: (event: React.MouseEvent) => void
   onToggleCollapse: () => void
+  readOnly?: boolean
 }) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -179,11 +203,13 @@ export function ReaderHighlightPanel({
               <HighlightCard
                 item={item}
                 active={active}
+                readOnly={readOnly}
                 onClick={() => {
                   if (resolved) {
                     onOpenHighlight(resolved)
                   }
                 }}
+                onDoubleClick={() => onEditHighlight?.(item.id)}
                 onDelete={(e) => {
                   e.stopPropagation()
                   onDeleteHighlight(item.id)

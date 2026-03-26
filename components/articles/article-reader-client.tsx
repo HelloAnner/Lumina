@@ -9,7 +9,7 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   AlertTriangle,
   ArrowLeft,
@@ -20,9 +20,11 @@ import {
   PanelLeftOpen,
   PanelRightOpen,
   RefreshCw,
+  Star,
   Sun,
   Type
 } from "lucide-react"
+import { ShareLinkButton } from "@/components/share/share-link-button"
 import { cn } from "@/src/lib/utils"
 import { Toast } from "@/components/ui/toast"
 import { ReaderSelectionToolbar } from "@/components/reader/reader-selection-toolbar"
@@ -30,6 +32,11 @@ import { ReaderHighlightPanel } from "@/components/reader/reader-highlight-panel
 import { ReaderNoteComposer } from "@/components/reader/reader-note-composer"
 import { ReaderFontPanel } from "@/components/reader/reader-font-panel"
 import { ArticleReaderContent } from "@/components/articles/article-reader-content"
+import { formatArticlePublishedAt } from "@/components/articles/article-published-at"
+import {
+  readGuestArticleOutlineCollapsed,
+  saveGuestArticleOutlineCollapsed
+} from "@/components/reader/reader-width-storage"
 import {
   useArticleReaderController,
   type ArticleReaderProps
@@ -39,13 +46,29 @@ import { useTheme } from "@/components/theme-provider"
 
 export function ArticleReaderClient(props: ArticleReaderProps) {
   const reader = useArticleReaderController(props)
+  const readOnly = props.sharedView?.readOnly ?? false
   const { theme, setTheme } = useTheme()
   const [outlineCollapsed, setOutlineCollapsed] = useState(false)
   const [highlightsCollapsed, setHighlightsCollapsed] = useState(false)
 
+  useEffect(() => {
+    if (!readOnly) {
+      return
+    }
+    setOutlineCollapsed(readGuestArticleOutlineCollapsed())
+  }, [readOnly])
+
+  useEffect(() => {
+    if (!readOnly) {
+      return
+    }
+    saveGuestArticleOutlineCollapsed(outlineCollapsed)
+  }, [outlineCollapsed, readOnly])
+
   const { showShortcutHint, dismissShortcutHint } = useReaderShortcuts({
     selectedText: reader.selectedText,
     shortcuts: props.settings?.highlightShortcuts,
+    keyboardShortcuts: props.settings?.keyboardShortcuts,
     onHighlight: reader.createHighlight,
     onNote: () => reader.setComposerOpen(true)
   })
@@ -95,6 +118,16 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
           <span className="text-[14px] font-medium leading-snug text-foreground">
             {reader.displayTitle}
           </span>
+          {formatArticlePublishedAt(reader.article.publishedAt) ? (
+            <span className="text-[11px] text-muted">
+              {formatArticlePublishedAt(reader.article.publishedAt)}
+            </span>
+          ) : null}
+          {readOnly ? (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
+              共享查看 · {props.sharedView?.ownerName}
+            </span>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <button
@@ -128,16 +161,39 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
           >
             {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
           </button>
+          {!readOnly ? (
+            <button
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-md transition",
+                reader.article.favorite
+                  ? "text-amber-300 hover:bg-overlay"
+                  : "text-muted hover:bg-overlay hover:text-amber-200"
+              )}
+              onClick={reader.toggleFavorite}
+              title={reader.article.favorite ? "取消收藏" : "收藏"}
+            >
+              <Star className={cn("h-4 w-4", reader.article.favorite && "fill-current")} />
+            </button>
+          ) : null}
+          {!readOnly ? (
+            <ShareLinkButton
+              resourceType="article"
+              resourceId={reader.article.id}
+              onToast={reader.setToast}
+            />
+          ) : null}
           {reader.article.sourceUrl && (
             <>
-              <button
-                onClick={reader.handleRefetch}
-                disabled={reader.refetching}
-                title="重新拉取文章"
-                className="flex h-7 w-7 items-center justify-center rounded-md text-muted transition hover:bg-overlay hover:text-foreground disabled:opacity-50"
-              >
-                <RefreshCw className={cn("h-3.5 w-3.5", reader.refetching && "animate-spin")} />
-              </button>
+              {!readOnly ? (
+                <button
+                  onClick={reader.handleRefetch}
+                  disabled={reader.refetching}
+                  title="重新拉取文章"
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-muted transition hover:bg-overlay hover:text-foreground disabled:opacity-50"
+                >
+                  <RefreshCw className={cn("h-3.5 w-3.5", reader.refetching && "animate-spin")} />
+                </button>
+              ) : null}
               <button
                 onClick={() => {
                   void navigator.clipboard.writeText(reader.article.sourceUrl)
@@ -181,7 +237,10 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
       <div className="flex min-h-0 flex-1">
         {/* 左侧大纲 */}
         {!outlineCollapsed && reader.outlineEntries.length > 0 && (
-          <aside className="flex w-[220px] shrink-0 flex-col border-r border-border/60 bg-elevated">
+          <aside
+            className="relative flex shrink-0 flex-col border-r border-border/60 bg-elevated"
+            style={{ width: reader.outlineWidth }}
+          >
             <div className="flex h-9 items-center justify-between px-3">
               <span className="text-[11px] font-medium uppercase tracking-wider text-muted">大纲</span>
               <button
@@ -198,7 +257,9 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
                   className="block w-full rounded-md px-2 py-1.5 text-left text-[12px] leading-relaxed text-secondary transition hover:bg-overlay hover:text-foreground"
                   style={{ paddingLeft: `${8 + (entry.level - 1) * 12}px` }}
                   onClick={() => {
-                    const el = reader.paragraphRefs.current[`0-${entry.index}`]
+                    const el = reader.scrollContainerRef.current?.querySelector(
+                      `[data-article-section-index="${entry.index}"]`
+                    ) as HTMLElement | null
                     el?.scrollIntoView({ behavior: "smooth", block: "center" })
                   }}
                 >
@@ -206,6 +267,14 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
                 </button>
               ))}
             </div>
+            <div
+              className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-secondary/30"
+              onMouseDown={reader.createResizeHandler(
+                reader.outlineWidth,
+                reader.setOutlineWidth,
+                { min: 180, max: 360 }
+              )}
+            />
           </aside>
         )}
 
@@ -235,11 +304,13 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
             </button>
           )}
 
-          <ReaderSelectionToolbar
-            selectionRect={reader.selectionRect}
-            onHighlight={(color) => reader.createHighlight(color)}
-            onNote={() => reader.setComposerOpen(true)}
-          />
+          {!readOnly ? (
+            <ReaderSelectionToolbar
+              selectionRect={reader.selectionRect}
+              onHighlight={(color) => reader.createHighlight(color)}
+              onNote={() => reader.setComposerOpen(true)}
+            />
+          ) : null}
 
           <ArticleReaderContent
             sections={reader.displayContent}
@@ -252,6 +323,12 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
             onScroll={reader.handleScroll}
             onParagraphMouseUp={reader.handleMouseUp}
             renderParagraphContent={reader.renderParagraphContent}
+            onImageCollect={(input) => {
+              void reader.createImageHighlight(input, false)
+            }}
+            onImageTransfer={(input) => {
+              void reader.createImageHighlight(input, true)
+            }}
           />
 
           {/* 翻译失败提示 */}
@@ -292,31 +369,40 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
         </main>
 
         {/* 右侧高亮面板 */}
-        <ReaderHighlightPanel
-          width={reader.highlightsWidth}
-          collapsed={highlightsCollapsed}
-          items={reader.groupedHighlights}
-          resolvedHighlights={reader.resolvedHighlights}
-          onOpenHighlight={reader.openHighlight}
-          onDeleteHighlight={reader.deleteHighlight}
-          onToggleCollapse={() => setHighlightsCollapsed(true)}
-          onResizeStart={reader.createResizeHandler(
-            reader.highlightsWidth,
-            (w) => reader.setHighlightsWidth(w),
-            { min: 260, max: 480 },
-            true
-          )}
-        />
+        {!readOnly ? (
+          <ReaderHighlightPanel
+            width={reader.highlightsWidth}
+            collapsed={highlightsCollapsed}
+            items={reader.groupedHighlights}
+            resolvedHighlights={reader.resolvedHighlights}
+            readOnly={readOnly}
+            onOpenHighlight={reader.openHighlight}
+            onEditHighlight={reader.openHighlightNoteComposer}
+            onDeleteHighlight={reader.deleteHighlight}
+            onToggleCollapse={() => setHighlightsCollapsed(true)}
+            onResizeStart={reader.createResizeHandler(
+              reader.highlightsWidth,
+              (w) => reader.setHighlightsWidth(w),
+              { min: 260, max: 480 },
+              true
+            )}
+          />
+        ) : null}
       </div>
 
-      <ReaderNoteComposer
-        open={reader.composerOpen}
-        selectedText={reader.selectedText}
-        noteDraft={reader.noteDraft}
-        onChange={reader.setNoteDraft}
-        onCancel={() => reader.setComposerOpen(false)}
-        onSave={() => reader.createHighlight("yellow", reader.noteDraft)}
-      />
+      {!readOnly ? (
+        <ReaderNoteComposer
+          open={reader.composerOpen}
+          selectedText={reader.selectedText}
+          noteDraft={reader.noteDraft}
+          onChange={reader.setNoteDraft}
+          onCancel={() => {
+            reader.setComposerOpen(false)
+            reader.setEditingHighlightId(null)
+          }}
+          onSave={reader.saveNote}
+        />
+      ) : null}
 
       {/* 快捷键提示条 */}
       {showShortcutHint && (

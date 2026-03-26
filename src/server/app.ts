@@ -20,6 +20,7 @@ import articlesRoutes from "@/src/server/routes/articles"
 import importRoutes from "@/src/server/routes/import"
 import noteChatRoutes from "@/src/server/routes/note-chat"
 import systemRoutes from "@/src/server/routes/system"
+import sharesRoutes from "@/src/server/routes/shares"
 import { requireAuth } from "@/src/server/middleware/auth"
 
 const app = new Hono<AppEnv>()
@@ -74,6 +75,7 @@ app.route("/api/articles", articlesRoutes)
 app.route("/api/import", importRoutes)
 app.route("/api/note-chat", noteChatRoutes)
 app.route("/api/system", systemRoutes)
+app.route("/api/shares", sharesRoutes)
 
 export const GET = handle(app)
 export const HEAD = handle(app)

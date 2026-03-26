@@ -35,6 +35,34 @@ function appendHighlightToBlocks(
 ): NoteBlock[] {
   const maxSort = existingBlocks.reduce((max, b) => Math.max(max, b.sortOrder), 0)
 
+  if (highlight.assetType === "image" && highlight.imageUrl) {
+    const blocks: NoteBlock[] = [
+      {
+        id: crypto.randomUUID(),
+        type: "image",
+        objectKey: highlight.imageObjectKey ?? "",
+        externalUrl: highlight.imageUrl,
+        alt: highlight.imageAlt ?? highlight.content,
+        originalName: highlight.imageAlt ?? "图片",
+        highlightId: highlight.id,
+        sourceBookId: highlight.bookId,
+        sourceBookTitle: bookTitle,
+        sourceLocation: highlight.sourceSectionTitle,
+        sortOrder: maxSort + 1
+      }
+    ]
+    if (highlight.note) {
+      blocks.push({
+        id: crypto.randomUUID(),
+        type: "insight",
+        text: highlight.note,
+        label: "批注",
+        sortOrder: maxSort + 2
+      })
+    }
+    return [...existingBlocks, ...blocks]
+  }
+
   const newBlocks: NoteBlock[] = [
     {
       id: crypto.randomUUID(),
@@ -64,6 +92,36 @@ function appendHighlightToBlocks(
  * 构建新主题的初始块内容
  */
 function buildInitialBlocks(title: string, highlight: Highlight, bookTitle?: string): NoteBlock[] {
+  if (highlight.assetType === "image" && highlight.imageUrl) {
+    const blocks: NoteBlock[] = [
+      { id: crypto.randomUUID(), type: "heading", level: 1, text: title, sortOrder: 0 },
+      { id: crypto.randomUUID(), type: "divider", sortOrder: 1 },
+      {
+        id: crypto.randomUUID(),
+        type: "image",
+        objectKey: highlight.imageObjectKey ?? "",
+        externalUrl: highlight.imageUrl,
+        alt: highlight.imageAlt ?? highlight.content,
+        originalName: highlight.imageAlt ?? "图片",
+        highlightId: highlight.id,
+        sourceBookId: highlight.bookId,
+        sourceBookTitle: bookTitle,
+        sourceLocation: highlight.sourceSectionTitle,
+        sortOrder: 2
+      }
+    ]
+    if (highlight.note) {
+      blocks.push({
+        id: crypto.randomUUID(),
+        type: "insight",
+        text: highlight.note,
+        label: "批注",
+        sortOrder: 3
+      })
+    }
+    return blocks
+  }
+
   const blocks: NoteBlock[] = [
     { id: crypto.randomUUID(), type: "heading", level: 1, text: title, sortOrder: 0 },
     { id: crypto.randomUUID(), type: "divider", sortOrder: 1 },

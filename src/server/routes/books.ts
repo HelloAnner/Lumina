@@ -374,7 +374,10 @@ app.get("/:id/progress", async (c) => {
   const book = await getBookFromStore(c.get("userId"), c.req.param("id"))
   const progress = await getReaderProgress(c.get("userId"), c.req.param("id"))
   return c.json({
+    id: progress.id,
     progress: book?.readProgress ?? progress.progress ?? 0,
+    currentPageId: progress.currentPageId,
+    currentPageIndex: progress.currentPageIndex,
     currentSectionIndex: progress.currentSectionIndex,
     currentParagraphIndex: progress.currentParagraphIndex
   })
@@ -383,7 +386,10 @@ app.get("/:id/progress", async (c) => {
 app.put("/:id/progress", async (c) => {
   const payload = z
     .object({
+      id: z.string().optional(),
       progress: z.number().min(0).max(1),
+      currentPageId: z.string().optional(),
+      currentPageIndex: z.number().min(0).optional(),
       currentSectionIndex: z.number().min(0).optional(),
       currentParagraphIndex: z.number().min(0).optional(),
       targetLanguage: z.string().optional()
@@ -394,7 +400,10 @@ app.put("/:id/progress", async (c) => {
     lastReadAt: new Date().toISOString()
   })
   const readerProgress = await saveReaderProgress(c.get("userId"), c.req.param("id"), {
+    id: payload.id,
     progress: payload.progress,
+    currentPageId: payload.currentPageId,
+    currentPageIndex: payload.currentPageIndex,
     currentSectionIndex: payload.currentSectionIndex,
     currentParagraphIndex: payload.currentParagraphIndex,
     targetLanguage: payload.targetLanguage

@@ -18,18 +18,24 @@ export function useArticleTranslation({
   articleTitle,
   originalSections,
   initialView,
+  initialTranslatedContent,
   initialTranslatedTitle,
+  readOnly = false,
   onError
 }: {
   articleId: string
   articleTitle: string
   originalSections: ArticleSection[]
   initialView: TranslationDisplayMode
+  initialTranslatedContent?: ArticleSection[] | null
   initialTranslatedTitle?: string
+  readOnly?: boolean
   onError: (message: string) => void
 }) {
   const [translationView, setTranslationView] = useState<TranslationDisplayMode>(initialView)
-  const [translatedContent, setTranslatedContent] = useState<ArticleSection[] | null>(null)
+  const [translatedContent, setTranslatedContent] = useState<ArticleSection[] | null>(
+    initialTranslatedContent ?? null
+  )
   const [translatedTitle, setTranslatedTitle] = useState(initialTranslatedTitle ?? "")
   const [isTranslating, setIsTranslating] = useState(false)
   const [translationError, setTranslationError] = useState<string | null>(null)
@@ -42,6 +48,9 @@ export function useArticleTranslation({
       if (persistTimer.current) {
         clearTimeout(persistTimer.current)
       }
+      if (readOnly) {
+        return
+      }
       persistTimer.current = setTimeout(() => {
         fetch(`/api/articles/${articleId}`, {
           method: "PUT",
@@ -50,11 +59,14 @@ export function useArticleTranslation({
         }).catch(() => undefined)
       }, 200)
     },
-    [articleId]
+    [articleId, readOnly]
   )
 
   const fetchTranslation = useCallback(async () => {
     if (translatedContent) {
+      return
+    }
+    if (readOnly) {
       return
     }
     setIsTranslating(true)
@@ -81,7 +93,7 @@ export function useArticleTranslation({
     } finally {
       setIsTranslating(false)
     }
-  }, [articleId, onError, targetLanguage, translatedContent])
+  }, [articleId, onError, readOnly, targetLanguage, translatedContent])
 
   // 初始视图为翻译时，自动拉取译文
   useEffect(() => {
@@ -97,13 +109,16 @@ export function useArticleTranslation({
   const toggleTranslationView = useCallback(() => {
     setTranslationError(null)
     const next = viewRef.current === "translation" ? "original" : "translation"
+    if (readOnly && next === "translation" && !translatedContent) {
+      return
+    }
     setTranslationView(next)
     persistView(next)
     // 切到译文且尚无缓存时发起翻译，放在 setState 之外确保 isTranslating 独立触发渲染
     if (next === "translation" && !translatedContent) {
       void fetchTranslation()
     }
-  }, [fetchTranslation, persistView, translatedContent])
+  }, [fetchTranslation, persistView, readOnly, translatedContent])
 
   const displayTitle =
     translationView === "translation" && translatedTitle

@@ -8,7 +8,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { ReaderSettings } from "@/src/server/store/types"
+import type { Highlight, ReaderSettings } from "@/src/server/store/types"
 import type { ReaderClientProps, ResolvedHighlight } from "@/components/reader/reader-types"
 import {
   buildTextHighlightPayload,
@@ -17,8 +17,17 @@ import {
   resolveBookHighlightAnchor,
   splitParagraphs
 } from "@/components/reader/reader-highlight-utils"
+import {
+  buildBookProgressSnapshot,
+  resolveBookProgressSectionIndex
+} from "@/src/server/services/reading/progress"
+import {
+  readGuestReaderTocWidth,
+  saveGuestReaderTocWidth
+} from "@/components/reader/reader-width-storage"
 import { buildSidebarTree, normalizeSidebarTitle } from "@/components/reader/reader-sidebar-utils"
 import { useReaderTranslation } from "@/components/reader/use-reader-translation"
+import { buildHighlightNoteState } from "@/components/reader/highlight-note-state"
 
 const COLORS = {
   yellow: "rgba(251,191,36,0.35)",
@@ -32,11 +41,18 @@ export function useReaderController({
   highlights,
   initialProgress,
   initialWidths,
-  settings
+  initialTranslations = [],
+  initialTocTranslation = null,
+  settings,
+  sharedView
 }: ReaderClientProps) {
+  const readOnly = sharedView?.readOnly ?? false
   const direction = settings?.navigationMode ?? "horizontal"
   const isVertical = direction === "vertical"
   const preferredSectionIndex = useMemo(() => {
+    if (initialProgress.currentPageId || initialProgress.currentPageIndex > 0) {
+      return resolveBookProgressSectionIndex(book, initialProgress)
+    }
     if (initialProgress.currentSectionIndex > 0) {
       return initialProgress.currentSectionIndex
     }
@@ -44,7 +60,12 @@ export function useReaderController({
       /^(第\s*\d+\s*章|第一部分|第二部分|第三部分)/.test(item.title)
     )
     return index >= 0 ? index : 0
-  }, [book.toc, initialProgress.currentSectionIndex])
+  }, [
+    book,
+    initialProgress.currentPageId,
+    initialProgress.currentPageIndex,
+    initialProgress.currentSectionIndex
+  ])
 
   const [pageIndex, setPageIndex] = useState(preferredSectionIndex)
   const [paragraphIndex, setParagraphIndex] = useState(
@@ -62,8 +83,9 @@ export function useReaderController({
     containerWidth: number
   } | null>(null)
   const [noteDraft, setNoteDraft] = useState("")
+  const [editingHighlightId, setEditingHighlightId] = useState<string | null>(null)
   const [composerOpen, setComposerOpen] = useState(false)
-  const [panelItems, setPanelItems] = useState(highlights)
+  const [panelItems, setPanelItems] = useState(() => sortHighlightsByCreatedAt(highlights))
   const [toast, setToast] = useState("")
   const [fontSize, setFontSize] = useState<ReaderSettings["fontSize"]>(
     settings?.fontSize ?? 16
@@ -88,11 +110,21 @@ export function useReaderController({
   const tickingRef = useRef(false)
   const prefTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  useEffect(() => {
+    if (!readOnly) {
+      return
+    }
+    setTocWidth(readGuestReaderTocWidth(initialWidths.readerTocWidth))
+  }, [initialWidths.readerTocWidth, readOnly])
+
   const translation = useReaderTranslation({
     book,
     pageIndex,
     initialView: settings?.translationView ?? "original",
     initialTargetLanguage: initialProgress.targetLanguage,
+    initialItems: initialTranslations,
+    initialTocTranslation,
+    readOnly,
     onError: setToast
   })
 
@@ -180,15 +212,17 @@ export function useReaderController({
   const persistProgress = useCallback(
     (sectionIndex: number, paraIndex: number) => {
       const timer = setTimeout(() => {
+        const nextProgress = buildBookProgressSnapshot(
+          book,
+          sectionIndex,
+          paraIndex,
+          (sectionIndex + 1) / Math.max(book.content.length, 1),
+          translation.targetLanguage
+        )
         fetch(`/api/books/${book.id}/progress`, {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            progress: (sectionIndex + 1) / Math.max(book.content.length, 1),
-            currentSectionIndex: sectionIndex,
-            currentParagraphIndex: paraIndex,
-            targetLanguage: translation.targetLanguage
-          })
+          body: JSON.stringify(nextProgress)
         }).catch(() => undefined)
       }, 120)
       return () => clearTimeout(timer)
@@ -196,11 +230,12 @@ export function useReaderController({
     [book.content.length, book.id, translation.targetLanguage]
   )
 
-  useEffect(() => persistProgress(pageIndex, safeParagraphIndex), [
-    pageIndex,
-    persistProgress,
-    safeParagraphIndex
-  ])
+  useEffect(() => {
+    if (readOnly) {
+      return
+    }
+    return persistProgress(pageIndex, safeParagraphIndex)
+  }, [pageIndex, persistProgress, readOnly, safeParagraphIndex])
 
   useEffect(() => {
     setSelectedText("")
@@ -345,6 +380,10 @@ export function useReaderController({
       clearTimeout(prefTimer.current)
     }
     prefTimer.current = setTimeout(async () => {
+      if (readOnly) {
+        saveGuestReaderTocWidth(tocWidth)
+        return
+      }
       await fetch("/api/preferences/ui", {
         method: "PUT",
         headers: { "content-type": "application/json" },
@@ -359,7 +398,7 @@ export function useReaderController({
         clearTimeout(prefTimer.current)
       }
     }
-  }, [highlightsWidth, tocWidth])
+  }, [highlightsWidth, readOnly, tocWidth])
 
   useEffect(() => {
     function handleKeydown(event: KeyboardEvent) {
@@ -438,6 +477,21 @@ export function useReaderController({
     activeContentMode === "original" ||
     Boolean(translation.translationItems[pageIndex])
 
+  const openHighlightNoteComposer = useCallback((highlightId: string) => {
+    const target = panelItems.find((item) => item.id === highlightId)
+    if (!target) {
+      return
+    }
+    const nextState = buildHighlightNoteState(target)
+    setSelectedText(nextState.selectedText)
+    setNoteDraft(nextState.noteDraft)
+    setEditingHighlightId(nextState.editingHighlightId)
+    setComposerOpen(true)
+    setSelectionRect(null)
+    setSelectedRange(null)
+    window.getSelection()?.removeAllRanges()
+  }, [panelItems])
+
   const renderParagraphContent = useCallback(
     (paragraphText: string, paragraphStart: number, sectionIndex: number) => {
       const sectionHighlights = highlightsBySection.get(sectionIndex) ?? []
@@ -446,8 +500,13 @@ export function useReaderController({
         segment.activeHighlightId ? (
           <mark
             key={`${segment.activeHighlightId}-${paragraphStart}-${index}`}
-            className="rounded-[4px] px-[1px] text-inherit"
+            className="cursor-pointer rounded-[4px] px-[1px] text-inherit"
             style={{ backgroundColor: COLORS[segment.color!] }}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              openHighlightNoteComposer(segment.activeHighlightId!)
+            }}
           >
             {segment.text}
           </mark>
@@ -456,7 +515,7 @@ export function useReaderController({
         )
       )
     },
-    [highlightsBySection]
+    [highlightsBySection, openHighlightNoteComposer]
   )
 
   const openHighlight = useCallback(
@@ -468,6 +527,9 @@ export function useReaderController({
 
   const createHighlight = useCallback(
     async (color: keyof typeof COLORS, note?: string) => {
+      if (readOnly) {
+        return
+      }
       if (!selectedText || !selectedRange) {
         return
       }
@@ -498,7 +560,7 @@ export function useReaderController({
       })
       const data = await response.json()
       if (response.ok) {
-        setPanelItems((current) => [data.item, ...current])
+        setPanelItems((current) => mergeHighlightItem(current, data.item))
         if (note) {
           setToast("想法已记录")
         }
@@ -507,6 +569,7 @@ export function useReaderController({
       setSelectedRange(null)
       setSelectionRect(null)
       setComposerOpen(false)
+      setEditingHighlightId(null)
       setNoteDraft("")
       window.getSelection()?.removeAllRanges()
     },
@@ -520,12 +583,55 @@ export function useReaderController({
       selectedSectionIndex,
       selectedText,
       translation.displayContent,
-      translation.translationItems
+      translation.targetLanguage,
+      translation.translationItems,
+      readOnly
     ]
+  )
+
+  const createImageHighlight = useCallback(
+    async (
+      input: {
+        sectionTitle: string
+        imageUrl: string
+        imageAlt?: string
+        imageObjectKey?: string
+      },
+      immediateSync = false
+    ) => {
+      const response = await fetch("/api/highlights", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          bookId: book.id,
+          format: book.format,
+          assetType: "image",
+          sourceTitle: book.title,
+          sourceSectionTitle: input.sectionTitle,
+          imageUrl: input.imageUrl,
+          imageObjectKey: input.imageObjectKey,
+          imageAlt: input.imageAlt,
+          content: input.imageAlt?.trim() || `${input.sectionTitle} 图片`,
+          color: immediateSync ? "blue" : "yellow",
+          immediateSync
+        })
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data.item) {
+        setToast(data.error || "图片操作失败")
+        return
+      }
+      setPanelItems((current) => mergeHighlightItem(current, data.item))
+      setToast(immediateSync ? "图片已转入知识库" : "图片已收藏")
+    },
+    [book.format, book.id, book.title]
   )
 
   const deleteHighlight = useCallback(
     async (highlightId: string) => {
+      if (readOnly) {
+        return
+      }
       const response = await fetch(`/api/highlights/${highlightId}`, {
         method: "DELETE"
       })
@@ -533,8 +639,28 @@ export function useReaderController({
         setPanelItems((current) => current.filter((item) => item.id !== highlightId))
       }
     },
-    []
+    [readOnly]
   )
+
+  const saveNote = useCallback(async () => {
+    if (editingHighlightId) {
+      const response = await fetch(`/api/highlights/${editingHighlightId}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ note: noteDraft })
+      })
+      const data = await response.json().catch(() => ({}))
+      if (response.ok && data.item) {
+        setPanelItems((current) => mergeHighlightItem(current, data.item))
+        setToast("想法已更新")
+      }
+      setComposerOpen(false)
+      setEditingHighlightId(null)
+      setNoteDraft("")
+      return
+    }
+    await createHighlight("yellow", noteDraft)
+  }, [createHighlight, editingHighlightId, noteDraft])
 
   // 点击选区工具栏外部时清除选区浮层（想法编辑器打开时保留选区）
   useEffect(() => {
@@ -560,6 +686,12 @@ export function useReaderController({
   }, [selectionRect])
 
   const handleMouseUp = useCallback(() => {
+    if (readOnly) {
+      setSelectedText("")
+      setSelectedRange(null)
+      setSelectionRect(null)
+      return
+    }
     if (!canSelectCurrentContent) {
       setSelectedText("")
       setSelectedRange(null)
@@ -620,7 +752,7 @@ export function useReaderController({
       selectionCenterX: rect.left - mainRect.left + rect.width / 2,
       containerWidth: mainRect.width
     })
-  }, [canSelectCurrentContent, pageIndex])
+  }, [canSelectCurrentContent, pageIndex, readOnly])
 
   return {
     book,
@@ -637,6 +769,7 @@ export function useReaderController({
     selectionRect,
     selectedText,
     noteDraft,
+    editingHighlightId,
     composerOpen,
     toast,
     translationView: translation.translationView,
@@ -662,12 +795,16 @@ export function useReaderController({
     handleMouseUp,
     goSection,
     openHighlight,
+    openHighlightNoteComposer,
     toggleTranslationView: translation.toggleTranslationView,
     createHighlight,
+    createImageHighlight,
+    saveNote,
     deleteHighlight,
     createResizeHandler,
     setToast,
     setNoteDraft,
+    setEditingHighlightId,
     setComposerOpen,
     setShowFontPanel,
     setFontSize,
@@ -676,4 +813,16 @@ export function useReaderController({
     setTocWidth,
     setHighlightsWidth
   }
+}
+
+function sortHighlightsByCreatedAt(items: Highlight[]) {
+  return [...items].sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+}
+
+function mergeHighlightItem(items: Highlight[], nextItem: Highlight) {
+  const exists = items.some((item) => item.id === nextItem.id)
+  if (!exists) {
+    return [...items, nextItem]
+  }
+  return items.map((item) => (item.id === nextItem.id ? nextItem : item))
 }

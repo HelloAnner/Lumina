@@ -27,6 +27,7 @@ import {
 } from "@/src/server/services/translation/request"
 import {
   buildArticleSourceHash,
+  buildNormalizedTranslatedArticleSections,
   collectArticleParagraphs,
   buildTranslatedArticleSections
 } from "@/src/server/services/translation/article-content"
@@ -279,7 +280,10 @@ export async function prefetchArticleTranslations(input: {
     .find((t) => t.sourceHash === sourceHash && t.targetLanguage === targetLanguage)
   if (cached) {
     const article = repository.getArticle(input.userId, input.articleId)
-    return { content: cached.content, translatedTitle: article?.translatedTitle ?? input.title }
+    return {
+      content: buildNormalizedTranslatedArticleSections(input.sections, cached.content),
+      translatedTitle: article?.translatedTitle ?? input.title
+    }
   }
 
   validateTranslationModel(input.model)

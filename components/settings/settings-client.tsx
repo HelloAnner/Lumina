@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useCallback, useState } from "react"
+import React, { useCallback, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import type { LucideIcon } from "lucide-react"
 import {
@@ -47,14 +47,27 @@ import {
   type SettingsToastState
 } from "@/components/settings/settings-client-utils"
 import { ImportSourceSection, type ImportSourceWithStats } from "@/components/import/import-source-section"
+import {
+  DEFAULT_APP_KEYBOARD_SHORTCUTS,
+  detectShortcutPlatform,
+  findShortcutIssueForField,
+  formatShortcutForDisplay,
+  getEffectiveKeyboardShortcuts,
+  getShortcutFieldLabel,
+  isModifierOnlyKey,
+  serializeShortcutEvent,
+  validateKeyboardShortcuts
+} from "@/src/lib/keyboard-shortcuts"
 import { cn } from "@/src/lib/utils"
 import type {
+  AppKeyboardShortcuts,
   HighlightShortcuts,
   ModelBinding,
   ModelCategory,
   ModelConfig,
-  TranslationDisplayMode,
   ReaderSettings,
+  ShareEndpointConfig,
+  TranslationDisplayMode,
   User
 } from "@/src/server/store/types"
 
@@ -177,8 +190,18 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
   )
 }
 
-/** 按键捕获输入框：点击后按任意键录入快捷键 */
-function ShortcutInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+/** 按键捕获输入框：支持组合键 */
+function ShortcutInput({
+  value,
+  onChange,
+  platform,
+  invalid
+}: {
+  value: string
+  onChange: (v: string) => void
+  platform: "mac" | "windows"
+  invalid?: boolean
+}) {
   const [capturing, setCapturing] = useState(false)
   return (
     <button
@@ -186,7 +209,9 @@ function ShortcutInput({ value, onChange }: { value: string; onChange: (v: strin
         "h-7 min-w-[48px] rounded-md border px-2 text-center text-xs font-mono transition",
         capturing
           ? "border-primary bg-primary/10 text-primary"
-          : "border-border bg-surface text-foreground hover:border-primary/30"
+          : invalid
+            ? "border-error/40 bg-error/10 text-error hover:border-error/60"
+            : "border-border bg-surface text-foreground hover:border-primary/30"
       )}
       onClick={() => setCapturing(true)}
       onBlur={() => setCapturing(false)}
@@ -199,14 +224,44 @@ function ShortcutInput({ value, onChange }: { value: string; onChange: (v: strin
           setCapturing(false)
           return
         }
-        onChange(e.key.length === 1 ? e.key : e.key)
+        const shortcut = serializeShortcutEvent(e.nativeEvent)
+        const lastToken = shortcut.split("+").at(-1) ?? ""
+        if (!shortcut || isModifierOnlyKey(lastToken)) {
+          return
+        }
+        onChange(shortcut)
         setCapturing(false)
       }}
     >
-      {capturing ? "..." : value}
+      {capturing ? "..." : formatShortcutForDisplay(value, platform)}
     </button>
   )
 }
+
+const NOTE_EDITOR_SHORTCUT_FIELDS = [
+  { key: "annotate", label: "批注" },
+  { key: "bold", label: "加粗" },
+  { key: "italic", label: "斜体" },
+  { key: "highlight", label: "高亮" },
+  { key: "strike", label: "删除线" },
+  { key: "code", label: "行内代码" },
+  { key: "link", label: "链接" },
+  { key: "duplicateBlock", label: "复制块" },
+  { key: "moveBlockUp", label: "块上移" },
+  { key: "moveBlockDown", label: "块下移" },
+  { key: "heading1", label: "标题 1" },
+  { key: "heading2", label: "标题 2" },
+  { key: "heading3", label: "标题 3" },
+  { key: "paragraph", label: "正文" }
+] as const
+
+const READER_SHORTCUT_FIELDS = [
+  { key: "yellow", label: "黄色高亮", color: "bg-yellow-500/30" },
+  { key: "green", label: "绿色高亮", color: "bg-green-500/30" },
+  { key: "blue", label: "蓝色高亮", color: "bg-blue-500/30" },
+  { key: "pink", label: "粉色高亮", color: "bg-pink-500/30" },
+  { key: "note", label: "笔记", color: "bg-overlay" }
+] as const
 
 // ————— 模型弹窗 —————
 
@@ -468,12 +523,14 @@ export function SettingsClient({
   modelConfigs,
   modelBindings,
   readerSettings,
+  shareEndpointConfig,
   importSources = []
 }: {
   user: User
   modelConfigs: ModelConfig[]
   modelBindings: ModelBinding[]
   readerSettings?: ReaderSettings
+  shareEndpointConfig: ShareEndpointConfig
   importSources?: ImportSourceWithStats[]
 }) {
   const router = useRouter()
@@ -503,6 +560,11 @@ export function SettingsClient({
   // 归档设置
   const [archiveRetention, setArchiveRetention] = useState(user.archiveRetentionDays ?? 30)
   const [autoArchiveDays, setAutoArchiveDays] = useState(user.autoArchiveAfterDays ?? 3)
+  const [shareEndpointForm, setShareEndpointForm] = useState({
+    host: shareEndpointConfig.host,
+    port: String(shareEndpointConfig.port)
+  })
+  const [savingShareEndpoint, setSavingShareEndpoint] = useState(false)
 
   const handleArchiveSettingChange = async (updates: { archiveRetentionDays?: number; autoArchiveAfterDays?: number }) => {
     if (updates.archiveRetentionDays !== undefined) {
@@ -529,11 +591,20 @@ export function SettingsClient({
     theme: readerSettings?.theme ?? "night",
     navigationMode: readerSettings?.navigationMode ?? "horizontal",
     translationView: (readerSettings?.translationView ?? "original") as TranslationDisplayMode,
-    highlightShortcuts: (readerSettings?.highlightShortcuts ?? {
-      yellow: "1", green: "2", blue: "3", pink: "4", note: "n"
-    }) as HighlightShortcuts
+    keyboardShortcuts: getEffectiveKeyboardShortcuts(
+      readerSettings?.keyboardShortcuts,
+      readerSettings?.highlightShortcuts as HighlightShortcuts | undefined
+    ) as AppKeyboardShortcuts
   })
   const [savingReader, setSavingReader] = useState(false)
+  const shortcutPlatform = useMemo<"mac" | "windows">(
+    () => detectShortcutPlatform(),
+    []
+  )
+  const shortcutIssues = useMemo(
+    () => validateKeyboardShortcuts(readerForm.keyboardShortcuts),
+    [readerForm.keyboardShortcuts]
+  )
 
   // 账户设置
   const [profileName, setProfileName] = useState(user.name)
@@ -645,14 +716,54 @@ export function SettingsClient({
     persistSchedule(freq)
   }
 
+  async function saveShareEndpoint() {
+    const port = Number(shareEndpointForm.port)
+    if (!shareEndpointForm.host.trim()) {
+      showToast("请填写分享 IP")
+      return
+    }
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      showToast("端口必须是 1 到 65535 之间的整数")
+      return
+    }
+    setSavingShareEndpoint(true)
+    const resp = await fetch("/api/settings/share-endpoint", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        host: shareEndpointForm.host.trim(),
+        port
+      })
+    })
+    setSavingShareEndpoint(false)
+    await refreshAndShow("分享地址已保存", resp)
+  }
+
   // ————— 阅读操作 —————
 
   async function saveReaderSettings() {
+    if (shortcutIssues.length > 0) {
+      const reserved = shortcutIssues.find((item) => item.code === "reserved")
+      if (reserved) {
+        showToast(`快捷键 ${reserved.shortcut} 为系统或浏览器保留，不允许保存`)
+        return
+      }
+      const duplicate = shortcutIssues.find((item) => item.code === "duplicate")
+      if (duplicate) {
+        showToast(`快捷键 ${duplicate.shortcut} 存在重复绑定，不允许保存`)
+        return
+      }
+      showToast("快捷键配置无效")
+      return
+    }
     setSavingReader(true)
     const resp = await fetch("/api/settings/reader", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(readerForm)
+      body: JSON.stringify({
+        ...readerForm,
+        highlightShortcuts: readerForm.keyboardShortcuts.reader
+      })
     })
     setSavingReader(false)
     await refreshAndShow("阅读设置已保存", resp)
@@ -1072,6 +1183,57 @@ export function SettingsClient({
               </div>
             </Card>
 
+            <Card className="p-5">
+              <div className="mb-4">
+                <div className="text-sm font-medium">阅读分享地址</div>
+                <div className="mt-0.5 text-xs text-muted">
+                  生成分享链接时会使用这里的 IP 和端口；默认读取宿主机局域网地址，默认端口为 80。
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <div className="mb-2 text-xs text-muted">IP / Host</div>
+                  <Input
+                    value={shareEndpointForm.host}
+                    onChange={(event) =>
+                      setShareEndpointForm((current) => ({
+                        ...current,
+                        host: event.target.value
+                      }))
+                    }
+                    placeholder="192.168.1.20"
+                  />
+                </div>
+                <div>
+                  <div className="mb-2 text-xs text-muted">端口</div>
+                  <Input
+                    value={shareEndpointForm.port}
+                    onChange={(event) =>
+                      setShareEndpointForm((current) => ({
+                        ...current,
+                        port: event.target.value
+                      }))
+                    }
+                    inputMode="numeric"
+                    placeholder="80"
+                  />
+                </div>
+              </div>
+              <div className="mt-4 flex items-center justify-between rounded-xl border border-border/60 bg-surface px-3 py-2">
+                <div className="text-xs text-muted">
+                  当前将生成：
+                  <span className="ml-1 font-mono text-foreground">
+                    http://{shareEndpointForm.host || "127.0.0.1"}
+                    {Number(shareEndpointForm.port || "80") === 80 ? "" : `:${shareEndpointForm.port || "80"}`}
+                    /share/&lt;token&gt;
+                  </span>
+                </div>
+                <Button size="sm" onClick={saveShareEndpoint} disabled={savingShareEndpoint}>
+                  {savingShareEndpoint ? "保存中…" : "保存地址"}
+                </Button>
+              </div>
+            </Card>
+
             {/* 归档管理 */}
             <Card>
               <div className="border-b border-border/60 px-5 py-3.5">
@@ -1365,39 +1527,150 @@ export function SettingsClient({
               </div>
             </Card>
 
-            {/* 划词快捷键 */}
-            <Card className="space-y-3 p-5">
+            <Card className="space-y-5 p-5">
               <div>
-                <h3 className="text-sm font-medium text-foreground">划词快捷键</h3>
-                <p className="text-xs text-muted mt-0.5">选中文本后按键即可创建对应颜色的高亮</p>
+                <h3 className="text-sm font-medium text-foreground">快捷键中心</h3>
+                <p className="mt-0.5 text-xs text-muted">
+                  统一管理阅读器与笔记编辑快捷键，支持单键与组合键。
+                </p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                {([
-                  { key: "yellow" as const, label: "黄色", color: "bg-yellow-500/30" },
-                  { key: "green" as const, label: "绿色", color: "bg-green-500/30" },
-                  { key: "blue" as const, label: "蓝色", color: "bg-blue-500/30" },
-                  { key: "pink" as const, label: "粉色", color: "bg-pink-500/30" },
-                  { key: "note" as const, label: "笔记", color: "bg-overlay" }
-                ]).map((item) => (
-                  <div key={item.key} className="flex items-center gap-2">
-                    <span className={cn("h-4 w-4 rounded", item.color)} />
-                    <span className="text-xs text-secondary w-8">{item.label}</span>
-                    <ShortcutInput
-                      value={readerForm.highlightShortcuts[item.key]}
-                      onChange={(value) =>
-                        setReaderForm((c) => ({
-                          ...c,
-                          highlightShortcuts: { ...c.highlightShortcuts, [item.key]: value }
-                        }))
-                      }
-                    />
-                  </div>
-                ))}
+              <div className="flex items-center justify-between rounded-xl border border-border/60 bg-surface px-3 py-2 text-xs text-muted">
+                <span>当前显示平台：{shortcutPlatform === "mac" ? "macOS" : "Windows / Linux"}</span>
+                <button
+                  className="text-primary transition hover:opacity-80"
+                  onClick={() =>
+                    setReaderForm((current) => ({
+                      ...current,
+                      keyboardShortcuts: DEFAULT_APP_KEYBOARD_SHORTCUTS
+                    }))
+                  }
+                >
+                  恢复全部默认
+                </button>
               </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-medium text-secondary">阅读器</div>
+                  <button
+                    className="text-xs text-primary transition hover:opacity-80"
+                    onClick={() =>
+                      setReaderForm((current) => ({
+                        ...current,
+                        keyboardShortcuts: {
+                          ...current.keyboardShortcuts,
+                          reader: DEFAULT_APP_KEYBOARD_SHORTCUTS.reader
+                        }
+                      }))
+                    }
+                  >
+                    恢复默认
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {READER_SHORTCUT_FIELDS.map((item) => {
+                    const field = `reader.${item.key}`
+                    const issue = findShortcutIssueForField(shortcutIssues, field)
+                    return (
+                      <div
+                        key={item.key}
+                        className="flex items-center gap-2"
+                        title={issue ? `${getShortcutFieldLabel(field)} 存在冲突` : undefined}
+                      >
+                        <span className={cn("h-4 w-4 rounded", item.color)} />
+                        <span className="w-20 text-xs text-secondary">{item.label}</span>
+                        <ShortcutInput
+                          value={readerForm.keyboardShortcuts.reader[item.key]}
+                          platform={shortcutPlatform}
+                          invalid={Boolean(issue)}
+                          onChange={(value) =>
+                            setReaderForm((current) => ({
+                              ...current,
+                              keyboardShortcuts: {
+                                ...current.keyboardShortcuts,
+                                reader: {
+                                  ...current.keyboardShortcuts.reader,
+                                  [item.key]: value
+                                }
+                              }
+                            }))
+                          }
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-medium text-secondary">笔记编辑器</div>
+                  <button
+                    className="text-xs text-primary transition hover:opacity-80"
+                    onClick={() =>
+                      setReaderForm((current) => ({
+                        ...current,
+                        keyboardShortcuts: {
+                          ...current.keyboardShortcuts,
+                          noteEditor: DEFAULT_APP_KEYBOARD_SHORTCUTS.noteEditor
+                        }
+                      }))
+                    }
+                  >
+                    恢复默认
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {NOTE_EDITOR_SHORTCUT_FIELDS.map((item) => {
+                    const field = `noteEditor.${item.key}`
+                    const issue = findShortcutIssueForField(shortcutIssues, field)
+                    return (
+                      <div
+                        key={item.key}
+                        className="flex items-center gap-2"
+                        title={issue ? `${getShortcutFieldLabel(field)} 存在冲突` : undefined}
+                      >
+                        <span className="w-24 text-xs text-secondary">{item.label}</span>
+                        <ShortcutInput
+                          value={readerForm.keyboardShortcuts.noteEditor[item.key]}
+                          platform={shortcutPlatform}
+                          invalid={Boolean(issue)}
+                          onChange={(value) =>
+                            setReaderForm((current) => ({
+                              ...current,
+                              keyboardShortcuts: {
+                                ...current.keyboardShortcuts,
+                                noteEditor: {
+                                  ...current.keyboardShortcuts.noteEditor,
+                                  [item.key]: value
+                                }
+                              }
+                            }))
+                          }
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {shortcutIssues.length > 0 ? (
+                <div className="rounded-xl border border-error/30 bg-error/10 px-3 py-2 text-xs text-error">
+                  {shortcutIssues[0].code === "reserved"
+                    ? `快捷键 ${formatShortcutForDisplay(shortcutIssues[0].shortcut, shortcutPlatform)} 与 ${getShortcutFieldLabel(shortcutIssues[0].fields[0])} 冲突：它是系统或浏览器保留快捷键，不允许保存`
+                    : shortcutIssues[0].code === "duplicate"
+                      ? `快捷键 ${formatShortcutForDisplay(shortcutIssues[0].shortcut, shortcutPlatform)} 同时绑定到 ${shortcutIssues[0].fields.map(getShortcutFieldLabel).join(" / ")}，不允许保存`
+                      : "存在未完成的快捷键输入"}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-border/60 bg-surface px-3 py-2 text-xs text-muted">
+                  系统保留快捷键如 `Cmd+W`、`Cmd+T`、`Cmd+Space` 会被直接拦截，不允许保存。
+                </div>
+              )}
             </Card>
 
             <div className="flex justify-end">
-              <Button onClick={saveReaderSettings} disabled={savingReader}>
+              <Button onClick={saveReaderSettings} disabled={savingReader || shortcutIssues.length > 0}>
                 {savingReader ? "保存中..." : "保存设置"}
               </Button>
             </div>

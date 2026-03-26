@@ -5,7 +5,13 @@
  * @since 0.1.0
  * Created on 2026/3/23
  */
-import type { Book, Highlight, ReaderSettings } from "@/src/server/store/types"
+import type {
+  Book,
+  BookTocTranslation,
+  BookTranslation,
+  Highlight,
+  ReaderSettings
+} from "@/src/server/store/types"
 import type { ReaderProgressRecord } from "@/src/server/services/books/progress"
 import type { UiPreferences } from "@/src/server/services/preferences/store"
 
@@ -25,10 +31,21 @@ export type ResolvedHighlight = Highlight & {
   displayContent: string
 }
 
+export interface SharedReaderView {
+  readOnly: true
+  token: string
+  ownerName: string
+  expiresAt?: string | null
+  publicFileUrl?: string
+}
+
 export interface ReaderClientProps {
   book: Book
   highlights: Highlight[]
   initialProgress: ReaderProgressRecord
   initialWidths: UiPreferences
   settings?: ReaderSettings
+  initialTranslations?: BookTranslation[]
+  initialTocTranslation?: BookTocTranslation | null
+  sharedView?: SharedReaderView
 }

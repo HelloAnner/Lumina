@@ -26,6 +26,7 @@ export default async function SettingsPage() {
       modelBindings={repository.listModelBindings(user.id)}
       modelConfigs={repository.listModelConfigs(user.id)}
       readerSettings={repository.getReaderSettings(user.id)}
+      shareEndpointConfig={repository.getShareEndpointConfig()}
       importSources={importSources}
       user={user}
     />

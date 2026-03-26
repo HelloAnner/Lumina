@@ -162,6 +162,12 @@ function ImportImage({ block }: { block: Extract<NoteBlock, { type: "image" }> }
         style={block.displayWidth ? { width: block.displayWidth } : undefined}
         loading="lazy"
       />
+      {(block.sourceBookTitle || block.sourceLocation) && (
+        <div className="mt-2 text-[11px] text-muted">
+          来源：{block.sourceBookTitle ? `《${block.sourceBookTitle}》` : ""}
+          {block.sourceLocation ? ` ${block.sourceLocation}` : ""}
+        </div>
+      )}
       {block.alt && (
         <figcaption className="mt-1.5 text-center text-xs text-muted">{block.alt}</figcaption>
       )}

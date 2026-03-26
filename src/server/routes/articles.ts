@@ -1,6 +1,6 @@
 /**
  * 文章路由
- * 管理互联网文章库、主题分类和文章高亮
+ * 管理互联网文章库、手动导入、主题分类和文章高亮
  *
  * @author Anner
  * @since 0.1.0
@@ -11,6 +11,24 @@ import { z } from "zod"
 import type { AppEnv } from "@/src/server/lib/hono"
 import { repository } from "@/src/server/repositories"
 import { syncPendingHighlights } from "@/src/server/services/aggregation/highlight-sync"
+import {
+  findArticleImageSection,
+  persistArticleAssets,
+  removeArticleAssets
+} from "@/src/server/services/articles/assets"
+import { autoTagFavoritedArticle } from "@/src/server/services/articles/favorite-tags"
+import {
+  ArticleImportError,
+  importArticleFromUrl
+} from "@/src/server/services/articles/manual-import"
+import {
+  getArticleReaderProgress,
+  saveArticleReaderProgress
+} from "@/src/server/services/articles/progress"
+import {
+  getBookObjectBuffer,
+  getStoredObjectContentType
+} from "@/src/server/services/books/minio"
 
 const app = new Hono<AppEnv>()
 
@@ -65,7 +83,8 @@ app.get("/", (c) => {
   }
   const retentionDays = user?.archiveRetentionDays ?? 30
   if (retentionDays > 0) {
-    repository.purgeExpiredArchives(userId, retentionDays)
+    const purged = repository.purgeExpiredArchives(userId, retentionDays)
+    void Promise.all(purged.map((item) => removeArticleAssets(item))).catch(() => undefined)
   }
 
   const result = repository.listArticles(userId, {
@@ -77,6 +96,25 @@ app.get("/", (c) => {
     pageSize: pageSize ? Number(pageSize) : undefined
   })
   return c.json(result)
+})
+
+app.post("/import", async (c) => {
+  const payload = z.object({
+    url: z.string().trim().min(1)
+  }).parse(await c.req.json())
+
+  try {
+    const result = await importArticleFromUrl({
+      userId: c.get("userId"),
+      url: payload.url
+    })
+    return c.json(result, result.status === "created" ? 201 : 200)
+  } catch (error) {
+    if (error instanceof ArticleImportError) {
+      return c.json({ error: error.message, code: error.code }, 400)
+    }
+    return c.json({ error: "文章解析失败" }, 502)
+  }
 })
 
 app.get("/:id", (c) => {
@@ -137,17 +175,95 @@ app.post("/:id/refetch", async (c) => {
   if (!extracted) {
     return c.json({ error: "Failed to extract content" }, 502)
   }
+  await removeArticleAssets(article)
+  repository.clearArticleDerivedData(userId, article.id, {
+    keepShareLinks: true
+  })
+  const withAssets = await persistArticleAssets({
+    userId,
+    articleId: article.id,
+    content: extracted.content,
+    coverImage: extracted.coverImage
+  })
 
   const updated = repository.updateArticle(userId, article.id, {
     title: extracted.title || article.title,
     author: extracted.author || article.author,
-    content: extracted.content,
+    publishedAt: extracted.publishedAt ?? article.publishedAt,
+    content: withAssets.content,
     summary: extracted.summary || article.summary,
     siteName: extracted.siteName,
-    coverImage: extracted.coverImage
+    coverImage: withAssets.coverImage,
+    highlightCount: 0,
+    translationView: "original",
+    translatedTitle: "",
+    readProgress: 0
   })
 
   return c.json({ item: updated })
+})
+
+app.get("/:id/progress", async (c) => {
+  const article = repository.getArticle(c.get("userId"), c.req.param("id"))
+  const progress = await getArticleReaderProgress(c.get("userId"), c.req.param("id"))
+  return c.json({
+    id: progress.id,
+    progress: article?.readProgress ?? progress.progress ?? 0,
+    currentPageId: progress.currentPageId,
+    currentPageIndex: progress.currentPageIndex
+  })
+})
+
+app.put("/:id/progress", async (c) => {
+  const payload = z.object({
+    id: z.string().optional(),
+    progress: z.number().min(0).max(1),
+    currentPageId: z.string().optional(),
+    currentPageIndex: z.number().min(0).optional()
+  }).parse(await c.req.json())
+
+  const updatedArticle = repository.updateArticle(c.get("userId"), c.req.param("id"), {
+    readProgress: payload.progress,
+    lastReadAt: new Date().toISOString(),
+    lastReadPosition: payload.currentPageId ?? undefined
+  })
+  const progress = await saveArticleReaderProgress(c.get("userId"), c.req.param("id"), {
+    id: payload.id,
+    progress: payload.progress,
+    currentPageId: payload.currentPageId,
+    currentPageIndex: payload.currentPageIndex
+  })
+
+  return c.json({ item: updatedArticle, progress })
+})
+
+app.post("/:id/favorite", async (c) => {
+  const userId = c.get("userId")
+  const articleId = c.req.param("id")
+  const article = repository.getArticle(userId, articleId)
+  if (!article) {
+    return c.json({ error: "Article not found" }, 404)
+  }
+  const item = repository.updateArticle(userId, articleId, {
+    favorite: true,
+    favoritedAt: new Date().toISOString()
+  })
+  void autoTagFavoritedArticle(userId, articleId).catch(() => undefined)
+  return c.json({ item })
+})
+
+app.post("/:id/unfavorite", async (c) => {
+  const userId = c.get("userId")
+  const articleId = c.req.param("id")
+  const article = repository.getArticle(userId, articleId)
+  if (!article) {
+    return c.json({ error: "Article not found" }, 404)
+  }
+  const item = repository.updateArticle(userId, articleId, {
+    favorite: false,
+    favoritedAt: undefined
+  })
+  return c.json({ item })
 })
 
 /** 删除即归档：将文章移入归档态，不丢数据 */
@@ -172,7 +288,7 @@ app.post("/:id/restore", (c) => {
 })
 
 /** 永久删除：仅归档文章可用，不可恢复 */
-app.delete("/:id/permanent", (c) => {
+app.delete("/:id/permanent", async (c) => {
   const userId = c.get("userId")
   const articleId = c.req.param("id")
   const article = repository.getArticle(userId, articleId)
@@ -182,8 +298,35 @@ app.delete("/:id/permanent", (c) => {
   if (!article.archived) {
     return c.json({ error: "Only archived articles can be permanently deleted" }, 400)
   }
+  if (article.favorite) {
+    return c.json({ error: "收藏文章不能删除，请先取消收藏" }, 400)
+  }
+  await removeArticleAssets(article)
   repository.deleteArticle(userId, articleId)
   return c.json({ ok: true })
+})
+
+app.get("/:id/assets/:assetId", async (c) => {
+  const userId = c.get("userId")
+  const article = repository.getArticle(userId, c.req.param("id"))
+  if (!article) {
+    return c.json({ error: "Article not found" }, 404)
+  }
+  const imageSection = findArticleImageSection(article, c.req.param("assetId"))
+  if (!imageSection?.objectKey) {
+    return c.json({ error: "Asset not found" }, 404)
+  }
+  const buffer = await getBookObjectBuffer("lumina-books", imageSection.objectKey)
+  if (!buffer) {
+    return c.json({ error: "Asset not found" }, 404)
+  }
+  return new Response(new Uint8Array(buffer), {
+    status: 200,
+    headers: {
+      "Cache-Control": "private, max-age=900",
+      "Content-Type": getStoredObjectContentType(imageSection.objectKey)
+    }
+  })
 })
 
 // ─── 文章高亮 ───

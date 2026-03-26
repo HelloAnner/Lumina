@@ -29,7 +29,18 @@ export function collectArticleParagraphs(sections: ArticleSection[]): string[] {
 /** 计算文章内容的 SHA-1 摘要 */
 export function buildArticleSourceHash(sections: ArticleSection[]): string {
   return createHash("sha1")
-    .update(JSON.stringify(sections.map((s) => ({ type: s.type, text: s.text, items: s.items }))))
+    .update(
+      JSON.stringify(
+        sections.map((s) => ({
+          type: s.type,
+          text: s.text,
+          items: s.items,
+          src: s.src,
+          alt: s.alt,
+          assetId: s.assetId
+        }))
+      )
+    )
     .digest("hex")
 }
 
@@ -55,4 +66,14 @@ export function buildTranslatedArticleSections(
     }
     return section
   })
+}
+
+export function buildNormalizedTranslatedArticleSections(
+  original: ArticleSection[],
+  translated: ArticleSection[]
+) {
+  return buildTranslatedArticleSections(
+    original,
+    collectArticleParagraphs(translated)
+  )
 }

@@ -15,6 +15,7 @@
 - 划线批注（附加文字）
 - 排版设置（字体大小、行距、背景色主题）
 - 键盘快捷键
+- 阅读分享链接（有效期可选，点击后直接进入阅读页）
 - IndexedDB 本地缓存（乐观写入，后台同步）
 - 跳回原文入口（URL 参数定位）
 
@@ -34,6 +35,12 @@
 ├──────────────────────────────────────────────────────────────┤
 │  第 N 页 / 共 M 页          进度滑块         章节名           │
 └──────────────────────────────────────────────────────────────┘
+
+右上角支持分享：
+
+- 点击分享图标后选择有效期（24 小时 / 7 天 / 30 天 / 永久）
+- 立即复制可访问链接
+- 被分享者直接进入同一阅读页，以只读方式查看正文、目录和已有高亮
 
 右侧浮层（选中文字时出现）：
 ┌────────────────────────────────────┐
@@ -170,12 +177,20 @@ const url = `/reader/${bookId}?highlight=${highlightId}`
 ## 7. 阅读进度
 
 ```typescript
-// 自动记录（防抖 2 秒）
+// 自动记录（轻量防抖）
 PUT /api/books/:id/progress
-Body: { progress: number }  // 0~1
+Body: {
+  id: string
+  progress: number
+  currentPageId?: string
+  currentPageIndex?: number
+  currentSectionIndex?: number
+  currentParagraphIndex?: number
+}  // 0~1
 
-// PDF: 当前页 / 总页数
-// EPUB: 当前位置 / 总字数（epub.js locations）
+// 优先用 currentPageId 恢复阅读位置
+// PDF: 记录真实页对应的 section/page id
+// EPUB: 记录当前阅读节的页面 id，再回退 paragraph 级位置
 ```
 
 ---

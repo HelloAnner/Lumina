@@ -1,6 +1,6 @@
 /**
  * 文章库主页面
- * 筛选 Tab + 主题网格 + 分页列表 + 归档
+ * 筛选 Tab + 主题网格 + 手动链接导入 + 分页列表 + 归档
  *
  * @author Anner
  * @since 0.1.0
@@ -11,6 +11,7 @@
 import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import {
+  Plus,
   Archive,
   ArchiveRestore,
   ArrowDownUp,
@@ -21,16 +22,20 @@ import {
   FileText,
   Folder,
   Search,
+  Star,
   Trash2,
   X
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Toast } from "@/components/ui/toast"
 import { cn } from "@/src/lib/utils"
+import { ArticleLinkImportDialog } from "@/components/articles/article-link-import-dialog"
+import { formatArticlePublishedAtSummary } from "@/components/articles/article-published-at"
 import type { ScoutArticle, ArticleTopic } from "@/src/server/store/types"
 import type { ArticleSortBy } from "@/src/server/services/preferences/store"
 
-type FilterTab = "all" | "unread" | "reading" | "archived"
+type FilterTab = "all" | "unread" | "reading" | "favorite" | "archived"
 
 interface PaginatedResult {
   items: ScoutArticle[]
@@ -56,6 +61,7 @@ const FILTER_TABS: { key: FilterTab; label: string }[] = [
   { key: "all", label: "全部" },
   { key: "unread", label: "未读" },
   { key: "reading", label: "阅读中" },
+  { key: "favorite", label: "收藏" },
   { key: "archived", label: "已归档" }
 ]
 
@@ -68,23 +74,6 @@ const TOPIC_COLORS = [
   "bg-[#1e2a2a]/60"
 ]
 
-function timeAgo(dateStr?: string): string {
-  if (!dateStr) {
-    return ""
-  }
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const minutes = Math.floor(diff / 60_000)
-  if (minutes < 60) {
-    return `${minutes}m ago`
-  }
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) {
-    return `${hours}h ago`
-  }
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
-
 export function ArticlesClient({ initialData, initialTopics, initialSortBy = "lastRead", archiveRetentionDays = 30 }: Props) {
   const router = useRouter()
   const [data, setData] = useState<PaginatedResult>(initialData)
@@ -94,6 +83,12 @@ export function ArticlesClient({ initialData, initialTopics, initialSortBy = "la
   const [activeTopic, setActiveTopic] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<ArticleSortBy>(initialSortBy)
   const [loading, setLoading] = useState(false)
+  const [showImportDialog, setShowImportDialog] = useState(false)
+  const [toast, setToast] = useState<{
+    title: string
+    description?: string
+    tone?: "default" | "warning" | "success" | "error"
+  } | null>(null)
 
   /** 从 API 获取分页数据 */
   const fetchArticles = useCallback(async (params: {
@@ -186,8 +181,60 @@ export function ArticlesClient({ initialData, initialTopics, initialSortBy = "la
 
   /** 永久删除 */
   const handlePermanentDelete = async (articleId: string) => {
-    await fetch(`/api/articles/${articleId}/permanent`, { method: "DELETE" })
+    const response = await fetch(`/api/articles/${articleId}/permanent`, { method: "DELETE" })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      setToast({
+        title: data.error || "删除失败",
+        tone: "error"
+      })
+      return
+    }
     refetch()
+  }
+
+  const handleFavorite = async (articleId: string, favorite: boolean) => {
+    const response = await fetch(
+      `/api/articles/${articleId}/${favorite ? "unfavorite" : "favorite"}`,
+      { method: "POST" }
+    )
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      setToast({
+        title: data.error || "收藏操作失败",
+        tone: "error"
+      })
+      return
+    }
+    refetch()
+    setToast({
+      title: favorite ? "已取消收藏" : "已收藏",
+      description: favorite ? undefined : "系统将自动补全主题标签",
+      tone: "success"
+    })
+  }
+
+  const handleImported = async ({
+    status,
+    item
+  }: {
+    status: "created" | "existing"
+    item: ScoutArticle
+  }) => {
+    setShowImportDialog(false)
+    setSearch("")
+    setActiveFilter("all")
+    setActiveTopic(null)
+    await fetchArticles({
+      filter: "all",
+      sortBy,
+      page: 1
+    })
+    setToast({
+      title: status === "created" ? "文章已添加" : "文章已在列表中",
+      description: item.title,
+      tone: "success"
+    })
   }
 
   return (
@@ -199,22 +246,33 @@ export function ArticlesClient({ initialData, initialTopics, initialSortBy = "la
           <h1 className="text-[15px] font-medium text-foreground">文章</h1>
           <span className="text-[13px] text-muted">{data.total} 篇</span>
         </div>
-        <div className="relative w-64">
-          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
-          <Input
-            value={search}
-            onChange={(e) => handleSearch(e.target.value)}
-            placeholder="搜索文章..."
-            className="h-8 pl-9 text-[13px]"
-          />
-          {search && (
-            <button
-              onClick={() => handleSearch("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2"
-            >
-              <X className="h-3 w-3 text-muted" />
-            </button>
-          )}
+        <div className="flex items-center gap-2">
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+            <Input
+              value={search}
+              onChange={(e) => handleSearch(e.target.value)}
+              placeholder="搜索文章..."
+              className="h-8 pl-9 text-[13px]"
+            />
+            {search && (
+              <button
+                onClick={() => handleSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2"
+              >
+                <X className="h-3 w-3 text-muted" />
+              </button>
+            )}
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setShowImportDialog(true)}
+            className="gap-1.5"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            添加链接
+          </Button>
         </div>
       </header>
 
@@ -317,6 +375,7 @@ export function ArticlesClient({ initialData, initialTopics, initialSortBy = "la
                   isArchivedView={activeFilter === "archived"}
                   archiveRetentionDays={archiveRetentionDays}
                   onClick={() => router.push(`/articles/${article.id}`)}
+                  onFavorite={() => handleFavorite(article.id, Boolean(article.favorite))}
                   onArchive={() => handleArchive(article.id)}
                   onRestore={() => handleRestore(article.id)}
                   onPermanentDelete={() => handlePermanentDelete(article.id)}
@@ -386,6 +445,21 @@ export function ArticlesClient({ initialData, initialTopics, initialSortBy = "la
           </div>
         )}
       </div>
+
+      {showImportDialog ? (
+        <ArticleLinkImportDialog
+          onClose={() => setShowImportDialog(false)}
+          onImported={handleImported}
+        />
+      ) : null}
+      {toast ? (
+        <Toast
+          title={toast.title}
+          description={toast.description}
+          tone={toast.tone}
+          onClose={() => setToast(null)}
+        />
+      ) : null}
     </div>
   )
 }
@@ -395,6 +469,7 @@ function ArticleRow({
   isArchivedView,
   archiveRetentionDays = 30,
   onClick,
+  onFavorite,
   onArchive,
   onRestore,
   onPermanentDelete
@@ -403,6 +478,7 @@ function ArticleRow({
   isArchivedView: boolean
   archiveRetentionDays?: number
   onClick: () => void
+  onFavorite: () => void
   onArchive: () => void
   onRestore: () => void
   onPermanentDelete: () => void
@@ -454,7 +530,7 @@ function ArticleRow({
           {article.publishedAt && (
             <span className="flex items-center gap-1 text-muted">
               <Clock className="h-2.5 w-2.5" />
-              {timeAgo(article.publishedAt)}
+              {formatArticlePublishedAtSummary(article.publishedAt)}
             </span>
           )}
         </div>
@@ -462,6 +538,11 @@ function ArticleRow({
           {article.highlightCount > 0 && (
             <span className="text-muted">{article.highlightCount} 条划线</span>
           )}
+          {article.favorite ? (
+            <span className="rounded bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-200">
+              已收藏
+            </span>
+          ) : null}
           <span className={readColor}>{readLabel}</span>
           {expiryHint && (
             <span className="text-destructive/70">{expiryHint}</span>
@@ -474,6 +555,18 @@ function ArticleRow({
         </div>
       </button>
       <div className="mt-1 flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          onClick={(e) => { e.stopPropagation(); onFavorite() }}
+          className={cn(
+            "rounded-md p-1.5 transition-colors hover:bg-elevated",
+            article.favorite
+              ? "text-amber-300"
+              : "text-muted hover:text-amber-200"
+          )}
+          title={article.favorite ? "取消收藏" : "收藏"}
+        >
+          <Star className={cn("h-3.5 w-3.5", article.favorite && "fill-current")} />
+        </button>
         {isArchivedView ? (
           <>
             <button

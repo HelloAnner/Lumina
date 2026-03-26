@@ -37,6 +37,7 @@ export function readDatabase(): Database {
     importJobs: [],
     importedNotes: [],
     noteViewpointLinks: [],
+    shareLinks: [],
     ...raw
   } as Database
 }

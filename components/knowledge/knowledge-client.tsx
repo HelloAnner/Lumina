@@ -44,6 +44,7 @@ import {
 } from "@/components/knowledge/viewpoint-tree-utils"
 import { BLOCK_TYPE_REGISTRY } from "@/components/knowledge/block-type-registry"
 import type {
+  AppKeyboardShortcuts,
   Annotation,
   Highlight,
   NoteBlock,
@@ -67,12 +68,14 @@ type DraftNode = {
 export function KnowledgeClient({
   initialViewpoints,
   initialImportedNoteId,
+  keyboardShortcuts,
   initialSelected,
   unconfirmed,
   initialWidths
 }: {
   initialViewpoints: Viewpoint[]
   initialImportedNoteId?: string
+  keyboardShortcuts?: AppKeyboardShortcuts
   initialSelected?: Viewpoint
   unconfirmed: (Highlight & { similarityScore?: number })[]
   initialWidths: {
@@ -1094,6 +1097,7 @@ export function KnowledgeClient({
                   viewpointId={selectedId}
                   blocks={blocks}
                   annotatedBlockIds={annotatedBlockIds}
+                  keyboardShortcuts={keyboardShortcuts}
                   outlineCollapsed={noteState.outlineCollapsed}
                   selectedBlockId={activeRightTab === "chat" ? selectedBlockForChat?.id : undefined}
                   scrollContainerRef={contentScrollRef}

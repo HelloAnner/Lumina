@@ -21,6 +21,7 @@ app.put("/ui", async (c) => {
       knowledgeListWidth: z.number().min(220).max(420).optional(),
       readerTocWidth: z.number().min(200).max(420).optional(),
       readerHighlightsWidth: z.number().min(260).max(480).optional(),
+      articleOutlineWidth: z.number().min(180).max(360).optional(),
       articleSortBy: z.enum(["lastRead", "created"]).optional()
     })
     .parse(await c.req.json())
