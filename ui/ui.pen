@@ -533,7 +533,7 @@
                       "id": "3SCZh",
                       "name": "knowText",
                       "fill": "$text-muted",
-                      "content": "知识库",
+                      "content": "观点库",
                       "fontFamily": "Inter",
                       "fontSize": 13,
                       "fontWeight": "normal"
@@ -2369,7 +2369,7 @@
                       "id": "HFfoa",
                       "name": "n2t",
                       "fill": "$text-muted",
-                      "content": "知识库",
+                      "content": "观点库",
                       "fontFamily": "Inter",
                       "fontSize": 13,
                       "fontWeight": "normal"
@@ -2775,7 +2775,7 @@
                       "id": "mwgGE",
                       "name": "nbt",
                       "fill": "$text-primary",
-                      "content": "知识库",
+                      "content": "观点库",
                       "fontFamily": "Inter",
                       "fontSize": 13,
                       "fontWeight": "500"
@@ -4591,7 +4591,7 @@
                       "id": "BMcE7",
                       "name": "n2t",
                       "fill": "$text-muted",
-                      "content": "知识库",
+                      "content": "观点库",
                       "fontFamily": "Inter",
                       "fontSize": 13,
                       "fontWeight": "normal"
@@ -6227,7 +6227,7 @@
                       "type": "text",
                       "id": "e5v2b",
                       "fill": "$text-muted",
-                      "content": "知识库",
+                      "content": "观点库",
                       "fontFamily": "Inter",
                       "fontSize": 13,
                       "fontWeight": "normal"
@@ -7714,7 +7714,7 @@
                       "type": "text",
                       "id": "UK0DJ",
                       "fill": "$text-muted",
-                      "content": "知识库",
+                      "content": "观点库",
                       "fontFamily": "Inter",
                       "fontSize": 13,
                       "fontWeight": "normal"
@@ -9559,7 +9559,7 @@
                       "type": "text",
                       "id": "QDe0d",
                       "fill": "$text-muted",
-                      "content": "知识库",
+                      "content": "观点库",
                       "fontFamily": "Inter",
                       "fontSize": 13,
                       "fontWeight": "normal"
@@ -11063,7 +11063,7 @@
                       "type": "text",
                       "id": "SzdmJ",
                       "fill": "$text-muted",
-                      "content": "知识库",
+                      "content": "观点库",
                       "fontFamily": "Inter",
                       "fontSize": 13,
                       "fontWeight": "normal"
@@ -12577,7 +12577,7 @@
                       "id": "Vj0mC",
                       "name": "n2t",
                       "fill": "$text-muted",
-                      "content": "知识库",
+                      "content": "观点库",
                       "fontFamily": "Inter",
                       "fontSize": 13,
                       "fontWeight": "normal"
@@ -13965,7 +13965,7 @@
                       "id": "hypJS",
                       "name": "n2t",
                       "fill": "$text-muted",
-                      "content": "知识库",
+                      "content": "观点库",
                       "fontFamily": "Inter",
                       "fontSize": 13,
                       "fontWeight": "normal"
@@ -16411,7 +16411,7 @@
                       "id": "UbMMn",
                       "name": "nbt",
                       "fill": "$text-primary",
-                      "content": "知识库",
+                      "content": "观点库",
                       "fontFamily": "Inter",
                       "fontSize": 13,
                       "fontWeight": "500"
@@ -17778,7 +17778,7 @@
                       "type": "text",
                       "id": "lfsEC",
                       "fill": "$text-muted",
-                      "content": "知识库",
+                      "content": "观点库",
                       "fontFamily": "Inter",
                       "fontSize": 13,
                       "fontWeight": "normal"
@@ -19509,7 +19509,7 @@
                       "id": "BnpYx",
                       "name": "n2t",
                       "fill": "$text-primary",
-                      "content": "知识库",
+                      "content": "观点库",
                       "fontFamily": "Inter",
                       "fontSize": 13,
                       "fontWeight": "500"
@@ -20950,7 +20950,7 @@
                       "id": "ZqHPp",
                       "name": "n2t",
                       "fill": "$text-primary",
-                      "content": "知识库",
+                      "content": "观点库",
                       "fontFamily": "Inter",
                       "fontSize": 13,
                       "fontWeight": "500"
@@ -22266,7 +22266,7 @@
                       "id": "gIzdC",
                       "name": "n2t",
                       "fill": "$text-primary",
-                      "content": "知识库",
+                      "content": "观点库",
                       "fontFamily": "Inter",
                       "fontSize": 13,
                       "fontWeight": "500"

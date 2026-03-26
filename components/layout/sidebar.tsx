@@ -37,7 +37,7 @@ const navGroups: NavGroup[] = [
   {
     label: "知识",
     items: [
-      { href: "/knowledge", label: "知识库", icon: BookOpen },
+      { href: "/knowledge", label: "观点库", icon: BookOpen },
       { href: "/graph", label: "图谱", icon: Network }
     ]
   },
