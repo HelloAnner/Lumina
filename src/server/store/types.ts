@@ -47,6 +47,20 @@ export type NoteBlockType =
   | "math"
   | "excalidraw"
 
+/** 行内富文本标记 */
+export interface InlineMark {
+  type: "bold" | "italic" | "strike" | "code" | "link"
+  attrs?: {
+    href?: string
+  }
+}
+
+/** 带格式的文本片段 */
+export interface RichTextSegment {
+  text: string
+  marks?: InlineMark[]
+}
+
 /**
  * 笔记块基础字段
  */
@@ -66,12 +80,14 @@ export interface HeadingBlock extends NoteBlockBase {
   type: "heading"
   level: 1 | 2 | 3
   text: string
+  richText?: RichTextSegment[]
 }
 
 /** 段落块 */
 export interface ParagraphBlock extends NoteBlockBase {
   type: "paragraph"
   text: string
+  richText?: RichTextSegment[]
   /** 行内高亮区间 */
   inlineHighlights?: { start: number; end: number; color: string }[]
 }
@@ -80,6 +96,7 @@ export interface ParagraphBlock extends NoteBlockBase {
 export interface QuoteBlock extends NoteBlockBase {
   type: "quote"
   text: string
+  richText?: RichTextSegment[]
   sourceBookId?: string
   sourceBookTitle?: string
   sourceLocation?: string
@@ -90,6 +107,7 @@ export interface QuoteBlock extends NoteBlockBase {
 export interface HighlightBlock extends NoteBlockBase {
   type: "highlight"
   text: string
+  richText?: RichTextSegment[]
   label?: string
   sourceBookId?: string
   sourceBookTitle?: string
@@ -101,6 +119,7 @@ export interface HighlightBlock extends NoteBlockBase {
 export interface InsightBlock extends NoteBlockBase {
   type: "insight"
   text: string
+  richText?: RichTextSegment[]
   label?: string
 }
 

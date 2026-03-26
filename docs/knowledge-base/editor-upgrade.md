@@ -1305,18 +1305,320 @@ const BlockIdExtension = Extension.create({
 
 ---
 
-## 10. 实施阶段
+## 10. 大文档性能策略
 
-### Phase 1：基础迁移（功能对等）
+### 10.1 性能预算
+
+| 文档规模 | 块数量 | 目标首次渲染 | 目标打字延迟（KP） |
+|----------|--------|-------------|-------------------|
+| 小型笔记 | < 200 | < 200ms | < 16ms（60fps） |
+| 中型文章 | 200~1000 | < 500ms | < 20ms |
+| 大型文档 | 1000~3000 | < 1s | < 30ms |
+| 极端场景 | 3000~5000 | < 2s | < 50ms |
+
+**基准事实**：ProseMirror 在 500+ 节点时可能出现可感知延迟，3000+ 节点时需要系统性优化。Notion 在 1000+ 块时也有明显加载延迟，通过 Toggle 折叠和 API 分页缓解。
+
+### 10.2 浏览器渲染层：content-visibility（P0，性价比最高）
+
+ProseMirror 不支持原生虚拟滚动（不同于 CodeMirror 6），但 CSS `content-visibility: auto` 可让浏览器跳过屏幕外节点的布局与绘制，效果接近虚拟化但无需管理滚动位置：
+
+```css
+/**
+ * 浏览器级遮挡剔除：屏幕外的块跳过 layout/paint
+ * 兼容性：Chrome 85+, Edge 85+, Firefox 124+, Safari 18+
+ */
+.tiptap > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 60px;  /* 估算块高度，影响滚动条精度 */
+}
+
+/* 特殊块（引用/代码/洞察）估算更高 */
+.tiptap > .custom-block {
+  contain-intrinsic-size: auto 120px;
+}
+```
+
+**注意事项**：
+- `contain-intrinsic-size` 使用 `auto` 前缀让浏览器记住已渲染过的真实高度，滚动条随使用逐步精确
+- Cmd+F 浏览器搜索仍正常工作（浏览器会自动展开匹配节点）
+- 首屏 10~15 个块正常渲染，其余由浏览器按需渲染
+
+### 10.3 React NodeView 优化（P0）
+
+React NodeView 是已知的性能瓶颈——每个 `ReactNodeViewRenderer` 在 React Portal 中挂载独立组件。3000 块中有 500 个引用块 = 500 个 React 组件实例。
+
+**策略 A：能用原生 DOM 就不用 React**
+
+标题、段落、分隔线等简单节点直接用 ProseMirror 原生 NodeView（零 React 开销）：
+
+```typescript
+// 分隔线：原生 DOM，不需要 React
+const DividerNode = Node.create({
+  name: 'horizontalRule',
+  // ...
+  addNodeView() {
+    return ({ HTMLAttributes }) => {
+      const dom = document.createElement('div')
+      dom.className = 'block-wrapper group/block relative'
+      const hr = document.createElement('hr')
+      hr.className = 'my-3 border-border/30'
+      dom.appendChild(hr)
+      return { dom }
+    }
+  }
+})
+```
+
+**仅以下块类型需要 React NodeView**（因为有交互状态）：
+- `CodeBlock`：语言选择器、复制按钮
+- `ImportedBlock`：复用现有 `ImportedBlockItem` 组件
+
+其余块（`quoteBlock`、`highlightBlock`、`insightBlock`）虽然有装饰性 UI，但可以用纯 DOM NodeView + CSS 实现，避免 React 开销。
+
+**策略 B：禁用 React 全局重渲染**
+
+TipTap 2.5+ 关键优化：
+
+```typescript
+const editor = useEditor({
+  extensions,
+  content,
+  immediatelyRender: true,
+  shouldRerenderOnTransaction: false,  // 关键：不因每次键入重渲染 React 树
+})
+
+// 工具栏等需要响应编辑器状态的组件，用选择器精确订阅
+const toolbarState = useEditorState({
+  editor,
+  selector: ({ editor: e }) => ({
+    isBold: e.isActive('bold'),
+    isItalic: e.isActive('italic'),
+    isLink: e.isActive('link'),
+  }),
+  // 浅比较避免无谓渲染
+  equalityFn: (a, b) =>
+    a.isBold === b.isBold && a.isItalic === b.isItalic && a.isLink === b.isLink,
+})
+```
+
+**策略 C：编辑器组件隔离**
+
+确保编辑器在独立 React 组件中，父组件（侧栏切换等）的 state 变化不会级联触发编辑器重渲染：
+
+```tsx
+// knowledge-client.tsx 中
+<div className="flex-1 overflow-y-auto">
+  {/* NoteEditor 是独立组件，内部管理 editor 实例 */}
+  <NoteEditor
+    viewpointId={selectedViewpoint.id}
+    initialBlocks={blocks}
+    onSaveStatusChange={setSaveStatus}
+  />
+</div>
+```
+
+### 10.4 Plugin 性能守则（P0）
+
+每次 Transaction（每次键入）都会执行所有 Plugin。3000+ 节点时，低效 Plugin 是延迟的主要来源。
+
+**规则 1：BlockId 去重 Plugin 必须快速退出**
+
+```typescript
+appendTransaction(transactions, _oldState, newState) {
+  // 无文档变更 → 立即返回（最常见路径）
+  if (!transactions.some(tr => tr.docChanged)) {
+    return null
+  }
+  // 进一步检查：只有 ReplaceStep（Enter 分割）才可能产生重复 ID
+  const hasReplace = transactions.some(tr =>
+    tr.steps.some(s => s instanceof ReplaceStep)
+  )
+  if (!hasReplace) {
+    return null
+  }
+  // ... 执行去重
+}
+```
+
+**规则 2：Decoration 增量更新，禁止全量重建**
+
+批注高亮等装饰必须用 `DecorationSet.map()` 做增量映射：
+
+```typescript
+const annotationPlugin = new Plugin({
+  state: {
+    init(_, { doc }) {
+      return DecorationSet.create(doc, [])
+    },
+    apply(tr, decorationSet) {
+      // O(changed) 而非 O(n)：只映射变更区域
+      decorationSet = decorationSet.map(tr.mapping, tr.doc)
+
+      // 仅在显式触发时增删装饰
+      const meta = tr.getMeta(annotationPlugin)
+      if (meta?.add) {
+        decorationSet = decorationSet.add(tr.doc, meta.add)
+      }
+      if (meta?.remove) {
+        decorationSet = decorationSet.remove(meta.remove)
+      }
+      return decorationSet
+    }
+  },
+  props: {
+    decorations(state) { return this.getState(state) }
+  }
+})
+```
+
+**规则 3：避免 ProseMirror-focused 类触发全页 reflow**
+
+已知 Chrome bug：给大文档根节点加 class 会触发全量 reflow。解决方案：
+
+```typescript
+// 覆盖默认行为，用 data attribute 替代 class 切换
+editorProps: {
+  attributes: (state) => ({
+    'data-focused': state.selection.$from.depth > 0 ? 'true' : undefined,
+    class: 'tiptap-editor outline-none max-w-[720px] mx-auto px-4',
+  }),
+}
+```
+
+### 10.5 保存策略：增量 debounce（P1）
+
+几千块的完整序列化 (`editor.getJSON()` → `tipTapDocToBlocks()`) 每次约 5~20ms，可接受但应优化。
+
+**短期方案（Phase 1~2）**：Debounce 全量保存，增加脏检查
+
+```typescript
+let lastSavedVersion = 0
+
+editor.on('update', ({ editor }) => {
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => {
+    // 版本号检查：未变更则跳过
+    const currentVersion = editor.state.doc.content.size
+    if (currentVersion === lastSavedVersion) {
+      return
+    }
+
+    const blocks = tipTapDocToBlocks(editor.getJSON())
+    saveToBackend(blocks)
+    lastSavedVersion = currentVersion
+  }, 1200)  // 大文档 debounce 增加到 1200ms
+})
+```
+
+**中期方案（Phase 3+）**：Step-based 增量保存
+
+```typescript
+/**
+ * 仅发送变更的 steps，后端 apply 到快照上
+ * 每 N 分钟或 M 步做一次全量 checkpoint
+ */
+const incrementalSave = new Plugin({
+  state: {
+    init() { return { pendingSteps: [], version: 0 } },
+    apply(tr, state) {
+      if (!tr.docChanged) { return state }
+      return {
+        pendingSteps: [...state.pendingSteps, ...tr.steps.map(s => s.toJSON())],
+        version: state.version + 1,
+      }
+    }
+  }
+})
+
+// 定时 flush
+async function flushSteps(state: EditorState) {
+  const { pendingSteps, version } = incrementalSave.getState(state)
+  if (pendingSteps.length === 0) { return }
+
+  await fetch(`/api/viewpoints/${id}/steps`, {
+    method: 'POST',
+    body: JSON.stringify({ steps: pendingSteps, version }),
+  })
+  // 重置 pending（通过 dispatch meta）
+}
+```
+
+### 10.6 初始加载优化（P1）
+
+**API 分页加载**（对标 Notion 的 `loadPageChunk`）：
+
+```typescript
+// 首屏：加载前 50 个块（覆盖可视区域）
+const firstBatch = await fetch(`/api/viewpoints/${id}/blocks?limit=50&offset=0`)
+editor.commands.setContent(blocksToTipTapDoc(firstBatch))
+
+// 后续：分批加载剩余块并追加
+let offset = 50
+while (true) {
+  const batch = await fetch(`/api/viewpoints/${id}/blocks?limit=100&offset=${offset}`)
+  if (batch.length === 0) { break }
+
+  const nodes = batch.map(blockToNode).filter(Boolean)
+  editor.commands.insertContentAt(editor.state.doc.content.size, nodes)
+  offset += batch.length
+}
+```
+
+**注意**：分批加载时需要抑制 auto-save，避免中间状态被保存：
+
+```typescript
+let isInitialLoading = true
+// ... 加载完成后
+isInitialLoading = false
+```
+
+**代码块语法高亮按需加载**（Lowlight 语言包 120KB+）：
+
+```typescript
+import { common, createLowlight } from 'lowlight'
+
+// 仅加载常用语言（减少 80% 体积）
+const lowlight = createLowlight(common)
+
+// 冷门语言用户选择时动态加载
+async function loadLanguage(lang: string) {
+  const module = await import(`highlight.js/lib/languages/${lang}`)
+  lowlight.register(lang, module.default)
+}
+```
+
+### 10.7 性能分层总结
+
+```
+优先级   策略                              预期收益        复杂度
+────────────────────────────────────────────────────────────────
+P0      content-visibility: auto           渲染耗时 -60%    低（3行 CSS）
+P0      shouldRerenderOnTransaction:false  React 渲染 -90%  低
+P0      简单块用原生 DOM NodeView          NodeView 开销 -70% 中
+P0      Plugin 快速退出 + Decoration 增量   Transaction -50%  中
+P1      debounce + 脏检查保存              保存频率 -40%    低
+P1      首屏分批加载                       首次渲染 -50%    中
+P1      语法高亮按需加载                   bundle -80KB     低
+P2      Step-based 增量保存                保存体积 -90%    高
+P2      折叠长文档段落（类似 Toggle）       DOM 节点数 -N%   中
+```
+
+---
+
+## 11. 实施阶段
+
+### Phase 1：基础迁移（功能对等 + 性能基线）
 
 用 TipTap 替换自研 contentEditable，**不新增任何功能**，确保零退化。
 
-- 安装 TipTap 依赖
+- 安装 TipTap 依赖（确认 2.5+ 版本）
 - 实现 `blocksToTipTapDoc` / `tipTapDocToBlocks` + 往返测试
-- 创建 `NoteEditor` + `useNoteEditor`
-- 迁移全部 15 种块类型的 NodeView
+- 创建 `NoteEditor` + `useNoteEditor`（启用 `shouldRerenderOnTransaction: false`）
+- 迁移全部 15 种块类型 NodeView（简单块用原生 DOM，仅 CodeBlock/ImportedBlock 用 React）
+- 添加 `content-visibility: auto` CSS
 - 适配 `/` 命令、auto-save、批注系统、AI 对话系统
-- 验收：所有现有功能正常工作
+- 性能基线测试：500 块 / 2000 块文档下 KP 延迟
+- 验收：所有现有功能正常工作，2000 块文档打字无感知延迟
 
 ### Phase 2：富文本 + 核心体验
 
@@ -1332,26 +1634,30 @@ Notion 核心体验补齐。
 - 存储层增加 `richText` 字段
 - 验收：可以对文字加粗、创建链接、在中间分割块
 
-### Phase 3：块操作
+### Phase 3：块操作 + 大文档优化
 
 - 左侧拖拽手柄 + ＋ 按钮
 - 拖拽排序
 - ⠿ 菜单（Turn into / 复制 / 删除）
 - Cmd+Shift+↑↓ 块移动
 - Cmd+D 复制块
-- 验收：可拖拽重排块，通过菜单转换块类型
+- API 分页加载（首屏 50 块 + 后续分批追加）
+- 语法高亮按需加载（仅 common 语言包）
+- 验收：可拖拽重排块，3000 块文档首次渲染 < 1s
 
-### Phase 4：高级交互（可选）
+### Phase 4：高级交互 + 增量保存（可选）
 
 - Esc 块选择模式 + Shift 多选
 - 多块批量操作
 - Tab / Shift+Tab 缩进
 - 外部粘贴 HTML 智能解析
 - URL 粘贴到选中文字自动创建链接
+- Step-based 增量保存（替代全量序列化）
+- 折叠段落（长文档性能兜底）
 
 ---
 
-## 11. 注意事项
+## 12. 注意事项
 
 ### 数据兼容
 
@@ -1361,9 +1667,13 @@ Notion 核心体验补齐。
 
 ### 性能
 
-- ProseMirror 在 500+ 节点时可能出现延迟，对超长笔记考虑虚拟化
-- 每个 React NodeView 是独立挂载，大量引用块时监控渲染性能
-- auto-save debounce 800ms，格式化操作（如加粗）也会触发保存
+详见 §10 大文档性能策略。核心检查清单：
+- `content-visibility: auto` 已添加
+- `shouldRerenderOnTransaction: false` 已启用
+- 简单块使用原生 DOM NodeView（非 React）
+- 所有 Plugin 的 `appendTransaction` 有快速退出路径
+- Decoration 使用 `DecorationSet.map()` 增量更新
+- 2000+ 块文档通过性能测试（KP < 30ms）
 
 ### 不做的事
 
