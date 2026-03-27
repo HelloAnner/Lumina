@@ -1,16 +1,23 @@
-# Lumina
+<p align="center">
+  <img src="docs/lumina-hero.png" width="680" alt="Lumina — Turn every highlight into knowledge" />
+</p>
 
-单镜像部署的智能阅读知识库 Demo，覆盖：
+<p align="center">
+  An intelligent reading knowledge base that automatically turns book highlights<br/>
+  into cross-book viewpoint articles using AI.
+</p>
 
-- 账号系统
-- 书库
-- 阅读器
-- AI 即时解释
-- 划线聚合
-- 知识库
-- 图谱
-- 发布
-- 设置
+---
+
+## Features
+
+- **Library** — Upload PDF/EPUB, browse covers, manage your collection
+- **Reader** — In-browser reading with multi-color highlighting and annotations
+- **AI Explain** — Select text, get instant AI-powered explanations
+- **Aggregation Engine** — Highlights are vectorized and clustered into viewpoint articles automatically
+- **Knowledge Graph** — D3.js force-directed visualization of viewpoint connections
+- **Publish** — Export to Markdown/PDF/HTML, push to Webhook or KMS targets
+- **Settings** — BYOK model configuration, storage, and aggregation scheduling
 
 ## 本地开发
 
