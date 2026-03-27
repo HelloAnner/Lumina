@@ -3,82 +3,122 @@
 </p>
 
 <p align="center">
-  An intelligent reading knowledge base that automatically turns book highlights<br/>
-  into cross-book viewpoint articles using AI.
+  <strong>An intelligent reading knowledge base that turns book highlights into cross-book viewpoint articles using AI.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/HelloAnner/Lumina/blob/main/LICENSE"><img src="https://img.shields.io/github/license/HelloAnner/Lumina?style=flat-square&color=8B5CF6" alt="License" /></a>
+  <a href="https://github.com/HelloAnner/Lumina/stargazers"><img src="https://img.shields.io/github/stars/HelloAnner/Lumina?style=flat-square&color=8B5CF6" alt="Stars" /></a>
+  <a href="https://github.com/HelloAnner/Lumina/issues"><img src="https://img.shields.io/github/issues/HelloAnner/Lumina?style=flat-square" alt="Issues" /></a>
+  <a href="https://github.com/HelloAnner/Lumina/pulls"><img src="https://img.shields.io/github/issues-pr/HelloAnner/Lumina?style=flat-square" alt="PRs" /></a>
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> &middot;
+  <a href="#getting-started">Getting Started</a> &middot;
+  <a href="#docker-deployment">Docker</a> &middot;
+  <a href="#tech-stack">Tech Stack</a> &middot;
+  <a href="#contributing">Contributing</a> &middot;
+  <a href="#license">License</a>
 </p>
 
 ---
 
 ## Features
 
-- **Library** — Upload PDF/EPUB, browse covers, manage your collection
-- **Reader** — In-browser reading with multi-color highlighting and annotations
-- **AI Explain** — Select text, get instant AI-powered explanations
-- **Aggregation Engine** — Highlights are vectorized and clustered into viewpoint articles automatically
-- **Knowledge Graph** — D3.js force-directed visualization of viewpoint connections
-- **Publish** — Export to Markdown/PDF/HTML, push to Webhook or KMS targets
-- **Settings** — BYOK model configuration, storage, and aggregation scheduling
+- **Library** — Upload PDF/EPUB books, browse a visual bookshelf, manage your collection
+- **Reader** — In-browser reading with multi-color highlighting, annotations, and reading progress
+- **AI Explain** — Select any text to get instant AI-powered explanations via streaming SSE
+- **Aggregation Engine** — Highlights are vectorized and auto-clustered into structured viewpoint articles
+- **Knowledge Graph** — Interactive D3.js force-directed graph connecting viewpoints across books
+- **Publish** — Export to Markdown / PDF / HTML, push to Webhook or KMS targets on schedule
+- **BYOK** — Bring Your Own Key: use your own AI models, zero platform cost
 
-## 本地开发
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+
+- npm
+
+### Local Development
 
 ```bash
 npm install
 npm run dev
 ```
 
-默认地址：`http://localhost:3000`
+Open [http://localhost:3000](http://localhost:3000).
 
-默认演示账号：
+Demo account:
 
-- 邮箱：`demo@lumina.local`
-- 密码：`lumina123`
+| Email | Password |
+|---|---|
+| `demo@lumina.local` | `lumina123` |
 
-## Docker 启动
+## Docker Deployment
+
+Single command to spin up the full stack:
 
 ```bash
 make start
 ```
 
-启动后访问：`http://localhost:20261`
+Open [http://localhost:20261](http://localhost:20261).
 
-数据会持久化在仓库根目录的 `data/`，目录结构如下：
+All data is persisted under `data/` in the repo root:
 
-- `data/app`：应用本地业务数据
-- `data/postgres`：PostgreSQL 数据
-- `data/redis`：Redis 持久化数据
-- `data/minio`：MinIO 对象数据
-- `data/minio-config`：MinIO 配置
+| Directory | Contents |
+|---|---|
+| `data/app` | Application data |
+| `data/postgres` | PostgreSQL data |
+| `data/redis` | Redis persistence |
+| `data/minio` | MinIO object storage |
 
-默认会一起启动这些技术组件，并加入同一个 `lumina-network`：
+### Resource Requirements
 
-- `lumina-app`
-- `lumina-postgres`
-- `lumina-redis`
-- `lumina-minio`
+The default Compose config targets ~100 concurrent users:
 
-## 基础性能配置
+| Service | CPU | Memory |
+|---|---|---|
+| App | 2 | 2 GB |
+| PostgreSQL | 2 | 2 GB |
+| Redis | 1 | 512 MB |
+| MinIO | 1 | 1 GB |
 
-当前 Compose 默认按“至少 100 人在线”的基础目标给出一套保守配置：
+Recommended host: **4C / 8 GB** minimum.
 
-- 应用容器：`2 CPU / 2GB RAM`
-- PostgreSQL：`2 CPU / 2GB RAM`，`max_connections=300`
-- Redis：`1 CPU / 512MB RAM`
-- MinIO：`1 CPU / 1GB RAM`
+## Tech Stack
 
-建议宿主机至少预留 `4C8G` 可用资源。
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 14 (App Router), Tailwind CSS, shadcn/ui |
+| API | Hono |
+| Database | PostgreSQL 16 + pgvector |
+| Cache & Queue | Redis, BullMQ |
+| Object Storage | MinIO |
+| AI | Vercel AI SDK (OpenAI-compatible) |
+| Visualization | D3.js |
+| Auth | JWT (RS256) |
 
-## 主要实现说明
-
-- 前端：`Next.js App Router`
-- API：`Hono`，统一挂载在 `app/api/[[...route]]/route.ts`
-- 持久化：本地 JSON 数据库 + 本地上传目录
-- 发布：支持 Webhook/KMS 目标配置与手动触发
-- 导出：支持 Markdown / PDF
-
-## 验证
+## Verification
 
 ```bash
 npm run lint
 npm run build
 npm run verify
 ```
+
+## Contributing
+
+Contributions are welcome. Please open an issue first to discuss what you would like to change.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'feat: add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+[MIT](LICENSE)

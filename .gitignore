@@ -24,4 +24,5 @@ coverage
 storage/runtime
 data/
 **/*.png
+!docs/lumina-hero.png
 e2e/output/
