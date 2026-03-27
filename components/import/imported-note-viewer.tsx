@@ -17,6 +17,38 @@ import { FileText, Loader2, Tag } from "lucide-react"
 import { ImportedBlockList } from "@/components/import/imported-note-blocks"
 import type { ImportedNote } from "@/src/server/store/types"
 
+const importedNoteCache = new Map<string, ImportedNote>()
+const importedNoteRequestCache = new Map<string, Promise<ImportedNote | null>>()
+
+export async function fetchImportedNote(noteId: string) {
+  const cached = importedNoteCache.get(noteId)
+  if (cached) {
+    return cached
+  }
+  const pending = importedNoteRequestCache.get(noteId)
+  if (pending) {
+    return pending
+  }
+  const request = (async () => {
+    const res = await fetch(`/api/import/notes/${noteId}`)
+    if (!res.ok) {
+      return null
+    }
+    const data = await res.json()
+    const note = (data.item ?? null) as ImportedNote | null
+    if (note) {
+      importedNoteCache.set(noteId, note)
+    }
+    return note
+  })()
+  importedNoteRequestCache.set(noteId, request)
+  try {
+    return await request
+  } finally {
+    importedNoteRequestCache.delete(noteId)
+  }
+}
+
 interface Props {
   noteId: string
   scrollContainerRef?: RefObject<HTMLDivElement>
@@ -32,20 +64,33 @@ export function ImportedNoteViewer({
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    setLoading(true)
+    const cached = importedNoteCache.get(noteId)
+    if (cached) {
+      setNote(cached)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
+    let cancelled = false
     void (async () => {
       try {
-        const res = await fetch(`/api/import/notes/${noteId}`)
-        if (res.ok) {
-          const data = await res.json()
-          setNote(data.item ?? null)
+        const nextNote = await fetchImportedNote(noteId)
+        if (!cancelled) {
+          setNote(nextNote)
         }
       } catch {
-        setNote(null)
+        if (!cancelled) {
+          setNote(null)
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+        }
       }
     })()
+    return () => {
+      cancelled = true
+    }
   }, [noteId])
 
   useEffect(() => {

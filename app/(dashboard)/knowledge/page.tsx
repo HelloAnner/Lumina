@@ -11,14 +11,19 @@ export default async function KnowledgePage({
   searchParams?: Record<string, string | string[] | undefined>
 }) {
   const user = await requirePageUser()
-  const viewpoints = repository.listViewpoints(user.id)
+  const viewpoints = repository.listViewpoints(user.id, { metadataOnly: true })
   const selection = readKnowledgeSelection(buildSearchParams(searchParams))
   const importedNote = selection.importedNoteId
     ? repository.getImportedNote(user.id, selection.importedNoteId)
     : undefined
   const selected = importedNote
     ? undefined
-    : resolveSelectedViewpoint(viewpoints, selection.viewpointId)
+    : resolveSelectedViewpoint(
+        viewpoints,
+        selection.viewpointId
+          ? repository.getViewpoint(user.id, selection.viewpointId)
+          : repository.getViewpoint(user.id, viewpoints[0]?.id ?? "")
+      )
   const unconfirmed = selected
     ? repository.listUnconfirmedHighlights(user.id, selected.id)
     : []
@@ -49,10 +54,17 @@ function buildSearchParams(
 
 function resolveSelectedViewpoint(
   viewpoints: Viewpoint[],
-  viewpointId?: string
+  selected?: Viewpoint
 ) {
-  if (!viewpointId) {
-    return viewpoints[0]
+  if (!selected) {
+    return undefined
   }
-  return viewpoints.find((item) => item.id === viewpointId) ?? viewpoints[0]
+  const summary = viewpoints.find((item) => item.id === selected.id)
+  if (!summary) {
+    return selected
+  }
+  return {
+    ...summary,
+    ...selected
+  }
 }

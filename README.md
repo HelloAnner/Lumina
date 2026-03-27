@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/lumina-hero.png" width="680" alt="Lumina — Turn every highlight into knowledge" />
+  <img src="docs/lumina-hero.png" width="420" alt="Lumina — Turn every highlight into knowledge" />
 </p>
 
 <p align="center">

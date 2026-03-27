@@ -411,10 +411,19 @@ export const repository = {
       )
     })
   },
-  listViewpoints(userId: string) {
-    return readDatabase().viewpoints
+  listViewpoints(userId: string, options: {
+    metadataOnly?: boolean
+  } = {}) {
+    const database = readDatabase({
+      hydrateViewpointBlocks: !options.metadataOnly
+    })
+    const viewpoints = database.viewpoints
       .filter((item) => item.userId === userId)
       .sort((left, right) => left.sortOrder - right.sortOrder)
+    if (!options.metadataOnly) {
+      return viewpoints
+    }
+    return viewpoints.map(({ articleBlocks: _articleBlocks, ...viewpoint }) => viewpoint)
   },
   getViewpoint(userId: string, viewpointId: string) {
     return readDatabase().viewpoints.find(

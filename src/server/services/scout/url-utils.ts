@@ -13,6 +13,8 @@ const TRACKING_PARAMS = new Set([
   "fbclid", "gclid", "ref", "source", "mc_cid", "mc_eid"
 ])
 
+const X_SHARE_PARAMS = new Set(["s", "t", "ref_src"])
+
 /** 归一化 URL：移除追踪参数、fragment、规范化路径 */
 export function normalizeUrl(raw: string): string {
   try {
@@ -20,6 +22,11 @@ export function normalizeUrl(raw: string): string {
     url.hash = ""
     for (const param of TRACKING_PARAMS) {
       url.searchParams.delete(param)
+    }
+    if (isXStatusUrl(url)) {
+      for (const param of X_SHARE_PARAMS) {
+        url.searchParams.delete(param)
+      }
     }
     url.searchParams.sort()
     /** 规范化路径：移除尾部斜杠 */
@@ -33,4 +40,12 @@ export function normalizeUrl(raw: string): string {
 /** 生成内容的 SHA-256 哈希，用于去重 */
 export function contentHash(content: string): string {
   return createHash("sha256").update(content).digest("hex")
+}
+
+function isXStatusUrl(url: URL) {
+  const host = url.hostname.toLowerCase()
+  if (!["x.com", "www.x.com", "twitter.com", "www.twitter.com", "mobile.twitter.com"].includes(host)) {
+    return false
+  }
+  return /\/status\/\d+/.test(url.pathname)
 }

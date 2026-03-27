@@ -1,6 +1,7 @@
 "use client"
 
 import {
+  useDeferredValue,
   useCallback,
   useEffect,
   useMemo,
@@ -29,6 +30,7 @@ import { ImportedNoteViewer } from "@/components/import/imported-note-viewer"
 import { AddSourceDialog } from "@/components/import/add-source-dialog"
 import { type SelectionContext } from "@/components/knowledge/annotation-sidebar"
 import {
+  buildViewpointPrefetchOrder,
   shouldBootstrapEmptyViewpoint,
   shouldRenderViewpointEditor
 } from "@/components/knowledge/knowledge-view-state"
@@ -39,6 +41,7 @@ import {
   readKnowledgeSelection
 } from "@/components/knowledge/knowledge-url-state"
 import { RightSidebar, type RightSidebarTab } from "@/components/knowledge/right-sidebar"
+import { buildNoteEditorStats } from "@/components/knowledge/note-editor-state"
 import { ViewpointTree } from "@/components/knowledge/viewpoint-tree"
 import {
   collectViewpointSubtreeIds,
@@ -46,13 +49,11 @@ import {
   serializeViewpointOrder,
   type ViewpointDropTarget,
 } from "@/components/knowledge/viewpoint-tree-utils"
-import { BLOCK_TYPE_REGISTRY } from "@/components/knowledge/block-type-registry"
 import type {
   AppKeyboardShortcuts,
   Annotation,
   Highlight,
   NoteBlock,
-  NoteBlockType,
   Viewpoint
 } from "@/src/server/store/types"
 
@@ -126,21 +127,16 @@ export function KnowledgeClient({
 
   const prefTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const noteStateTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const savedStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveStatusResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const contentScrollRef = useRef<HTMLDivElement>(null)
   const restoringNoteKeyRef = useRef<string | null>(null)
   const isRestoringScrollRef = useRef(false)
-  /** 编辑中的文本变更，不触发 React 重渲染 */
-  const editsRef = useRef<Map<string, string>>(new Map())
-  const blocksRef = useRef(blocks)
-  blocksRef.current = blocks
+  const viewpointBlocksCacheRef = useRef<Map<string, NoteBlock[]>>(new Map())
+  const viewpointBlocksRequestRef = useRef<Map<string, Promise<NoteBlock[]>>>(new Map())
   const readyViewpointIdRef = useRef(readyViewpointId)
   readyViewpointIdRef.current = readyViewpointId
   const noteStateRef = useRef(noteState)
   noteStateRef.current = noteState
-  const selectedIdRef = useRef(selectedId)
-  selectedIdRef.current = selectedId
   const headerInputRef = useRef<HTMLInputElement>(null)
   const selected = viewpoints.find((v) => v.id === selectedId)
   const routeSelection = useMemo(
@@ -154,6 +150,42 @@ export function KnowledgeClient({
     [importedNoteId, selectedId]
   )
   const currentNoteKey = buildKnowledgeNoteKey(currentSelection)
+  const deferredChatBlocks = useDeferredValue(
+    activeRightTab === "chat" ? blocks : []
+  )
+
+  const fetchViewpointBlocks = useCallback(async (viewpointId: string) => {
+    const cached = viewpointBlocksCacheRef.current.get(viewpointId)
+    if (cached) {
+      return cached
+    }
+    const pending = viewpointBlocksRequestRef.current.get(viewpointId)
+    if (pending) {
+      return pending
+    }
+    const request = (async () => {
+      const res = await fetch(`/api/viewpoints/${viewpointId}/blocks`)
+      const data = await res.json()
+      const nextBlocks = (data.blocks ?? []) as NoteBlock[]
+      viewpointBlocksCacheRef.current.set(viewpointId, nextBlocks)
+      return nextBlocks
+    })()
+    viewpointBlocksRequestRef.current.set(viewpointId, request)
+    try {
+      return await request
+    } finally {
+      viewpointBlocksRequestRef.current.delete(viewpointId)
+    }
+  }, [])
+
+  const warmViewpointBlocks = useCallback((viewpointIds: string[]) => {
+    for (const viewpointId of viewpointIds) {
+      if (viewpointBlocksCacheRef.current.has(viewpointId) || viewpointBlocksRequestRef.current.has(viewpointId)) {
+        continue
+      }
+      void fetchViewpointBlocks(viewpointId).catch(() => undefined)
+    }
+  }, [fetchViewpointBlocks])
 
   const scheduleNoteStateSave = useCallback((partial: {
     outlineCollapsed?: boolean
@@ -209,19 +241,21 @@ export function KnowledgeClient({
       setReadyViewpointId("")
       return
     }
-    if (readyViewpointIdRef.current !== selectedId) {
-      setBlocks([])
+    const cached = viewpointBlocksCacheRef.current.get(selectedId)
+    if (cached) {
+      setBlocks(cached)
+      setReadyViewpointId(selectedId)
+    } else if (readyViewpointIdRef.current !== selectedId) {
       setReadyViewpointId("")
     }
     let cancelled = false
     void (async () => {
       try {
-        const res = await fetch(`/api/viewpoints/${selectedId}/blocks`)
-        const data = await res.json()
+        const nextBlocks = await fetchViewpointBlocks(selectedId)
         if (cancelled) {
           return
         }
-        setBlocks(data.blocks ?? [])
+        setBlocks(nextBlocks)
         setReadyViewpointId(selectedId)
       } catch {
         if (cancelled) {
@@ -233,7 +267,25 @@ export function KnowledgeClient({
     return () => {
       cancelled = true
     }
-  }, [selectedId])
+  }, [fetchViewpointBlocks, selectedId])
+
+  useEffect(() => {
+    if (!selectedId) {
+      return
+    }
+    const nextIds = buildViewpointPrefetchOrder(viewpoints, selectedId, 6)
+    if (nextIds.length === 0) {
+      return
+    }
+    const schedule = () => warmViewpointBlocks(nextIds)
+    const requestIdle = getRequestIdleCallback()
+    if (requestIdle) {
+      const idleId = requestIdle(schedule, { timeout: 800 })
+      return () => getCancelIdleCallback()?.(idleId)
+    }
+    const timer = window.setTimeout(schedule, 120)
+    return () => window.clearTimeout(timer)
+  }, [selectedId, viewpoints, warmViewpointBlocks])
 
   useEffect(() => {
     if (routeSelection.importedNoteId) {
@@ -263,6 +315,13 @@ export function KnowledgeClient({
       setSelectedBlockForChat(null)
     }
   }, [importedNoteId, routeSelection, selectedId, viewpoints])
+
+  useEffect(() => {
+    if (!selectedId || !readyViewpointId || selectedId !== readyViewpointId) {
+      return
+    }
+    viewpointBlocksCacheRef.current.set(selectedId, blocks)
+  }, [blocks, readyViewpointId, selectedId])
 
   useEffect(() => {
     restoringNoteKeyRef.current = null
@@ -363,6 +422,14 @@ export function KnowledgeClient({
       document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
   }, [activeHeadingId, currentNoteKey])
+
+  useEffect(() => {
+    return () => {
+      if (saveStatusResetTimerRef.current) {
+        clearTimeout(saveStatusResetTimerRef.current)
+      }
+    }
+  }, [])
 
   // 保存宽度偏好
   useEffect(() => {
@@ -550,6 +617,16 @@ export function KnowledgeClient({
     []
   )
 
+  useEffect(() => {
+    if (!selectedBlockForChat) {
+      return
+    }
+    const next = blocks.find((item) => item.id === selectedBlockForChat.id) ?? null
+    if (next !== selectedBlockForChat) {
+      setSelectedBlockForChat(next)
+    }
+  }, [blocks, selectedBlockForChat])
+
   const refreshBlocks = useCallback(async () => {
     if (!selectedId) {
       return
@@ -578,70 +655,38 @@ export function KnowledgeClient({
     }
   }, [refreshBlocks])
 
-  /** 构建保存载荷 */
-  const buildSavePayload = useCallback(() => {
-    if (editsRef.current.size === 0) {
-      return blocksRef.current
-    }
-    return blocksRef.current.map((b) => {
-      const edited = editsRef.current.get(b.id)
-      if (edited === undefined) {
-        return b
-      }
-      if ("code" in b && b.type === "code") {
-        return { ...b, code: edited }
-      }
-      if ("text" in b) {
-        return { ...b, text: edited }
-      }
-      return b
-    })
-  }, [])
-
-  /** 合并编辑到 state */
-  const flushEditsToState = useCallback(() => {
-    if (editsRef.current.size === 0) {
+  const persistBlocksFromSidebar = useCallback(async (newBlocks: NoteBlock[]) => {
+    setBlocks(newBlocks)
+    if (!selectedId) {
       return
     }
-    const snapshot = new Map(editsRef.current)
-    editsRef.current.clear()
-    setBlocks((prev) =>
-      prev.map((b) => {
-        const edited = snapshot.get(b.id)
-        if (edited === undefined) {
-          return b
-        }
-        if ("code" in b && b.type === "code") {
-          return { ...b, code: edited } as typeof b
-        }
-        if ("text" in b) {
-          return { ...b, text: edited } as typeof b
-        }
-        return b
+    if (saveStatusResetTimerRef.current) {
+      clearTimeout(saveStatusResetTimerRef.current)
+    }
+    setSaveStatus("saving")
+    try {
+      await fetch(`/api/viewpoints/${selectedId}/blocks`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ blocks: newBlocks })
       })
-    )
-  }, [])
+      setSaveStatus("saved")
+      saveStatusResetTimerRef.current = setTimeout(() => setSaveStatus("idle"), 1800)
+    } catch {
+      setSaveStatus("idle")
+      setToast("保存失败，请重试")
+    }
+  }, [selectedId])
 
-  /** 切换主题前刷新未保存的编辑 */
   const selectViewpoint = useCallback(
-    async (viewpointId: string) => {
+    (viewpointId: string) => {
       flushCurrentNoteState()
-      if (editsRef.current.size > 0 && selectedIdRef.current) {
-        if (saveTimer.current) {
-          clearTimeout(saveTimer.current)
-          saveTimer.current = null
-        }
-        const payload = buildSavePayload()
-        flushEditsToState()
-        try {
-          await fetch(`/api/viewpoints/${selectedIdRef.current}/blocks`, {
-            method: "PUT",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ blocks: payload })
-          })
-        } catch {
-          /* 静默失败 */
-        }
+      const cached = viewpointBlocksCacheRef.current.get(viewpointId)
+      if (cached) {
+        setBlocks(cached)
+        setReadyViewpointId(viewpointId)
+      } else {
+        setReadyViewpointId("")
       }
       setSaveStatus("idle")
       setSelectedId(viewpointId)
@@ -652,288 +697,8 @@ export function KnowledgeClient({
       setEditingHeaderTitle(false)
       replaceKnowledgeUrl({ viewpointId })
     },
-    [
-      buildSavePayload,
-      flushCurrentNoteState,
-      flushEditsToState,
-      replaceKnowledgeUrl
-    ]
+    [flushCurrentNoteState, replaceKnowledgeUrl]
   )
-
-  /** 块文本编辑 */
-  const handleBlockTextChange = useCallback(
-    (blockId: string, text: string) => {
-      editsRef.current.set(blockId, text)
-      setSaveStatus("idle")
-      if (savedStatusTimer.current) {
-        clearTimeout(savedStatusTimer.current)
-      }
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current)
-      }
-      saveTimer.current = setTimeout(async () => {
-        const vid = selectedIdRef.current
-        if (!vid) {
-          return
-        }
-        setSaveStatus("saving")
-        try {
-          const payload = buildSavePayload()
-          await fetch(`/api/viewpoints/${vid}/blocks`, {
-            method: "PUT",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ blocks: payload })
-          })
-          flushEditsToState()
-          setSaveStatus("saved")
-          savedStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 2000)
-        } catch {
-          setToast("保存失败，请重试")
-          setSaveStatus("idle")
-        }
-      }, 800)
-    },
-    [buildSavePayload, flushEditsToState]
-  )
-
-  /** 删除单个笔记块 */
-  const handleBlockDelete = useCallback(
-    async (blockId: string) => {
-      const vid = selectedIdRef.current
-      if (!vid) {
-        return
-      }
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current)
-        saveTimer.current = null
-      }
-      flushEditsToState()
-      editsRef.current.delete(blockId)
-      const next = blocksRef.current.filter((b) => b.id !== blockId)
-      blocksRef.current = next
-      setBlocks(next)
-      setSaveStatus("saving")
-      try {
-        await fetch(`/api/viewpoints/${vid}/blocks`, {
-          method: "PUT",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ blocks: next })
-        })
-        setSaveStatus("saved")
-        if (savedStatusTimer.current) {
-          clearTimeout(savedStatusTimer.current)
-        }
-        savedStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 2000)
-      } catch {
-        setToast("删除失败，请重试")
-        setSaveStatus("idle")
-      }
-    },
-    [flushEditsToState]
-  )
-
-  /** 插入新笔记块 */
-  const handleBlockInsert = useCallback(
-    async (afterBlockId: string | null, type: NoteBlockType) => {
-      const vid = selectedIdRef.current
-      if (!vid) {
-        return
-      }
-      // 先 flush 待保存的编辑
-      flushEditsToState()
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current)
-        saveTimer.current = null
-      }
-
-      const sorted = [...blocksRef.current].sort((a, b) => a.sortOrder - b.sortOrder)
-      let newSortOrder: number
-      if (afterBlockId === null) {
-        // 插入开头
-        newSortOrder = sorted.length > 0 ? sorted[0].sortOrder - 1 : 0
-      } else {
-        const idx = sorted.findIndex((b) => b.id === afterBlockId)
-        if (idx >= 0 && idx < sorted.length - 1) {
-          newSortOrder = (sorted[idx].sortOrder + sorted[idx + 1].sortOrder) / 2
-        } else {
-          newSortOrder = (sorted[sorted.length - 1]?.sortOrder ?? 0) + 1
-        }
-      }
-
-      const entry = BLOCK_TYPE_REGISTRY.find((e) => e.type === type)
-      const defaults = entry?.createDefault() ?? { type: "paragraph", text: "" }
-      const newBlock = {
-        ...defaults,
-        id: crypto.randomUUID(),
-        sortOrder: newSortOrder,
-      } as NoteBlock
-
-      const next = [...blocksRef.current, newBlock]
-      blocksRef.current = next
-      setBlocks(next)
-
-      // 立即保存
-      setSaveStatus("saving")
-      try {
-        await fetch(`/api/viewpoints/${vid}/blocks`, {
-          method: "PUT",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ blocks: next })
-        })
-        setSaveStatus("saved")
-        if (savedStatusTimer.current) {
-          clearTimeout(savedStatusTimer.current)
-        }
-        savedStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 2000)
-      } catch {
-        setToast("插入失败，请重试")
-        setSaveStatus("idle")
-      }
-    },
-    [flushEditsToState]
-  )
-
-  /** Enter 新建段落（返回新块 ID 用于聚焦） */
-  const [focusBlockId, setFocusBlockId] = useState<string>()
-  const handleEnterNewBlock = useCallback(
-    (blockId: string) => {
-      const vid = selectedIdRef.current
-      if (!vid) {
-        return
-      }
-      flushEditsToState()
-
-      const sorted = [...blocksRef.current].sort((a, b) => a.sortOrder - b.sortOrder)
-      const idx = sorted.findIndex((b) => b.id === blockId)
-      let newSortOrder: number
-      if (idx >= 0 && idx < sorted.length - 1) {
-        newSortOrder = (sorted[idx].sortOrder + sorted[idx + 1].sortOrder) / 2
-      } else {
-        newSortOrder = (sorted[sorted.length - 1]?.sortOrder ?? 0) + 1
-      }
-
-      const newId = crypto.randomUUID()
-      const newBlock = { type: "paragraph", text: "", id: newId, sortOrder: newSortOrder } as NoteBlock
-      const next = [...blocksRef.current, newBlock]
-      blocksRef.current = next
-      setBlocks(next)
-      setFocusBlockId(newId)
-
-      // 延迟保存
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current)
-      }
-      saveTimer.current = setTimeout(async () => {
-        setSaveStatus("saving")
-        try {
-          await fetch(`/api/viewpoints/${vid}/blocks`, {
-            method: "PUT",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ blocks: blocksRef.current })
-          })
-          setSaveStatus("saved")
-          savedStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 2000)
-        } catch {
-          setSaveStatus("idle")
-        }
-      }, 400)
-    },
-    [flushEditsToState]
-  )
-
-  /** Backspace 删除空块并聚焦上一块 */
-  const handleBackspaceEmpty = useCallback(
-    (blockId: string) => {
-      const vid = selectedIdRef.current
-      if (!vid) {
-        return
-      }
-      const sorted = [...blocksRef.current].sort((a, b) => a.sortOrder - b.sortOrder)
-      // 只剩一个块时不删
-      if (sorted.length <= 1) {
-        return
-      }
-      const idx = sorted.findIndex((b) => b.id === blockId)
-      // 聚焦上一块（如果是第一块则聚焦下一块）
-      const prevBlock = idx > 0 ? sorted[idx - 1] : sorted[1]
-      if (prevBlock) {
-        setFocusBlockId(prevBlock.id)
-      }
-
-      flushEditsToState()
-      editsRef.current.delete(blockId)
-      const next = blocksRef.current.filter((b) => b.id !== blockId)
-      blocksRef.current = next
-      setBlocks(next)
-
-      // 延迟保存
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current)
-      }
-      saveTimer.current = setTimeout(async () => {
-        setSaveStatus("saving")
-        try {
-          await fetch(`/api/viewpoints/${vid}/blocks`, {
-            method: "PUT",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ blocks: blocksRef.current })
-          })
-          setSaveStatus("saved")
-          savedStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 2000)
-        } catch {
-          setSaveStatus("idle")
-        }
-      }, 400)
-    },
-    [flushEditsToState]
-  )
-
-  /** / 选择后替换块类型 */
-  const handleBlockTypeChange = useCallback(
-    (blockId: string, type: NoteBlockType) => {
-      const vid = selectedIdRef.current
-      if (!vid) {
-        return
-      }
-      flushEditsToState()
-
-      const entry = BLOCK_TYPE_REGISTRY.find((e) => e.type === type)
-      if (!entry) {
-        return
-      }
-      const defaults = entry.createDefault()
-      const next = blocksRef.current.map((b) => {
-        if (b.id !== blockId) {
-          return b
-        }
-        return { ...defaults, id: b.id, sortOrder: b.sortOrder } as NoteBlock
-      })
-      blocksRef.current = next
-      setBlocks(next)
-      setFocusBlockId(blockId)
-
-      // 延迟保存
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current)
-      }
-      saveTimer.current = setTimeout(async () => {
-        setSaveStatus("saving")
-        try {
-          await fetch(`/api/viewpoints/${vid}/blocks`, {
-            method: "PUT",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ blocks: blocksRef.current })
-          })
-          setSaveStatus("saved")
-          savedStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 2000)
-        } catch {
-          setSaveStatus("idle")
-        }
-      }, 400)
-    },
-    [flushEditsToState]
-  )
-
   /** 空页面自动初始化一个空段落 */
   useEffect(() => {
     if (shouldBootstrapEmptyViewpoint({
@@ -943,23 +708,15 @@ export function KnowledgeClient({
     })) {
       const newId = crypto.randomUUID()
       const initBlock = { type: "paragraph", text: "", id: newId, sortOrder: 0 } as NoteBlock
-      blocksRef.current = [initBlock]
       setBlocks([initBlock])
-      setFocusBlockId(newId)
     }
   }, [selectedId, readyViewpointId, blocks.length])
 
   // ---- 元信息 ----
-  const blockCount = blocks.length
-  const charCount = blocks.reduce((sum, b) => {
-    if ("text" in b) {
-      return sum + (b as { text: string }).text.length
-    }
-    if ("code" in b) {
-      return sum + (b as { code: string }).code.length
-    }
-    return sum
-  }, 0)
+  const { blockCount, charCount } = useMemo(
+    () => buildNoteEditorStats(blocks),
+    [blocks]
+  )
   const pendingAnnoCount = [...annotatedBlockIds].length
   const viewpointEditorReady = shouldRenderViewpointEditor({
     selectedId,
@@ -1200,20 +957,13 @@ export function KnowledgeClient({
           />
           <RightSidebar
             viewpointId={selectedId}
-            blocks={blocks}
+            blocks={deferredChatBlocks}
             selectionContext={selectionCtx}
             selectedBlockForChat={selectedBlockForChat}
             onClearSelection={() => setSelectionCtx(null)}
             onClearChatBlock={() => setSelectedBlockForChat(null)}
             onAnnotationsChange={handleAnnotationsChange}
-            onBlocksUpdate={(newBlocks) => {
-              setBlocks(newBlocks)
-              void fetch(`/api/viewpoints/${selectedId}/blocks`, {
-                method: "PUT",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({ blocks: newBlocks })
-              })
-            }}
+            onBlocksUpdate={(newBlocks) => void persistBlocksFromSidebar(newBlocks)}
             activeTab={activeRightTab}
             onTabChange={setActiveRightTab}
           />
@@ -1276,4 +1026,18 @@ async function persistKnowledgeNoteState(
     body: payload,
     keepalive: immediate
   })
+}
+
+function getRequestIdleCallback() {
+  if (typeof window === "undefined" || !("requestIdleCallback" in window)) {
+    return null
+  }
+  return window.requestIdleCallback.bind(window)
+}
+
+function getCancelIdleCallback() {
+  if (typeof window === "undefined" || !("cancelIdleCallback" in window)) {
+    return null
+  }
+  return window.cancelIdleCallback.bind(window)
 }

@@ -63,6 +63,41 @@ test("importArticleFromUrl 在 URL 已存在时直接返回已有文章", async 
   assert.equal(result.item.id, existing.id)
 })
 
+test("importArticleFromUrl 会归一化 x 状态链接上的分享参数", async () => {
+  const existing = buildArticle({
+    sourceUrl: "https://x.com/AlchainHust/status/2037183105602109498"
+  })
+
+  const result = await importArticleFromUrl(
+    {
+      userId: "user-1",
+      url: "https://x.com/AlchainHust/status/2037183105602109498?s=20&t=lumina-share"
+    },
+    {
+      findArticleBySourceUrl: (userId, sourceUrl) => {
+        assert.equal(userId, "user-1")
+        assert.equal(sourceUrl, "https://x.com/AlchainHust/status/2037183105602109498")
+        return existing
+      },
+      createArticle: () => {
+        throw new Error("should not create")
+      },
+      fetchAndExtract: async () => {
+        throw new Error("should not fetch")
+      },
+      createEntryId: () => "entry-new",
+      createArticleId: () => "article-new",
+      persistArticleAssets: async () => ({
+        content: [],
+        coverImage: undefined
+      })
+    }
+  )
+
+  assert.equal(result.status, "existing")
+  assert.equal(result.item.id, existing.id)
+})
+
 test("importArticleFromUrl 在正文提取成功时创建新文章", async () => {
   let createdEntryId = ""
   let createdSourceUrl = ""

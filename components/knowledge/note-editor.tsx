@@ -10,6 +10,7 @@
 import {
   type Dispatch,
   type SetStateAction,
+  useDeferredValue,
   useCallback,
   useEffect,
   useMemo,
@@ -142,11 +143,21 @@ export function NoteEditor({
 }: NoteEditorProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastAppliedRef = useRef("")
+  const lastSyncedRef = useRef("")
+  const lastSavedRef = useRef("")
+  const suppressNextUpdateRef = useRef(false)
   const pendingFocusRef = useRef<string | null>(null)
   const hoveredElementRef = useRef<HTMLElement | null>(null)
+  const hoverFrameRef = useRef<number | null>(null)
+  const pendingHoverTargetRef = useRef<EventTarget | null>(null)
+  const headingNodeCacheRef = useRef<Map<string, HTMLElement>>(new Map())
+  const headingMeasuresRef = useRef<Array<{ blockId: string; top: number }>>([])
+  const previousAnnotatedRef = useRef<Set<string>>(new Set())
+  const previousSelectedRef = useRef<string | undefined>()
   const [gutter, setGutter] = useState<GutterState | null>(null)
   const [slashMenu, setSlashMenu] = useState<FloatingMenuState | null>(null)
   const [bubbleRect, setBubbleRect] = useState<AnchorRect | null>(null)
@@ -160,6 +171,62 @@ export function NoteEditor({
     () => getEffectiveKeyboardShortcuts(keyboardShortcuts).noteEditor,
     [keyboardShortcuts]
   )
+  const flushBlocksSync = useCallback((instance: NonNullable<ReturnType<typeof useEditor>>, force = false) => {
+    const nextBlocks = readEditorBlocks(instance)
+    const serialized = serializeBlocks(nextBlocks)
+    lastAppliedRef.current = serialized
+    if (!force && serialized === lastSyncedRef.current) {
+      return nextBlocks
+    }
+    lastSyncedRef.current = serialized
+    onBlocksChange(nextBlocks)
+    return nextBlocks
+  }, [onBlocksChange])
+
+  const persistBlocks = useCallback(async (
+    instance: NonNullable<ReturnType<typeof useEditor>>,
+    force = false,
+    keepalive = false
+  ) => {
+    const nextBlocks = flushBlocksSync(instance, force)
+    const serialized = serializeBlocks(nextBlocks)
+    if (!force && serialized === lastSavedRef.current) {
+      return
+    }
+    try {
+      onSaveStatusChange("saving")
+      await fetch(`/api/viewpoints/${viewpointId}/blocks`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ blocks: nextBlocks }),
+        keepalive
+      })
+      lastSavedRef.current = serialized
+      onSaveStatusChange("saved")
+      if (savedTimerRef.current) {
+        clearTimeout(savedTimerRef.current)
+      }
+      savedTimerRef.current = setTimeout(() => onSaveStatusChange("idle"), 1800)
+    } catch {
+      onSaveStatusChange("idle")
+    }
+  }, [flushBlocksSync, onSaveStatusChange, viewpointId])
+
+  const scheduleEditorSync = useCallback((instance: NonNullable<ReturnType<typeof useEditor>>) => {
+    onSaveStatusChange("idle")
+    if (syncTimerRef.current) {
+      clearTimeout(syncTimerRef.current)
+    }
+    syncTimerRef.current = setTimeout(() => {
+      flushBlocksSync(instance)
+    }, 140)
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+    }
+    saveTimerRef.current = setTimeout(() => {
+      void persistBlocks(instance)
+    }, 800)
+  }, [flushBlocksSync, onSaveStatusChange, persistBlocks])
 
   const editor = useEditor({
     immediatelyRender: true,
@@ -208,13 +275,18 @@ export function NoteEditor({
       }
     },
     onCreate: ({ editor: instance }) => {
-      lastAppliedRef.current = serializeBlocks(tipTapDocToBlocks(instance.getJSON()))
+      const serialized = serializeBlocks(readEditorBlocks(instance))
+      lastAppliedRef.current = serialized
+      lastSyncedRef.current = serialized
+      lastSavedRef.current = serialized
     },
     onUpdate: ({ editor: instance }) => {
-      const nextBlocks = normalizeBlockOrder(tipTapDocToBlocks(instance.getJSON()))
-      lastAppliedRef.current = serializeBlocks(nextBlocks)
-      onBlocksChange(nextBlocks)
-      scheduleSave(viewpointId, nextBlocks, onSaveStatusChange, saveTimerRef, savedTimerRef)
+      if (suppressNextUpdateRef.current) {
+        suppressNextUpdateRef.current = false
+        return
+      }
+      lastAppliedRef.current = serializeBlocks(readEditorBlocks(instance))
+      scheduleEditorSync(instance)
       syncSlashMenu(instance, setSlashMenu)
     },
     onSelectionUpdate: ({ editor: instance }) => {
@@ -231,6 +303,7 @@ export function NoteEditor({
     () => buildHeadingOutlineItems(currentBlocks),
     [currentBlocks]
   )
+  const deferredOutlineItems = useDeferredValue(outlineItems)
 
   const applyBlocks = useCallback((nextBlocks: NoteBlock[], focusBlockId?: string) => {
     if (!editor) {
@@ -238,7 +311,7 @@ export function NoteEditor({
     }
     const normalized = normalizeBlockOrder(nextBlocks)
     pendingFocusRef.current = focusBlockId ?? null
-    editor.commands.setContent(blocksToTipTapDoc(normalized), true)
+    replaceEditorBlocks(editor, normalized)
   }, [editor])
 
   const applyCommand = useCallback((command: NoteEditorCommand, mode: SlashMode, blockId: string) => {
@@ -265,7 +338,10 @@ export function NoteEditor({
       return
     }
     lastAppliedRef.current = serialized
-    editor.commands.setContent(blocksToTipTapDoc(normalized), false)
+    lastSyncedRef.current = serialized
+    lastSavedRef.current = serialized
+    suppressNextUpdateRef.current = true
+    replaceEditorBlocks(editor, normalized)
   }, [blocks, editor, viewpointId])
 
   useEffect(() => {
@@ -287,8 +363,16 @@ export function NoteEditor({
     if (!editor) {
       return
     }
-    syncBlockClasses(editor, annotatedBlockIds, selectedBlockId)
-  }, [annotatedBlockIds, editor, selectedBlockId, blocks])
+    syncBlockClasses(
+      editor,
+      annotatedBlockIds,
+      selectedBlockId,
+      previousAnnotatedRef.current,
+      previousSelectedRef.current
+    )
+    previousAnnotatedRef.current = new Set(annotatedBlockIds)
+    previousSelectedRef.current = selectedBlockId
+  }, [annotatedBlockIds, editor, selectedBlockId])
 
   useEffect(() => {
     if (!editor) {
@@ -315,7 +399,16 @@ export function NoteEditor({
       hoveredElementRef.current = block
       setGutter(block ? buildGutterState(block, container) : null)
     }
-    const handleMouseMove = (event: MouseEvent) => updateHover(event.target)
+    const handleMouseMove = (event: MouseEvent) => {
+      pendingHoverTargetRef.current = event.target
+      if (hoverFrameRef.current) {
+        return
+      }
+      hoverFrameRef.current = window.requestAnimationFrame(() => {
+        hoverFrameRef.current = null
+        updateHover(pendingHoverTargetRef.current)
+      })
+    }
     const handleMouseLeave = () => {
       hoveredElementRef.current = null
       setGutter(null)
@@ -329,6 +422,10 @@ export function NoteEditor({
     container.addEventListener("mouseleave", handleMouseLeave)
     container.addEventListener("scroll", handleScroll)
     return () => {
+      if (hoverFrameRef.current) {
+        cancelAnimationFrame(hoverFrameRef.current)
+        hoverFrameRef.current = null
+      }
       container.removeEventListener("mousemove", handleMouseMove)
       container.removeEventListener("mouseleave", handleMouseLeave)
       container.removeEventListener("scroll", handleScroll)
@@ -336,25 +433,43 @@ export function NoteEditor({
   }, [editor, scrollContainerRef])
 
   useEffect(() => {
+    headingNodeCacheRef.current.clear()
+    headingMeasuresRef.current = []
+  }, [deferredOutlineItems, viewpointId])
+
+  useEffect(() => {
     const container = resolveScrollContainer(scrollContainerRef, scrollRef)
     if (!editor || !container) {
       return
     }
+    const syncMeasures = () => {
+      headingMeasuresRef.current = measureHeadingPositions(
+        editor,
+        deferredOutlineItems,
+        container,
+        headingNodeCacheRef.current
+      )
+    }
     const syncActiveHeading = () => {
       const next = resolveActiveHeadingId(
-        measureHeadingPositions(editor, outlineItems, container),
+        headingMeasuresRef.current,
         container.scrollTop
       )
       setActiveOutlineBlockId(next)
     }
+    const handleResize = () => {
+      syncMeasures()
+      syncActiveHeading()
+    }
+    syncMeasures()
     syncActiveHeading()
     container.addEventListener("scroll", syncActiveHeading, { passive: true })
-    window.addEventListener("resize", syncActiveHeading)
+    window.addEventListener("resize", handleResize)
     return () => {
       container.removeEventListener("scroll", syncActiveHeading)
-      window.removeEventListener("resize", syncActiveHeading)
+      window.removeEventListener("resize", handleResize)
     }
-  }, [editor, outlineItems, scrollContainerRef, blocks])
+  }, [deferredOutlineItems, editor, scrollContainerRef, blocks])
 
   useEffect(() => {
     onActiveHeadingChange?.(activeOutlineBlockId)
@@ -366,14 +481,31 @@ export function NoteEditor({
     }
     const dom = editor.view.dom
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (handleEditorShortcuts(event, editor, currentBlocks, applyBlocks, setLinkMenu, setLinkDraft, noteEditorShortcuts, onSelectText)) {
+      if (handleEditorShortcuts(event, editor, readEditorBlocks, applyBlocks, setLinkMenu, setLinkDraft, noteEditorShortcuts, onSelectText)) {
         event.preventDefault()
         event.stopPropagation()
       }
     }
     dom.addEventListener("keydown", handleKeyDown, true)
     return () => dom.removeEventListener("keydown", handleKeyDown, true)
-  }, [applyBlocks, currentBlocks, editor, noteEditorShortcuts, onSelectText])
+  }, [applyBlocks, editor, noteEditorShortcuts, onSelectText])
+
+  useEffect(() => {
+    return () => {
+      if (!editor) {
+        return
+      }
+      if (syncTimerRef.current) {
+        clearTimeout(syncTimerRef.current)
+        syncTimerRef.current = null
+      }
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+      }
+      void persistBlocks(editor, true, true)
+    }
+  }, [editor, persistBlocks])
 
   if (!editor) {
     return null
@@ -410,7 +542,7 @@ export function NoteEditor({
               top={gutter.top}
               onOpenInsert={() => setSlashMenu(createInsertMenuState(gutter.blockId, hoveredElementRef.current))}
               onOpenMenu={(x, y) => setBlockMenu({ blockId: gutter.blockId, x, y })}
-              onDelete={() => applyBlocks(deleteBlock(currentBlocks, gutter.blockId))}
+              onDelete={() => applyBlocks(deleteBlock(readEditorBlocks(editor), gutter.blockId))}
               onDragStart={(event) => startDragging(event, gutter.blockId)}
             />
           ) : null}
@@ -430,10 +562,10 @@ export function NoteEditor({
             <div className="note-outline-card">
               <div className="note-outline-head">
                 <span>目录</span>
-                <span>{outlineItems.length} 节</span>
+                <span>{deferredOutlineItems.length} 节</span>
               </div>
               <div className="note-outline-list">
-                {outlineItems.map((item) => (
+                {deferredOutlineItems.map((item) => (
                   <button
                     key={item.blockId}
                     className={cn(
@@ -452,7 +584,7 @@ export function NoteEditor({
                     <span className="truncate">{item.label}</span>
                   </button>
                 ))}
-                {outlineItems.length === 0 ? (
+                {deferredOutlineItems.length === 0 ? (
                   <div className="note-outline-empty">
                     <BookOpen className="h-3.5 w-3.5" />
                     <span>添加标题后会在这里生成目录</span>
@@ -525,14 +657,14 @@ export function NoteEditor({
                 shortcutPlatform
               ),
               icon: <Copy className="h-3.5 w-3.5" />,
-              onClick: () => applyBlocks(duplicateBlock(currentBlocks, blockMenu.blockId))
+              onClick: () => applyBlocks(duplicateBlock(readEditorBlocks(editor), blockMenu.blockId))
             },
             {
               label: "删除",
               shortcut: "⌫",
               icon: <Trash2 className="h-3.5 w-3.5" />,
               destructive: true,
-              onClick: () => applyBlocks(deleteBlock(currentBlocks, blockMenu.blockId))
+              onClick: () => applyBlocks(deleteBlock(readEditorBlocks(editor), blockMenu.blockId))
             }
           ]}
         />
@@ -715,36 +847,6 @@ function LinkPopover({
   )
 }
 
-function scheduleSave(
-  viewpointId: string,
-  blocks: NoteBlock[],
-  onSaveStatusChange: (status: SaveStatus) => void,
-  saveTimerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>,
-  savedTimerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>
-) {
-  if (saveTimerRef.current) {
-    clearTimeout(saveTimerRef.current)
-  }
-  onSaveStatusChange("idle")
-  saveTimerRef.current = setTimeout(async () => {
-    try {
-      onSaveStatusChange("saving")
-      await fetch(`/api/viewpoints/${viewpointId}/blocks`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ blocks })
-      })
-      onSaveStatusChange("saved")
-      if (savedTimerRef.current) {
-        clearTimeout(savedTimerRef.current)
-      }
-      savedTimerRef.current = setTimeout(() => onSaveStatusChange("idle"), 1800)
-    } catch {
-      onSaveStatusChange("idle")
-    }
-  }, 800)
-}
-
 function handleSelectionChange(
   editor: NonNullable<ReturnType<typeof useEditor>>,
   setBubbleRect: (rect: AnchorRect | null) => void,
@@ -766,17 +868,14 @@ function syncSlashMenu(
   editor: NonNullable<ReturnType<typeof useEditor>>,
   setSlashMenu: Dispatch<SetStateAction<FloatingMenuState | null>>
 ) {
-  const currentBlockId = getCurrentBlockId(editor)
-  const currentBlock = currentBlockId
-    ? normalizeBlockOrder(tipTapDocToBlocks(editor.getJSON())).find((block) => block.id === currentBlockId)
-    : null
-  if (!currentBlock || !("text" in currentBlock) || !currentBlock.text.startsWith("/")) {
+  const currentBlock = getCurrentTextBlockCandidate(editor)
+  if (!currentBlock || !currentBlock.text.startsWith("/")) {
     setSlashMenu((value) => value?.mode === "replace" ? null : value)
     return
   }
   const { from } = editor.state.selection
   setSlashMenu({
-    blockId: currentBlock.id,
+    blockId: currentBlock.blockId,
     query: currentBlock.text.slice(1),
     mode: "replace",
     anchorRect: createSelectionRect(editor, from, from)
@@ -786,7 +885,7 @@ function syncSlashMenu(
 function handleEditorShortcuts(
   event: KeyboardEvent,
   editor: NonNullable<ReturnType<typeof useEditor>>,
-  blocks: NoteBlock[],
+  getBlocks: (editor: NonNullable<ReturnType<typeof useEditor>>) => NoteBlock[],
   applyBlocks: (blocks: NoteBlock[], focusBlockId?: string) => void,
   setLinkMenu: (menu: LinkMenuState | null) => void,
   setLinkDraft: (value: string) => void,
@@ -827,13 +926,14 @@ function handleEditorShortcuts(
   if (matchesShortcut(event, bindings.duplicateBlock)) {
     const blockId = getCurrentBlockId(editor)
     if (blockId) {
-      applyBlocks(duplicateBlock(blocks, blockId))
+      applyBlocks(duplicateBlock(getBlocks(editor), blockId))
       return true
     }
   }
   if (matchesShortcut(event, bindings.moveBlockUp) || matchesShortcut(event, bindings.moveBlockDown)) {
     const blockId = getCurrentBlockId(editor)
     if (blockId) {
+      const blocks = getBlocks(editor)
       applyBlocks(
         moveBlockByOffset(
           blocks,
@@ -850,11 +950,11 @@ function handleEditorShortcuts(
     const command = commandKey ? findNoteEditorCommand(commandKey) : undefined
     const blockId = getCurrentBlockId(editor)
     if (command && blockId) {
-      applyBlocks(transformExistingBlock(blocks, blockId, command), blockId)
+      applyBlocks(transformExistingBlock(getBlocks(editor), blockId, command), blockId)
       return true
     }
   }
-  return handleBlockBoundaryKeys(event, editor, blocks, applyBlocks)
+  return handleBlockBoundaryKeys(event, editor, getBlocks(editor), applyBlocks)
 }
 
 function triggerSelectionAnnotation(
@@ -1038,6 +1138,25 @@ function getCurrentBlockId(editor: NonNullable<ReturnType<typeof useEditor>>) {
   return null
 }
 
+function getCurrentTextBlockCandidate(editor: NonNullable<ReturnType<typeof useEditor>>) {
+  const { $from } = editor.state.selection
+  for (let depth = $from.depth; depth >= 0; depth -= 1) {
+    const node = $from.node(depth)
+    const blockId = node.attrs.blockId
+    if (!blockId) {
+      continue
+    }
+    if (!isSlashCapableNode(node.type.name)) {
+      return null
+    }
+    return {
+      blockId: String(blockId),
+      text: node.textContent
+    }
+  }
+  return null
+}
+
 function openLinkEditor(
   editor: NonNullable<ReturnType<typeof useEditor>>,
   setLinkMenu: (menu: LinkMenuState) => void,
@@ -1163,17 +1282,36 @@ function applyDrag(
 function syncBlockClasses(
   editor: NonNullable<ReturnType<typeof useEditor>>,
   annotatedBlockIds: Set<string>,
-  selectedBlockId?: string
+  selectedBlockId?: string,
+  previousAnnotatedBlockIds: Set<string> = new Set(),
+  previousSelectedBlockId?: string
 ) {
-  const nodes = editor.view.dom.querySelectorAll("[data-block-id]")
-  nodes.forEach((node) => {
-    if (!(node instanceof HTMLElement)) {
-      return
+  for (const blockId of previousAnnotatedBlockIds) {
+    if (annotatedBlockIds.has(blockId)) {
+      continue
     }
-    const blockId = node.dataset.blockId ?? ""
-    node.classList.toggle("note-block-annotated", annotatedBlockIds.has(blockId))
-    node.classList.toggle("note-block-selected", blockId === selectedBlockId)
-  })
+    editor.view.dom
+      .querySelector(`[data-block-id="${blockId}"]`)
+      ?.classList.remove("note-block-annotated")
+  }
+  for (const blockId of annotatedBlockIds) {
+    if (previousAnnotatedBlockIds.has(blockId)) {
+      continue
+    }
+    editor.view.dom
+      .querySelector(`[data-block-id="${blockId}"]`)
+      ?.classList.add("note-block-annotated")
+  }
+  if (previousSelectedBlockId && previousSelectedBlockId !== selectedBlockId) {
+    editor.view.dom
+      .querySelector(`[data-block-id="${previousSelectedBlockId}"]`)
+      ?.classList.remove("note-block-selected")
+  }
+  if (selectedBlockId && previousSelectedBlockId !== selectedBlockId) {
+    editor.view.dom
+      .querySelector(`[data-block-id="${selectedBlockId}"]`)
+      ?.classList.add("note-block-selected")
+  }
 }
 
 function serializeBlocks(blocks: NoteBlock[]) {
@@ -1190,16 +1328,22 @@ function resolveScrollContainer(
 function measureHeadingPositions(
   editor: NonNullable<ReturnType<typeof useEditor>>,
   outlineItems: HeadingOutlineItem[],
-  container: HTMLDivElement
+  container: HTMLDivElement,
+  cache: Map<string, HTMLElement>
 ) {
   return outlineItems
     .map((item) => {
-      const node = editor.view.dom.querySelector(
-        `[data-block-id="${item.blockId}"]`
-      ) as HTMLElement | null
+      const cached = cache.get(item.blockId)
+      const node = cached && cached.isConnected
+        ? cached
+        : editor.view.dom.querySelector(
+            `[data-block-id="${item.blockId}"]`
+          ) as HTMLElement | null
       if (!node) {
+        cache.delete(item.blockId)
         return null
       }
+      cache.set(item.blockId, node)
       const rect = node.getBoundingClientRect()
       const containerRect = container.getBoundingClientRect()
       return {
@@ -1216,6 +1360,14 @@ function preventFocusLoss(event: React.MouseEvent) {
 
 function isMeta(event: KeyboardEvent) {
   return event.metaKey || event.ctrlKey
+}
+
+function isSlashCapableNode(type: string) {
+  return type === "heading"
+    || type === "paragraph"
+    || type === "quoteBlock"
+    || type === "highlightBlock"
+    || type === "insightBlock"
 }
 
 function resolveShortcutCommandKey(
@@ -1235,4 +1387,21 @@ function resolveShortcutCommandKey(
     return "paragraph"
   }
   return undefined
+}
+
+function readEditorBlocks(editor: NonNullable<ReturnType<typeof useEditor>>) {
+  return normalizeBlockOrder(tipTapDocToBlocks(editor.getJSON()))
+}
+
+function replaceEditorBlocks(
+  editor: NonNullable<ReturnType<typeof useEditor>>,
+  blocks: NoteBlock[]
+) {
+  const doc = editor.schema.nodeFromJSON(blocksToTipTapDoc(blocks))
+  const transaction = editor.state.tr.replaceWith(
+    0,
+    editor.state.doc.content.size,
+    doc.content
+  )
+  editor.view.dispatch(transaction)
 }

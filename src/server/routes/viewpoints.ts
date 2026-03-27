@@ -7,7 +7,7 @@ import { exportTaskAsPdf } from "@/src/server/services/publish/service"
 const app = new Hono<AppEnv>()
 
 app.get("/tree", (c) => {
-  return c.json({ items: repository.listViewpoints(c.get("userId")) })
+  return c.json({ items: repository.listViewpoints(c.get("userId"), { metadataOnly: true }) })
 })
 
 app.post("/", async (c) => {

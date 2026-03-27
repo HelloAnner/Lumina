@@ -10,6 +10,7 @@ import assert from "node:assert/strict"
 import type { NoteBlock } from "@/src/server/store/types"
 import {
   blocksToTipTapDoc,
+  createDuplicatedBlockNode,
   duplicateBlockInDoc,
   insertBlockAfterInDoc,
   moveBlockInDoc,
@@ -217,4 +218,33 @@ test("duplicateBlockInDoc 与 insertBlockAfterInDoc 会生成新块并保持原�
       { id: "c", text: "C" }
     ]
   )
+})
+
+test("createDuplicatedBlockNode 会为组合引用块生成新的 blockId 与 pairedInsightBlockId", () => {
+  const doc = blocksToTipTapDoc([
+    {
+      id: "quote-1",
+      type: "quote",
+      text: "引用正文",
+      sourceBookTitle: "原则",
+      sourceLocation: "P.12",
+      sortOrder: 0
+    },
+    {
+      id: "insight-1",
+      type: "insight",
+      text: "这是我的观点备注",
+      label: "观点备注",
+      sortOrder: 1
+    }
+  ])
+
+  const duplicated = createDuplicatedBlockNode(
+    doc.content?.[0]!,
+    "quote-2"
+  )
+
+  assert.equal(duplicated.attrs?.blockId, "quote-2")
+  assert.equal(duplicated.attrs?.pairedInsightBlockId, "quote-2-insight")
+  assert.equal(duplicated.attrs?.pairedInsightText, "这是我的观点备注")
 })

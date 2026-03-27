@@ -135,9 +135,27 @@ export function duplicateBlockInDoc(
     return doc
   }
 
-  const duplicated = replaceNodeBlockId(content[index], newBlockId)
+  const duplicated = createDuplicatedBlockNode(content[index], newBlockId)
   content.splice(index + 1, 0, duplicated)
   return { ...doc, content }
+}
+
+/**
+ * 克隆一个顶层块节点，并为其分配新的 blockId。
+ * 组合引用块会额外生成新的 pairedInsightBlockId，避免复制后共用同一个 synthetic insight id。
+ */
+export function createDuplicatedBlockNode(
+  node: JSONContent,
+  newBlockId: string
+): JSONContent {
+  const duplicated = replaceNodeBlockId(node, newBlockId)
+  if (typeof duplicated.attrs?.pairedInsightBlockId === "string" && duplicated.attrs.pairedInsightBlockId) {
+    duplicated.attrs = {
+      ...(duplicated.attrs ?? {}),
+      pairedInsightBlockId: `${newBlockId}-insight`
+    }
+  }
+  return duplicated
 }
 
 /**

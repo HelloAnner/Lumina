@@ -16,6 +16,7 @@ import {
   FolderOpen,
   Import,
 } from "lucide-react"
+import { fetchImportedNote } from "@/components/import/imported-note-viewer"
 import { cn } from "@/src/lib/utils"
 
 interface ImportSourceSummary {
@@ -122,6 +123,9 @@ export function ImportedNotesTree({ selectedNoteId, onSelectNote }: Props) {
               <button
                 key={note.id}
                 onClick={() => onSelectNote(note.id)}
+                onMouseEnter={() => {
+                  void fetchImportedNote(note.id).catch(() => undefined)
+                }}
                 className={cn(
                   "flex w-full items-center gap-1.5 rounded-sm py-[2px] pl-7 pr-2 text-left text-[12px] transition-colors",
                   selectedNoteId === note.id

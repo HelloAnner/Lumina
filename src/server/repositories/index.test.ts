@@ -334,3 +334,25 @@ test("repository.purgeExpiredArchives 不会清理已收藏文章", async () => 
     rmSync(dataDir, { recursive: true, force: true })
   }
 })
+
+test("repository.listViewpoints 在 metadataOnly 模式下不返回 articleBlocks", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "lumina-viewpoint-meta-test-"))
+  process.env.DATA_DIR = dataDir
+
+  const { repository } = await import("@/src/server/repositories")
+
+  try {
+    const demo = repository.getUserByEmail(
+      process.env.DEFAULT_DEMO_EMAIL ?? "demo@lumina.local"
+    )
+
+    assert.ok(demo, "应存在默认演示账号")
+
+    const items = repository.listViewpoints(demo!.id, { metadataOnly: true })
+
+    assert.ok(items.length > 0)
+    assert.equal(items.some((item) => item.articleBlocks !== undefined), false)
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true })
+  }
+})
