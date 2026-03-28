@@ -20,6 +20,13 @@ import {
 import StarterKit from "@tiptap/starter-kit"
 import Link from "@tiptap/extension-link"
 import Placeholder from "@tiptap/extension-placeholder"
+import TaskList from "@tiptap/extension-task-list"
+import TaskItem from "@tiptap/extension-task-item"
+import Table from "@tiptap/extension-table"
+import TableRow from "@tiptap/extension-table-row"
+import TableCell from "@tiptap/extension-table-cell"
+import TableHeader from "@tiptap/extension-table-header"
+import Mathematics from "@tiptap/extension-mathematics"
 import { EditorContent, useEditor } from "@tiptap/react"
 import { common, createLowlight } from "lowlight"
 import {
@@ -41,12 +48,15 @@ import { NoteEditorCommandMenu } from "@/components/knowledge/note-editor-comman
 import { NoteOutlineToggle } from "@/components/knowledge/note-outline-toggle"
 import {
   BlockIdExtension,
+  CalloutBlockNode,
   HighlightBlock,
+  ImageBlockNode,
   InlineHighlightMark,
   ImportedBlock,
   InsightBlock,
   LuminaCodeBlock,
-  QuoteBlock
+  QuoteBlock,
+  ToggleBlockNode
 } from "@/components/knowledge/note-editor-nodes"
 import {
   DEFAULT_NOTE_EDITOR_SHORTCUTS,
@@ -150,6 +160,7 @@ export function NoteEditor({
   const lastSyncedRef = useRef("")
   const lastSavedRef = useRef("")
   const suppressNextUpdateRef = useRef(false)
+  const dirtyRef = useRef(false)
   const pendingFocusRef = useRef<string | null>(null)
   const hoveredElementRef = useRef<HTMLElement | null>(null)
   const hoverFrameRef = useRef<number | null>(null)
@@ -158,6 +169,7 @@ export function NoteEditor({
   const headingMeasuresRef = useRef<Array<{ blockId: string; top: number }>>([])
   const previousAnnotatedRef = useRef<Set<string>>(new Set())
   const previousSelectedRef = useRef<string | undefined>()
+  const editorRef = useRef<ReturnType<typeof useEditor>>(null)
   const [gutter, setGutter] = useState<GutterState | null>(null)
   const [slashMenu, setSlashMenu] = useState<FloatingMenuState | null>(null)
   const [bubbleRect, setBubbleRect] = useState<AnchorRect | null>(null)
@@ -218,15 +230,66 @@ export function NoteEditor({
       clearTimeout(syncTimerRef.current)
     }
     syncTimerRef.current = setTimeout(() => {
-      flushBlocksSync(instance)
-    }, 140)
+      if (dirtyRef.current) {
+        dirtyRef.current = false
+        flushBlocksSync(instance)
+      }
+    }, 300)
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current)
     }
     saveTimerRef.current = setTimeout(() => {
       void persistBlocks(instance)
-    }, 800)
+    }, 1500)
   }, [flushBlocksSync, onSaveStatusChange, persistBlocks])
+
+  const handleImageUpload = useCallback(async (pos: number, file: File) => {
+    const editorInstance = editorRef.current
+    if (!editorInstance) {
+      return
+    }
+    const blockId = crypto.randomUUID()
+    const localUrl = URL.createObjectURL(file)
+    editorInstance.chain().focus().insertContentAt(pos, {
+      type: "imageBlock",
+      attrs: { blockId, src: localUrl, originalName: file.name, uploading: true }
+    }).run()
+
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const response = await fetch(`/api/viewpoints/${viewpointId}/images`, {
+        method: "POST",
+        body: formData
+      })
+      const data = await response.json() as { objectKey: string; url: string }
+      editorInstance.state.doc.descendants((node, nodePos) => {
+        if (node.attrs.blockId === blockId) {
+          editorInstance.view.dispatch(
+            editorInstance.state.tr.setNodeMarkup(nodePos, undefined, {
+              ...node.attrs,
+              src: data.url,
+              objectKey: data.objectKey,
+              uploading: false
+            })
+          )
+        }
+      })
+    } catch {
+      editorInstance.state.doc.descendants((node, nodePos) => {
+        if (node.attrs.blockId === blockId) {
+          editorInstance.view.dispatch(
+            editorInstance.state.tr.setNodeMarkup(nodePos, undefined, {
+              ...node.attrs,
+              uploading: false
+            })
+          )
+        }
+      })
+    } finally {
+      URL.revokeObjectURL(localUrl)
+    }
+  }, [viewpointId])
 
   const editor = useEditor({
     immediatelyRender: true,
@@ -265,6 +328,16 @@ export function NoteEditor({
       InlineHighlightMark,
       InsightBlock,
       ImportedBlock,
+      TaskList,
+      TaskItem.configure({ nested: true }),
+      Table.configure({ resizable: true }),
+      TableRow,
+      TableCell,
+      TableHeader,
+      ImageBlockNode,
+      CalloutBlockNode,
+      ToggleBlockNode,
+      Mathematics,
       LuminaCodeBlock.configure({ lowlight }),
       BlockIdExtension
     ],
@@ -272,9 +345,31 @@ export function NoteEditor({
     editorProps: {
       attributes: {
         class: "lumina-note-editor tiptap-editor outline-none"
+      },
+      handlePaste: (view, event) => {
+        const files = Array.from(event.clipboardData?.files ?? [])
+        const imageFile = files.find((file) => file.type.startsWith("image/"))
+        if (imageFile) {
+          event.preventDefault()
+          void handleImageUpload(view.state.selection.from, imageFile)
+          return true
+        }
+        return false
+      },
+      handleDrop: (view, event) => {
+        const files = Array.from(event.dataTransfer?.files ?? [])
+        const imageFile = files.find((file) => file.type.startsWith("image/"))
+        if (imageFile) {
+          event.preventDefault()
+          const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
+          void handleImageUpload(pos ?? view.state.doc.content.size, imageFile)
+          return true
+        }
+        return false
       }
     },
     onCreate: ({ editor: instance }) => {
+      editorRef.current = instance as any
       const serialized = serializeBlocks(readEditorBlocks(instance))
       lastAppliedRef.current = serialized
       lastSyncedRef.current = serialized
@@ -285,7 +380,7 @@ export function NoteEditor({
         suppressNextUpdateRef.current = false
         return
       }
-      lastAppliedRef.current = serializeBlocks(readEditorBlocks(instance))
+      dirtyRef.current = true
       scheduleEditorSync(instance)
       syncSlashMenu(instance, setSlashMenu)
     },

@@ -3,6 +3,12 @@ import { z } from "zod"
 import type { AppEnv } from "@/src/server/lib/hono"
 import { repository } from "@/src/server/repositories"
 import { exportTaskAsPdf } from "@/src/server/services/publish/service"
+import {
+  buildObjectResponse,
+  getBookObjectBuffer,
+  getStoredObjectContentType,
+  uploadStoredObject
+} from "@/src/server/services/books/minio"
 
 const app = new Hono<AppEnv>()
 
@@ -87,6 +93,56 @@ app.put("/:id/blocks", async (c) => {
     payload.blocks
   )
   return c.json({ item })
+})
+
+/**
+ * 上传笔记图片到 MinIO
+ */
+app.post("/:id/images", async (c) => {
+  const userId = c.get("userId")
+  const viewpointId = c.req.param("id")
+  const formData = await c.req.formData()
+  const file = formData.get("file")
+  if (!(file instanceof File)) {
+    return c.json({ error: "Missing file" }, 400)
+  }
+  const buffer = Buffer.from(await file.arrayBuffer())
+  const extension = file.name.split(".").pop() ?? "png"
+  const imageId = crypto.randomUUID()
+  const objectName = `notes/${userId}/${viewpointId}/${imageId}.${extension}`
+  await uploadStoredObject({
+    objectName,
+    buffer,
+    contentType: file.type || "image/png"
+  })
+  return c.json({
+    objectKey: objectName,
+    originalName: file.name,
+    url: `/api/viewpoints/${viewpointId}/images/${imageId}.${extension}`
+  })
+})
+
+/**
+ * 获取笔记图片
+ */
+app.get("/:id/images/:fileName", async (c) => {
+  const userId = c.get("userId")
+  const viewpointId = c.req.param("id")
+  const fileName = c.req.param("fileName")
+  const objectName = `notes/${userId}/${viewpointId}/${fileName}`
+  const buffer = await getBookObjectBuffer("lumina-books", objectName)
+  if (!buffer) {
+    return c.json({ error: "Image not found" }, 404)
+  }
+  const contentType = getStoredObjectContentType(fileName)
+  const response = buildObjectResponse(buffer, {
+    contentType,
+    rangeHeader: c.req.header("range")
+  })
+  return new Response(new Uint8Array(response.body), {
+    status: response.status,
+    headers: response.headers
+  })
 })
 
 app.get("/:id/highlights", (c) => {

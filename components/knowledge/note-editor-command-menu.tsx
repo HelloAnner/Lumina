@@ -9,15 +9,22 @@
 
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react"
 import {
+  ChevronRight,
   Code,
   Heading1,
   Heading2,
   Heading3,
   Highlighter,
+  ImageIcon,
+  Info,
   Lightbulb,
+  List,
+  ListChecks,
+  ListOrdered,
   Minus,
   Pilcrow,
-  Quote
+  Quote,
+  Table2
 } from "lucide-react"
 import {
   filterNoteEditorCommands,
@@ -34,7 +41,14 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   code: <Code className="h-4 w-4" />,
   minus: <Minus className="h-4 w-4" />,
   lightbulb: <Lightbulb className="h-4 w-4" />,
-  highlighter: <Highlighter className="h-4 w-4" />
+  highlighter: <Highlighter className="h-4 w-4" />,
+  list: <List className="h-4 w-4" />,
+  "list-ordered": <ListOrdered className="h-4 w-4" />,
+  "list-checks": <ListChecks className="h-4 w-4" />,
+  image: <ImageIcon className="h-4 w-4" />,
+  info: <Info className="h-4 w-4" />,
+  "chevron-right": <ChevronRight className="h-4 w-4" />,
+  table: <Table2 className="h-4 w-4" />
 }
 
 interface NoteEditorCommandMenuProps {

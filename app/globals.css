@@ -1,3 +1,5 @@
+@import "katex/dist/katex.min.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -531,6 +533,157 @@ select {
   border: 0;
   border-top: 1px solid color-mix(in srgb, var(--color-border-hover) 65%, transparent);
   margin: 12px 0;
+}
+
+/* 列表样式 */
+.lumina-note-editor ul,
+.lumina-note-editor ol {
+  margin: 0;
+  padding-left: 24px;
+  color: var(--color-secondary);
+  font-size: 0.9375rem;
+  line-height: 1.7;
+}
+
+.lumina-note-editor ul {
+  list-style-type: disc;
+}
+
+.lumina-note-editor ol {
+  list-style-type: decimal;
+}
+
+.lumina-note-editor li {
+  margin: 2px 0;
+}
+
+.lumina-note-editor li p {
+  margin: 0;
+}
+
+.lumina-note-editor li > ul,
+.lumina-note-editor li > ol {
+  margin-top: 2px;
+}
+
+/* 待办列表 */
+.lumina-note-editor ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+
+.lumina-note-editor ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.lumina-note-editor ul[data-type="taskList"] li > label {
+  display: flex;
+  align-items: center;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.lumina-note-editor ul[data-type="taskList"] li > label input[type="checkbox"] {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--color-border-hover);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  transition: all 150ms ease;
+}
+
+.lumina-note-editor ul[data-type="taskList"] li > label input[type="checkbox"]:checked {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.lumina-note-editor ul[data-type="taskList"] li > label input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 6px;
+  height: 9px;
+  border: solid white;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.lumina-note-editor ul[data-type="taskList"] li[data-checked="true"] > div > p {
+  text-decoration: line-through;
+  color: var(--color-muted);
+}
+
+/* 嵌套待办列表 */
+.lumina-note-editor ul[data-type="taskList"] ul[data-type="taskList"] {
+  margin-top: 2px;
+  padding-left: 24px;
+}
+
+/* 表格样式 */
+.lumina-note-editor table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 4px 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.lumina-note-editor th,
+.lumina-note-editor td {
+  border: 1px solid color-mix(in srgb, var(--color-border-hover) 50%, transparent);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+  min-width: 80px;
+}
+
+.lumina-note-editor th {
+  background: color-mix(in srgb, var(--color-elevated) 80%, transparent);
+  font-weight: 500;
+  color: var(--color-foreground);
+}
+
+.lumina-note-editor td {
+  color: var(--color-secondary);
+}
+
+.lumina-note-editor th p,
+.lumina-note-editor td p {
+  margin: 0;
+}
+
+.lumina-note-editor .selectedCell {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+.lumina-note-editor .column-resize-handle {
+  position: absolute;
+  right: -1px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--color-primary);
+  pointer-events: none;
+}
+
+.lumina-note-editor table .tableWrapper {
+  overflow-x: auto;
+}
+
+/* Callout 内容区域 */
+.lumina-note-editor .callout-content > * + * {
+  margin-top: 4px;
+}
+
+/* Toggle 内容区域 */
+.lumina-note-editor .toggle-content > * + * {
+  margin-top: 4px;
 }
 
 .note-bubble-menu,

@@ -121,6 +121,54 @@ export const NOTE_EDITOR_COMMANDS: NoteEditorCommand[] = [
     })
   }),
   createCommand({
+    key: "bullet-list",
+    label: "无序列表",
+    description: "项目符号列表",
+    icon: "list",
+    keywords: ["bullet", "list", "wuxu", "wxlb", "liebiao", "ul"],
+    createBlock: (id, sortOrder) => ({
+      id, type: "bullet-list", items: [{ text: "" }], sortOrder
+    }),
+    transformBlock: (block) => ({
+      id: block.id,
+      type: "bullet-list",
+      items: [{ text: TEXT_BLOCK.paragraph(block), richText: TEXT_BLOCK.richText(block) }],
+      sortOrder: block.sortOrder
+    })
+  }),
+  createCommand({
+    key: "ordered-list",
+    label: "有序列表",
+    description: "编号列表",
+    icon: "list-ordered",
+    keywords: ["ordered", "number", "youxu", "yxlb", "bianhao", "ol"],
+    createBlock: (id, sortOrder) => ({
+      id, type: "ordered-list", items: [{ text: "" }], sortOrder
+    }),
+    transformBlock: (block) => ({
+      id: block.id,
+      type: "ordered-list",
+      items: [{ text: TEXT_BLOCK.paragraph(block), richText: TEXT_BLOCK.richText(block) }],
+      sortOrder: block.sortOrder
+    })
+  }),
+  createCommand({
+    key: "task-list",
+    label: "待办列表",
+    description: "可勾选的任务列表",
+    icon: "list-checks",
+    keywords: ["task", "todo", "daiban", "dblb", "checkbox"],
+    createBlock: (id, sortOrder) => ({
+      id, type: "task-list", items: [{ text: "", checked: false }], sortOrder
+    }),
+    transformBlock: (block) => ({
+      id: block.id,
+      type: "task-list",
+      items: [{ text: TEXT_BLOCK.paragraph(block), richText: TEXT_BLOCK.richText(block), checked: false }],
+      sortOrder: block.sortOrder
+    })
+  }),
+  createCommand({
     key: "code",
     label: "代码",
     description: "代码块",
@@ -133,6 +181,70 @@ export const NOTE_EDITOR_COMMANDS: NoteEditorCommand[] = [
       code: TEXT_BLOCK.paragraph(block),
       language: block.type === "code" ? block.language : "",
       sortOrder: block.sortOrder
+    })
+  }),
+  createCommand({
+    key: "image",
+    label: "图片",
+    description: "上传或嵌入图片",
+    icon: "image",
+    keywords: ["image", "tupian", "tp", "img", "photo"],
+    createBlock: (id, sortOrder) => ({
+      id, type: "image", objectKey: "", originalName: "", sortOrder
+    }),
+    transformBlock: (block) => ({
+      id: block.id, type: "image", objectKey: "", originalName: "", sortOrder: block.sortOrder
+    })
+  }),
+  createCommand({
+    key: "callout",
+    label: "提示块",
+    description: "带图标的提示/警告块",
+    icon: "info",
+    keywords: ["callout", "tishi", "tsk", "alert", "info", "warning"],
+    createBlock: (id, sortOrder) => ({
+      id, type: "callout", calloutType: "info", title: "", foldable: false,
+      defaultFolded: false, children: [{ id: crypto.randomUUID(), type: "paragraph", text: "", sortOrder: 0 }],
+      sortOrder
+    }),
+    transformBlock: (block) => ({
+      id: block.id, type: "callout", calloutType: "info", title: "", foldable: false,
+      defaultFolded: false,
+      children: [{ id: crypto.randomUUID(), type: "paragraph", text: TEXT_BLOCK.paragraph(block), richText: TEXT_BLOCK.richText(block), sortOrder: 0 }],
+      sortOrder: block.sortOrder
+    })
+  }),
+  createCommand({
+    key: "toggle",
+    label: "折叠块",
+    description: "可折叠/展开的内容块",
+    icon: "chevron-right",
+    keywords: ["toggle", "zhedie", "zdq", "collapse", "fold"],
+    createBlock: (id, sortOrder) => ({
+      id, type: "toggle", title: "Toggle", children: [{ id: crypto.randomUUID(), type: "paragraph", text: "", sortOrder: 0 }],
+      sortOrder
+    }),
+    transformBlock: (block) => ({
+      id: block.id, type: "toggle", title: TEXT_BLOCK.paragraph(block),
+      children: [{ id: crypto.randomUUID(), type: "paragraph", text: "", sortOrder: 0 }],
+      sortOrder: block.sortOrder
+    })
+  }),
+  createCommand({
+    key: "table",
+    label: "表格",
+    description: "可编辑表格",
+    icon: "table",
+    keywords: ["table", "biaoge", "bg"],
+    createBlock: (id, sortOrder) => ({
+      id, type: "table", headers: ["列 1", "列 2", "列 3"],
+      rows: [["", "", ""], ["", "", ""]],
+      alignments: ["left", "left", "left"], sortOrder
+    }),
+    transformBlock: (block) => ({
+      id: block.id, type: "table", headers: ["列 1", "列 2", "列 3"],
+      rows: [[TEXT_BLOCK.paragraph(block), "", ""]],
+      alignments: ["left", "left", "left"], sortOrder: block.sortOrder
     })
   }),
   createCommand({

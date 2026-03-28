@@ -8,6 +8,7 @@
 import type { JSONContent } from "@tiptap/core"
 import type {
   InlineMark,
+  ListItemContent,
   NoteBlock,
   RichTextSegment
 } from "@/src/server/store/types"
@@ -233,6 +234,62 @@ function blockToNode(
         type: "horizontalRule",
         attrs: { blockId: block.id }
       }
+    case "bullet-list":
+      return {
+        type: "bulletList",
+        attrs: { blockId: block.id },
+        content: listItemsToNodes(block.items, "listItem")
+      }
+    case "ordered-list":
+      return {
+        type: "orderedList",
+        attrs: { blockId: block.id, start: block.start ?? 1 },
+        content: listItemsToNodes(block.items, "listItem")
+      }
+    case "task-list":
+      return {
+        type: "taskList",
+        attrs: { blockId: block.id },
+        content: listItemsToNodes(block.items, "taskItem")
+      }
+    case "callout":
+      return {
+        type: "calloutBlock",
+        attrs: {
+          blockId: block.id,
+          calloutType: block.calloutType ?? "info"
+        },
+        content: block.children?.length
+          ? block.children.map((child) => blockToNode(child)).filter(isContentNode)
+          : [{ type: "paragraph", content: [] }]
+      }
+    case "toggle":
+      return {
+        type: "toggleBlock",
+        attrs: {
+          blockId: block.id,
+          title: block.title ?? "",
+          collapsed: false
+        },
+        content: block.children?.length
+          ? block.children.map((child) => blockToNode(child)).filter(isContentNode)
+          : [{ type: "paragraph", content: [] }]
+      }
+    case "table":
+      return tableBlockToNode(block)
+    case "image":
+      return {
+        type: "imageBlock",
+        attrs: {
+          blockId: block.id,
+          src: block.externalUrl ?? "",
+          alt: block.alt ?? "",
+          objectKey: block.objectKey ?? "",
+          originalName: block.originalName ?? "",
+          width: block.displayWidth ?? block.width ?? null,
+          uploading: false
+        }
+      }
     default:
       return {
         type: "importedBlock",
@@ -344,6 +401,60 @@ function nodeToBlocks(node: JSONContent, sortOrder: number): NoteBlock[] {
       return [{
         id: getBlockId(node),
         type: "divider",
+        sortOrder
+      }]
+    case "bulletList":
+      return [{
+        id: getBlockId(node),
+        type: "bullet-list",
+        items: nodesToListItems(node.content, "listItem"),
+        sortOrder
+      }]
+    case "orderedList":
+      return [{
+        id: getBlockId(node),
+        type: "ordered-list",
+        items: nodesToListItems(node.content, "listItem"),
+        start: typeof node.attrs?.start === "number" ? node.attrs.start : undefined,
+        sortOrder
+      }]
+    case "taskList":
+      return [{
+        id: getBlockId(node),
+        type: "task-list",
+        items: nodesToListItems(node.content, "taskItem"),
+        sortOrder
+      }]
+    case "calloutBlock":
+      return [{
+        id: getBlockId(node),
+        type: "callout",
+        calloutType: String(node.attrs?.calloutType ?? "info"),
+        title: "",
+        foldable: false,
+        defaultFolded: false,
+        children: nestedNodesToBlocks(node.content),
+        sortOrder
+      }]
+    case "toggleBlock":
+      return [{
+        id: getBlockId(node),
+        type: "toggle",
+        title: String(node.attrs?.title ?? ""),
+        children: nestedNodesToBlocks(node.content),
+        sortOrder
+      }]
+    case "table":
+      return [tableNodeToBlock(node, sortOrder)]
+    case "imageBlock":
+      return [{
+        id: getBlockId(node),
+        type: "image",
+        objectKey: String(node.attrs?.objectKey ?? ""),
+        externalUrl: toNullableString(node.attrs?.src),
+        originalName: String(node.attrs?.originalName ?? ""),
+        alt: toNullableString(node.attrs?.alt),
+        displayWidth: typeof node.attrs?.width === "number" ? node.attrs.width : undefined,
         sortOrder
       }]
     case "importedBlock":
@@ -492,4 +603,124 @@ function parseRichTextSegments(value: unknown) {
   } catch {
     return undefined
   }
+}
+
+/**
+ * TableBlock → TipTap table 节点
+ */
+function tableBlockToNode(block: Extract<NoteBlock, { type: "table" }>): JSONContent {
+  const headerRow: JSONContent = {
+    type: "tableRow",
+    content: (block.headers ?? []).map((header) => ({
+      type: "tableHeader",
+      content: header ? [{ type: "paragraph", content: [{ type: "text", text: header }] }] : [{ type: "paragraph", content: [] }]
+    }))
+  }
+  const bodyRows: JSONContent[] = (block.rows ?? []).map((row) => ({
+    type: "tableRow",
+    content: row.map((cell) => ({
+      type: "tableCell",
+      content: cell ? [{ type: "paragraph", content: [{ type: "text", text: cell }] }] : [{ type: "paragraph", content: [] }]
+    }))
+  }))
+  return {
+    type: "table",
+    attrs: { blockId: block.id },
+    content: [headerRow, ...bodyRows]
+  }
+}
+
+/**
+ * TipTap table 节点 → TableBlock
+ */
+function tableNodeToBlock(node: JSONContent, sortOrder: number): NoteBlock {
+  const rows = node.content ?? []
+  const headers: string[] = []
+  const bodyRows: string[][] = []
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    const row = rows[rowIndex]
+    const cells = (row.content ?? []).map((cell) => {
+      const paragraph = (cell.content ?? []).find((child) => child.type === "paragraph")
+      return collectPlainText(paragraph?.content)
+    })
+    if (rowIndex === 0 && (row.content ?? []).some((cell) => cell.type === "tableHeader")) {
+      headers.push(...cells)
+    } else {
+      bodyRows.push(cells)
+    }
+  }
+  return {
+    id: getBlockId(node),
+    type: "table",
+    headers,
+    rows: bodyRows,
+    alignments: headers.map(() => "left" as const),
+    sortOrder
+  }
+}
+
+/**
+ * 嵌套节点转换为 NoteBlock[]（用于 callout/toggle 子内容）
+ */
+function nestedNodesToBlocks(content: JSONContent[] | undefined): NoteBlock[] {
+  const blocks: NoteBlock[] = []
+  let sortOrder = 0
+  for (const child of content ?? []) {
+    const childBlocks = nodeToBlocks(child, sortOrder)
+    blocks.push(...childBlocks)
+    sortOrder += childBlocks.length
+  }
+  return blocks
+}
+
+/**
+ * ListItemContent[] → TipTap listItem/taskItem 节点
+ */
+function listItemsToNodes(items: ListItemContent[], itemType: "listItem" | "taskItem"): JSONContent[] {
+  return items.map((item) => {
+    const paragraph: JSONContent = {
+      type: "paragraph",
+      content: richTextToTipTap(item.richText, item.text)
+    }
+    const children: JSONContent[] = [paragraph]
+    if (item.children?.length) {
+      const nestedListType = itemType === "taskItem" ? "taskList" : "bulletList"
+      children.push({
+        type: nestedListType,
+        content: listItemsToNodes(item.children, itemType)
+      })
+    }
+    const attrs: Record<string, unknown> = {}
+    if (itemType === "taskItem") {
+      attrs.checked = item.checked ?? false
+    }
+    return {
+      type: itemType,
+      attrs,
+      content: children
+    }
+  })
+}
+
+/**
+ * TipTap listItem/taskItem 节点 → ListItemContent[]
+ */
+function nodesToListItems(content: JSONContent[] | undefined, itemType: "listItem" | "taskItem"): ListItemContent[] {
+  return (content ?? []).map((itemNode) => {
+    const paragraphNode = (itemNode.content ?? []).find((child) => child.type === "paragraph")
+    const nestedList = (itemNode.content ?? []).find((child) =>
+      child.type === "bulletList" || child.type === "orderedList" || child.type === "taskList"
+    )
+    const item: ListItemContent = {
+      text: collectPlainText(paragraphNode?.content),
+      richText: tipTapToRichText(paragraphNode?.content)
+    }
+    if (itemType === "taskItem") {
+      item.checked = itemNode.attrs?.checked === true
+    }
+    if (nestedList?.content?.length) {
+      item.children = nodesToListItems(nestedList.content, itemType)
+    }
+    return item
+  })
 }

@@ -40,6 +40,10 @@ export type NoteBlockType =
   | "code"
   | "divider"
   | "chart"
+  | "bullet-list"
+  | "ordered-list"
+  | "task-list"
+  | "toggle"
   // 导入新增
   | "image"
   | "callout"
@@ -219,6 +223,41 @@ export interface ExcalidrawBlock extends NoteBlockBase {
   fallbackText: string
 }
 
+/** 列表项（支持嵌套） */
+export interface ListItemContent {
+  text: string
+  richText?: RichTextSegment[]
+  checked?: boolean
+  children?: ListItemContent[]
+}
+
+/** 无序列表块 */
+export interface BulletListBlock extends NoteBlockBase {
+  type: "bullet-list"
+  items: ListItemContent[]
+}
+
+/** 有序列表块 */
+export interface OrderedListBlock extends NoteBlockBase {
+  type: "ordered-list"
+  items: ListItemContent[]
+  start?: number
+}
+
+/** 待办列表块 */
+export interface TaskListBlock extends NoteBlockBase {
+  type: "task-list"
+  items: ListItemContent[]
+}
+
+/** 折叠块 */
+export interface ToggleBlock extends NoteBlockBase {
+  type: "toggle"
+  title: string
+  titleRichText?: RichTextSegment[]
+  children: NoteBlock[]
+}
+
 export type NoteBlock =
   | HeadingBlock
   | ParagraphBlock
@@ -228,6 +267,10 @@ export type NoteBlock =
   | CodeBlock
   | DividerBlock
   | ChartBlock
+  | BulletListBlock
+  | OrderedListBlock
+  | TaskListBlock
+  | ToggleBlock
   | ImageBlock
   | CalloutBlock
   | TaskBlock

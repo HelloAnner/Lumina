@@ -7,7 +7,7 @@
  */
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import {
   Extension,
   Mark,
@@ -18,7 +18,7 @@ import {
 import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight"
 import { ReactNodeViewRenderer, NodeViewContent, NodeViewWrapper } from "@tiptap/react"
 import { Plugin } from "@tiptap/pm/state"
-import { BookOpen, Copy, Highlighter, Lightbulb, MessageSquareMore, Quote } from "lucide-react"
+import { AlertCircle, BookOpen, ChevronRight, Copy, Highlighter, ImageIcon, Info, Lightbulb, MessageSquareMore, Quote, TriangleAlert } from "lucide-react"
 import { ImportedBlockItem } from "@/components/import/imported-note-blocks"
 import type { NoteBlock } from "@/src/server/store/types"
 
@@ -178,6 +178,75 @@ export const InlineHighlightMark = Mark.create({
   }
 })
 
+export const ImageBlockNode = Node.create({
+  name: "imageBlock",
+  group: "block",
+  atom: true,
+  draggable: true,
+  addAttributes() {
+    return createBlockAttrs({
+      src: { default: "" },
+      alt: { default: "" },
+      objectKey: { default: "" },
+      originalName: { default: "" },
+      width: { default: null },
+      uploading: { default: false }
+    })
+  },
+  parseHTML() {
+    return [{ tag: 'div[data-type="imageBlock"]' }]
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["div", mergeAttributes(HTMLAttributes, { "data-type": "imageBlock" })]
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(ImageBlockView)
+  }
+})
+
+export const CalloutBlockNode = Node.create({
+  name: "calloutBlock",
+  group: "block",
+  content: "block+",
+  defining: true,
+  addAttributes() {
+    return createBlockAttrs({
+      calloutType: { default: "info" }
+    })
+  },
+  parseHTML() {
+    return [{ tag: 'div[data-type="calloutBlock"]' }]
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["div", mergeAttributes(HTMLAttributes, { "data-type": "calloutBlock" }), 0]
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(CalloutBlockView)
+  }
+})
+
+export const ToggleBlockNode = Node.create({
+  name: "toggleBlock",
+  group: "block",
+  content: "block+",
+  defining: true,
+  addAttributes() {
+    return createBlockAttrs({
+      title: { default: "" },
+      collapsed: { default: false }
+    })
+  },
+  parseHTML() {
+    return [{ tag: 'div[data-type="toggleBlock"]' }]
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["div", mergeAttributes(HTMLAttributes, { "data-type": "toggleBlock" }), 0]
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(ToggleBlockView)
+  }
+})
+
 export const BlockIdExtension = Extension.create({
   name: "blockIdExtension",
   addGlobalAttributes() {
@@ -186,9 +255,18 @@ export const BlockIdExtension = Extension.create({
         types: [
           "heading",
           "paragraph",
+          "bulletList",
+          "orderedList",
+          "taskList",
+          "listItem",
+          "taskItem",
           "quoteBlock",
           "highlightBlock",
           "insightBlock",
+          "table",
+          "imageBlock",
+          "calloutBlock",
+          "toggleBlock",
           "codeBlock",
           "horizontalRule",
           "importedBlock"
@@ -286,6 +364,123 @@ function ImportedBlockView(props: Parameters<typeof ReactNodeViewRenderer>[0] ex
     <NodeViewWrapper className="custom-block">
       <div className="rounded-[18px] border border-dashed border-border/40 bg-elevated/40 px-4 py-3">
         <ImportedBlockItem block={block} />
+      </div>
+    </NodeViewWrapper>
+  )
+}
+
+function ImageBlockView(props: Parameters<typeof ReactNodeViewRenderer>[0] extends never ? never : any) {
+  const { src, alt, uploading, objectKey } = props.node.attrs
+  const displaySrc = src || (objectKey ? `/api/viewpoints/_/images/${objectKey.split("/").pop()}` : "")
+
+  if (!displaySrc && !uploading) {
+    return (
+      <NodeViewWrapper className="custom-block">
+        <div className="flex items-center justify-center rounded-[14px] border border-dashed border-border/40 bg-elevated/40 py-12">
+          <div className="flex flex-col items-center gap-2 text-muted">
+            <ImageIcon className="h-6 w-6" />
+            <span className="text-[12px]">拖拽或粘贴图片</span>
+          </div>
+        </div>
+      </NodeViewWrapper>
+    )
+  }
+
+  return (
+    <NodeViewWrapper className="custom-block">
+      <div className="relative rounded-[14px] overflow-hidden">
+        {uploading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-elevated/60 z-10">
+            <span className="text-[12px] text-muted">上传中...</span>
+          </div>
+        )}
+        <img
+          src={displaySrc}
+          alt={alt || ""}
+          className="max-w-full rounded-[14px]"
+          style={{ width: props.node.attrs.width ? `${props.node.attrs.width}px` : undefined }}
+          draggable={false}
+        />
+        {alt && (
+          <p className="mt-1.5 text-center text-[11px] text-muted">{alt}</p>
+        )}
+      </div>
+    </NodeViewWrapper>
+  )
+}
+
+const CALLOUT_ICONS: Record<string, React.ReactNode> = {
+  info: <Info className="h-4 w-4" />,
+  warning: <TriangleAlert className="h-4 w-4" />,
+  tip: <Lightbulb className="h-4 w-4" />,
+  danger: <AlertCircle className="h-4 w-4" />
+}
+
+const CALLOUT_LABELS: Record<string, string> = {
+  info: "信息",
+  warning: "警告",
+  tip: "提示",
+  danger: "危险"
+}
+
+const CALLOUT_TONES: Record<string, string> = {
+  info: "border-l-[var(--color-accent-blue)]/50 bg-[var(--color-accent-blue)]/5",
+  warning: "border-l-amber-400/50 bg-amber-400/5",
+  tip: "border-l-emerald-400/50 bg-emerald-400/5",
+  danger: "border-l-red-400/50 bg-red-400/5"
+}
+
+function CalloutBlockView(props: Parameters<typeof ReactNodeViewRenderer>[0] extends never ? never : any) {
+  const calloutType = props.node.attrs.calloutType || "info"
+  const types = ["info", "warning", "tip", "danger"]
+  return (
+    <NodeViewWrapper className="custom-block">
+      <div className={`rounded-[14px] border-l-[3px] px-4 py-3 ${CALLOUT_TONES[calloutType] ?? CALLOUT_TONES.info}`}>
+        <div className="mb-2 flex items-center gap-2" contentEditable={false}>
+          <span className="text-muted">{CALLOUT_ICONS[calloutType] ?? CALLOUT_ICONS.info}</span>
+          <select
+            value={calloutType}
+            onChange={(event) => props.updateAttributes({ calloutType: event.target.value })}
+            className="bg-transparent text-[11px] font-medium text-muted uppercase tracking-wide outline-none cursor-pointer"
+          >
+            {types.map((type) => (
+              <option key={type} value={type}>{CALLOUT_LABELS[type]}</option>
+            ))}
+          </select>
+        </div>
+        <NodeViewContent className="callout-content" />
+      </div>
+    </NodeViewWrapper>
+  )
+}
+
+function ToggleBlockView(props: Parameters<typeof ReactNodeViewRenderer>[0] extends never ? never : any) {
+  const collapsed = props.node.attrs.collapsed
+  const toggleCollapse = useCallback(() => {
+    props.updateAttributes({ collapsed: !collapsed })
+  }, [collapsed, props])
+
+  return (
+    <NodeViewWrapper className="custom-block">
+      <div className="rounded-[14px] border border-border/30 bg-elevated/40">
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 px-4 py-3 text-left"
+          onClick={toggleCollapse}
+          contentEditable={false}
+        >
+          <ChevronRight
+            className={`h-4 w-4 text-muted transition-transform duration-150 ${collapsed ? "" : "rotate-90"}`}
+          />
+          <span className="text-[13px] font-medium text-secondary">
+            {props.node.attrs.title || "Toggle"}
+          </span>
+        </button>
+        {!collapsed && (
+          <div className="border-t border-border/20 px-4 py-3">
+            <NodeViewContent className="toggle-content" />
+          </div>
+        )}
       </div>
     </NodeViewWrapper>
   )
