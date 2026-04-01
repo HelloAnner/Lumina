@@ -1,6 +1,6 @@
 /**
  * 任务管理面板
- * 任务卡片列表 + 新建/编辑任务
+ * 任务卡片列表 + 新建/编辑任务 + 执行历史
  *
  * @author Anner
  * @since 0.1.0
@@ -8,22 +8,25 @@
  */
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import {
+  CheckCircle2,
   Clock,
+  Loader2,
   Pause,
   Play,
   Plus,
   RefreshCw,
   Settings2,
   Trash2,
-  X
+  X,
+  XCircle
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Toast } from "@/components/ui/toast"
 import { cn } from "@/src/lib/utils"
-import type { ScoutTask, ScoutSource, Viewpoint } from "@/src/server/store/types"
+import type { ScoutTask, ScoutSource, ScoutJob, Viewpoint } from "@/src/server/store/types"
 
 interface Props {
   tasks: ScoutTask[]
@@ -35,6 +38,7 @@ interface Props {
 export function TaskManager({ tasks, sources, viewpoints, onTasksChange }: Props) {
   const [showForm, setShowForm] = useState(false)
   const [editingTask, setEditingTask] = useState<ScoutTask | null>(null)
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
   const [toast, setToast] = useState<{ title: string; tone: "success" | "error" } | null>(null)
 
   const handleToggle = useCallback(async (taskId: string) => {
@@ -54,6 +58,7 @@ export function TaskManager({ tasks, sources, viewpoints, onTasksChange }: Props
       const res = await fetch(`/api/scout/tasks/${taskId}/run`, { method: "POST" })
       if (res.ok) {
         setToast({ title: "任务已触发", tone: "success" })
+        setExpandedTaskId(taskId)
       }
     } catch {
       setToast({ title: "触发失败", tone: "error" })
@@ -99,6 +104,8 @@ export function TaskManager({ tasks, sources, viewpoints, onTasksChange }: Props
               key={task.id}
               task={task}
               sources={sources}
+              expanded={expandedTaskId === task.id}
+              onToggleExpand={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
               onToggle={handleToggle}
               onRun={handleRun}
               onDelete={handleDelete}
@@ -108,7 +115,6 @@ export function TaskManager({ tasks, sources, viewpoints, onTasksChange }: Props
         </div>
       )}
 
-      {/* 新建/编辑表单 */}
       {showForm && (
         <TaskFormDialog
           task={editingTask}
@@ -155,6 +161,8 @@ export function TaskManager({ tasks, sources, viewpoints, onTasksChange }: Props
 function TaskCard({
   task,
   sources,
+  expanded,
+  onToggleExpand,
   onToggle,
   onRun,
   onDelete,
@@ -162,6 +170,8 @@ function TaskCard({
 }: {
   task: ScoutTask
   sources: ScoutSource[]
+  expanded: boolean
+  onToggleExpand: () => void
   onToggle: (id: string) => void
   onRun: (id: string) => void
   onDelete: (id: string) => void
@@ -170,84 +180,153 @@ function TaskCard({
   const taskSources = sources.filter((s) => task.sourceIds.includes(s.id))
 
   return (
-    <div className="rounded-xl border border-border/50 bg-card/40 p-4">
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h3 className="text-[14px] font-medium text-foreground">{task.name}</h3>
-          <span className={cn(
-            "rounded-full px-2 py-0.5 text-[10px] font-medium",
-            task.status === "active"
-              ? "bg-green-500/15 text-green-400"
-              : "bg-amber-500/15 text-amber-400"
-          )}>
-            {task.status === "active" ? "运行中" : "已暂停"}
-          </span>
+    <div className="rounded-xl border border-border/50 bg-card/40">
+      <div className="p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h3 className="text-[14px] font-medium text-foreground">{task.name}</h3>
+            <span className={cn(
+              "rounded-full px-2 py-0.5 text-[10px] font-medium",
+              task.status === "active"
+                ? "bg-green-500/15 text-green-400"
+                : "bg-amber-500/15 text-amber-400"
+            )}>
+              {task.status === "active" ? "运行中" : "已暂停"}
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onToggle(task.id)}
+              className="rounded-md p-1.5 text-muted hover:bg-overlay hover:text-foreground transition-colors"
+              title={task.status === "active" ? "暂停" : "启动"}
+            >
+              {task.status === "active" ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            </button>
+            <button
+              onClick={() => onRun(task.id)}
+              className="rounded-md p-1.5 text-muted hover:bg-overlay hover:text-foreground transition-colors"
+              title="立即执行"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => onEdit(task)}
+              className="rounded-md p-1.5 text-muted hover:bg-overlay hover:text-foreground transition-colors"
+              title="编辑"
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => onDelete(task.id)}
+              className="rounded-md p-1.5 text-muted hover:bg-overlay hover:text-red-400 transition-colors"
+              title="删除"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => onToggle(task.id)}
-            className="rounded-md p-1.5 text-muted hover:bg-overlay hover:text-foreground transition-colors"
-            title={task.status === "active" ? "暂停" : "启动"}
-          >
-            {task.status === "active" ? (
-              <Pause className="h-3.5 w-3.5" />
-            ) : (
-              <Play className="h-3.5 w-3.5" />
-            )}
-          </button>
-          <button
-            onClick={() => onRun(task.id)}
-            className="rounded-md p-1.5 text-muted hover:bg-overlay hover:text-foreground transition-colors"
-            title="立即执行"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={() => onEdit(task)}
-            className="rounded-md p-1.5 text-muted hover:bg-overlay hover:text-foreground transition-colors"
-            title="编辑"
-          >
-            <Settings2 className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={() => onDelete(task.id)}
-            className="rounded-md p-1.5 text-muted hover:bg-overlay hover:text-red-400 transition-colors"
-            title="删除"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+
+        {task.description && (
+          <p className="mb-2 text-[12px] text-muted">{task.description}</p>
+        )}
+
+        <div className="mb-2 flex flex-wrap gap-1">
+          {taskSources.map((s) => (
+            <span key={s.id} className="rounded-md bg-overlay/60 px-2 py-0.5 text-[11px] text-muted">
+              {s.name}
+            </span>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-4 text-[11px] text-muted">
+          <span className="flex items-center gap-1">
+            <Clock className="h-2.5 w-2.5" />
+            {task.lastRunAt
+              ? `上次运行 ${new Date(task.lastRunAt).toLocaleString()}`
+              : "从未运行"}
+          </span>
+          <span>共 {task.totalRuns} 次</span>
+          <span>阈值 {Math.round(task.relevanceThreshold * 100)}%</span>
         </div>
       </div>
 
-      {task.description && (
-        <p className="mb-2 text-[12px] text-muted">{task.description}</p>
-      )}
+      {/* 执行历史 */}
+      <button
+        onClick={onToggleExpand}
+        className="flex w-full items-center justify-center border-t border-border/40 py-1.5 text-[11px] text-muted hover:bg-overlay/30 transition-colors"
+      >
+        {expanded ? "收起执行记录" : "查看执行记录"}
+      </button>
 
-      {/* 信息源标签 */}
-      <div className="mb-2 flex flex-wrap gap-1">
-        {taskSources.map((s) => (
-          <span
-            key={s.id}
-            className="rounded-md bg-overlay/60 px-2 py-0.5 text-[11px] text-muted"
-          >
-            {s.name}
-          </span>
-        ))}
-      </div>
-
-      {/* 统计 */}
-      <div className="flex items-center gap-4 text-[11px] text-muted">
-        <span className="flex items-center gap-1">
-          <Clock className="h-2.5 w-2.5" />
-          {task.lastRunAt
-            ? `上次运行 ${new Date(task.lastRunAt).toLocaleString()}`
-            : "从未运行"}
-        </span>
-        <span>共 {task.totalRuns} 次</span>
-        <span>阈值 {Math.round(task.relevanceThreshold * 100)}%</span>
-      </div>
+      {expanded && <JobHistory taskId={task.id} />}
     </div>
   )
+}
+
+/** 单任务执行记录面板 */
+function JobHistory({ taskId }: { taskId: string }) {
+  const [jobs, setJobs] = useState<ScoutJob[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch(`/api/scout/jobs?taskId=${taskId}`)
+      .then((r) => r.json())
+      .then((data) => setJobs(data.items ?? []))
+      .finally(() => setLoading(false))
+  }, [taskId])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-4 text-muted">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      </div>
+    )
+  }
+
+  if (jobs.length === 0) {
+    return (
+      <div className="px-4 py-3 text-center text-[12px] text-muted">暂无执行记录</div>
+    )
+  }
+
+  return (
+    <div className="max-h-48 overflow-y-auto border-t border-border/40">
+      {jobs.slice(0, 10).map((job) => (
+        <div key={job.id} className="flex items-center gap-3 border-b border-border/20 px-4 py-2.5 last:border-b-0">
+          <JobStatusIcon status={job.status} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 text-[12px]">
+              <span className="text-foreground">
+                {job.triggeredBy === "cron" ? "定时" : "手动"}
+              </span>
+              <span className="text-muted">
+                {new Date(job.startedAt).toLocaleString()}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-[11px] text-muted">
+              <span>抓取 {job.stages.fetch.completed}/{job.stages.fetch.total}</span>
+              <span>分析 {job.stages.analyze.completed}</span>
+              <span>Patch {job.stages.patch.generated}</span>
+              {job.stages.fetch.errors > 0 && (
+                <span className="text-red-400">失败 {job.stages.fetch.errors}</span>
+              )}
+            </div>
+          </div>
+          {job.completedAt && (
+            <span className="text-[10px] text-muted">
+              {Math.round((new Date(job.completedAt).getTime() - new Date(job.startedAt).getTime()) / 1000)}s
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function JobStatusIcon({ status }: { status: ScoutJob["status"] }) {
+  if (status === "running") return <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />
+  if (status === "completed") return <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
+  return <XCircle className="h-3.5 w-3.5 text-red-400" />
 }
 
 /** 任务新建/编辑表单 */
@@ -315,13 +394,16 @@ function TaskFormDialog({
                 </button>
               ))}
               {sources.length === 0 && (
-                <p className="text-[12px] text-muted">请先在设置中添加信息源</p>
+                <p className="text-[12px] text-muted">请先在信息源页面添加信息源</p>
               )}
             </div>
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[12px] font-medium text-secondary">目标观点</label>
+            <label className="mb-1.5 block text-[12px] font-medium text-secondary">
+              目标观点
+              <span className="ml-1 font-normal text-muted">（选择后将自动生成 Patch 建议）</span>
+            </label>
             <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
               {viewpoints.filter((v) => !v.isFolder).map((v) => (
                 <button

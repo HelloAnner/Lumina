@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { z } from "zod"
 import type { AppEnv } from "@/src/server/lib/hono"
 import { repository } from "@/src/server/repositories"
+import { invalidateBooks } from "@/src/server/repositories/cached"
 import { syncPendingHighlights } from "@/src/server/services/aggregation/highlight-sync"
 import { deleteHighlightVector } from "@/src/server/services/aggregation/vector-store"
 
@@ -59,6 +60,7 @@ app.post("/", async (c) => {
     })
   }
 
+  void invalidateBooks(userId)
   return c.json({ item: highlight })
 })
 
@@ -69,19 +71,23 @@ app.put("/:id", async (c) => {
       color: z.enum(["yellow", "green", "blue", "pink"]).optional()
     })
     .parse(await c.req.json())
+  const userId = c.get("userId")
   const highlight = repository.updateHighlight(
-    c.get("userId"),
+    userId,
     c.req.param("id"),
     payload
   )
+  void invalidateBooks(userId)
   return c.json({ item: highlight })
 })
 
 app.delete("/:id", (c) => {
+  const userId = c.get("userId")
   const highlightId = c.req.param("id")
-  repository.deleteHighlight(c.get("userId"), highlightId)
+  repository.deleteHighlight(userId, highlightId)
   /** 异步清理向量存储 */
   void deleteHighlightVector(highlightId).catch(() => undefined)
+  void invalidateBooks(userId)
   return c.json({ ok: true })
 })
 
@@ -102,6 +108,7 @@ app.put("/viewpoint-link/:highlightId/:viewpointId", async (c) => {
     similarityScore: payload.confirmed ? 0.88 : 0.72,
     confirmed: payload.confirmed
   })
+  void invalidateBooks(c.get("userId"))
   return c.json({ item: result })
 })
 

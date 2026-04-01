@@ -45,10 +45,13 @@
 
 ```bash
 npm install
-npm run dev
+make dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+`make dev` 会先启动 PostgreSQL、Redis、MinIO，再在宿主机运行 Next.js 开发服务器。  
+前端页面、`app/api`、`src/server` 的修改都会通过热更新反映到最新效果。
+
+Open [http://localhost:20261](http://localhost:20261).
 
 Demo account:
 

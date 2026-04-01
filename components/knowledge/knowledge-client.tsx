@@ -1,18 +1,16 @@
 "use client"
 
 import {
-  useDeferredValue,
+  memo,
   useCallback,
   useEffect,
   useMemo,
   useRef,
-  useState
+  useState,
+  useDeferredValue
 } from "react"
-import {
-  usePathname,
-  useRouter,
-  useSearchParams
-} from "next/navigation"
+import { usePathname } from "next/navigation"
+import { parseServerTiming } from "@/src/lib/timing"
 import {
   BookOpen,
   Check,
@@ -36,8 +34,10 @@ import {
 } from "@/components/knowledge/knowledge-view-state"
 import {
   DEFAULT_KNOWLEDGE_NOTE_STATE,
+  type KnowledgeSelection,
+  type KnowledgeNoteState,
+  buildKnowledgeHref,
   buildKnowledgeNoteKey,
-  buildKnowledgeSearch,
   readKnowledgeSelection
 } from "@/components/knowledge/knowledge-url-state"
 import { RightSidebar, type RightSidebarTab } from "@/components/knowledge/right-sidebar"
@@ -88,11 +88,14 @@ export function KnowledgeClient({
     knowledgeListWidth: number
   }
 }) {
-  const router = useRouter()
   const pathname = usePathname()
-  const searchParams = useSearchParams()
   const [toast, setToast] = useState("")
   const [viewpoints, setViewpoints] = useState(initialViewpoints)
+  const [routeSelection, setRouteSelection] = useState<KnowledgeSelection>(() =>
+    initialImportedNoteId
+      ? { importedNoteId: initialImportedNoteId }
+      : { viewpointId: initialSelected?.id ?? initialViewpoints[0]?.id ?? undefined }
+  )
   const [selectedId, setSelectedId] = useState(
     initialImportedNoteId
       ? ""
@@ -112,8 +115,10 @@ export function KnowledgeClient({
   const [headerTitleDraft, setHeaderTitleDraft] = useState("")
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle")
   const [selectionCtx, setSelectionCtx] = useState<SelectionContext | null>(null)
-  const [annotatedBlockIds, setAnnotatedBlockIds] = useState<Set<string>>(
-    new Set()
+  const [annotatedBlockIdList, setAnnotatedBlockIdList] = useState<string[]>([])
+  const annotatedBlockIds = useMemo(
+    () => new Set(annotatedBlockIdList),
+    [annotatedBlockIdList]
   )
   const [activeRightTab, setActiveRightTab] = useState<RightSidebarTab>("annotations")
   const [selectedBlockForChat, setSelectedBlockForChat] = useState<NoteBlock | null>(null)
@@ -133,16 +138,13 @@ export function KnowledgeClient({
   const isRestoringScrollRef = useRef(false)
   const viewpointBlocksCacheRef = useRef<Map<string, NoteBlock[]>>(new Map())
   const viewpointBlocksRequestRef = useRef<Map<string, Promise<NoteBlock[]>>>(new Map())
+  const noteStateCacheRef = useRef<Map<string, KnowledgeNoteState>>(new Map())
   const readyViewpointIdRef = useRef(readyViewpointId)
   readyViewpointIdRef.current = readyViewpointId
   const noteStateRef = useRef(noteState)
   noteStateRef.current = noteState
   const headerInputRef = useRef<HTMLInputElement>(null)
   const selected = viewpoints.find((v) => v.id === selectedId)
-  const routeSelection = useMemo(
-    () => readKnowledgeSelection(new URLSearchParams(searchParams.toString())),
-    [searchParams]
-  )
   const currentSelection = useMemo(
     () => importedNoteId
       ? { importedNoteId }
@@ -164,10 +166,20 @@ export function KnowledgeClient({
       return pending
     }
     const request = (async () => {
+      const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now()
       const res = await fetch(`/api/viewpoints/${viewpointId}/blocks`)
+      const responseAt = typeof performance !== "undefined" ? performance.now() : Date.now()
       const data = await res.json()
+      const parsedAt = typeof performance !== "undefined" ? performance.now() : Date.now()
       const nextBlocks = (data.blocks ?? []) as NoteBlock[]
       viewpointBlocksCacheRef.current.set(viewpointId, nextBlocks)
+      reportViewpointLoadTiming({
+        viewpointId,
+        totalDuration: parsedAt - startedAt,
+        responseDuration: responseAt - startedAt,
+        parseDuration: parsedAt - responseAt,
+        serverTiming: parseServerTiming(res.headers.get("Server-Timing"))
+      })
       return nextBlocks
     })()
     viewpointBlocksRequestRef.current.set(viewpointId, request)
@@ -202,7 +214,13 @@ export function KnowledgeClient({
       anchorHeadingId:
         partial.anchorHeadingId ?? noteStateRef.current.anchorHeadingId
     }
-    setNoteState(next)
+    noteStateRef.current = next
+    noteStateCacheRef.current.set(currentNoteKey, next)
+    // Only trigger re-render for outlineCollapsed changes (visible in UI)
+    // scrollTop/anchorHeadingId are tracked via ref only
+    if (partial.outlineCollapsed !== undefined) {
+      setNoteState(next)
+    }
     if (noteStateTimer.current) {
       clearTimeout(noteStateTimer.current)
     }
@@ -226,13 +244,35 @@ export function KnowledgeClient({
     viewpointId?: string
     importedNoteId?: string
   }) => {
-    const nextSearch = buildKnowledgeSearch(
-      new URLSearchParams(searchParams.toString()),
+    setRouteSelection(selection)
+    if (typeof window === "undefined") {
+      return
+    }
+    const nextUrl = buildKnowledgeHref(
+      pathname,
+      new URLSearchParams(window.location.search),
       selection
     )
-    const nextUrl = nextSearch ? `${pathname}?${nextSearch}` : pathname
-    router.replace(nextUrl, { scroll: false })
-  }, [pathname, router, searchParams])
+    const currentUrl = `${window.location.pathname}${window.location.search}`
+    if (currentUrl !== nextUrl) {
+      window.history.replaceState(window.history.state, "", nextUrl)
+    }
+  }, [pathname])
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+    const syncSelectionFromLocation = () => {
+      setRouteSelection(
+        readKnowledgeSelection(new URLSearchParams(window.location.search))
+      )
+    }
+    window.addEventListener("popstate", syncSelectionFromLocation)
+    return () => {
+      window.removeEventListener("popstate", syncSelectionFromLocation)
+    }
+  }, [])
 
   // 加载笔记块
   useEffect(() => {
@@ -241,11 +281,14 @@ export function KnowledgeClient({
       setReadyViewpointId("")
       return
     }
+    // 缓存命中 → 同步就绪，跳过网络请求
     const cached = viewpointBlocksCacheRef.current.get(selectedId)
     if (cached) {
       setBlocks(cached)
       setReadyViewpointId(selectedId)
-    } else if (readyViewpointIdRef.current !== selectedId) {
+      return
+    }
+    if (readyViewpointIdRef.current !== selectedId) {
       setReadyViewpointId("")
     }
     let cancelled = false
@@ -330,12 +373,19 @@ export function KnowledgeClient({
       setNoteState(DEFAULT_KNOWLEDGE_NOTE_STATE)
       return
     }
+    const cached = noteStateCacheRef.current.get(currentNoteKey)
+    if (cached) {
+      setNoteState(cached)
+      return
+    }
     void (async () => {
       try {
         const query = new URLSearchParams({ noteKey: currentNoteKey })
         const res = await fetch(`/api/preferences/knowledge-note?${query}`)
         const data = await res.json()
-        setNoteState(data.item ?? DEFAULT_KNOWLEDGE_NOTE_STATE)
+        const resolved = data.item ?? DEFAULT_KNOWLEDGE_NOTE_STATE
+        noteStateCacheRef.current.set(currentNoteKey, resolved)
+        setNoteState(resolved)
       } catch {
         setNoteState(DEFAULT_KNOWLEDGE_NOTE_STATE)
       }
@@ -376,17 +426,29 @@ export function KnowledgeClient({
     if (!container || !currentNoteKey) {
       return
     }
+    let rafId: number | null = null
     const handleScroll = () => {
       if (isRestoringScrollRef.current) {
         return
       }
-      scheduleNoteStateSave({
-        scrollTop: Math.round(container.scrollTop),
-        anchorHeadingId: activeHeadingId
+      if (rafId !== null) {
+        return
+      }
+      rafId = requestAnimationFrame(() => {
+        rafId = null
+        scheduleNoteStateSave({
+          scrollTop: Math.round(container.scrollTop),
+          anchorHeadingId: activeHeadingId
+        })
       })
     }
     container.addEventListener("scroll", handleScroll, { passive: true })
-    return () => container.removeEventListener("scroll", handleScroll)
+    return () => {
+      container.removeEventListener("scroll", handleScroll)
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId)
+      }
+    }
   }, [activeHeadingId, currentNoteKey, scheduleNoteStateSave])
 
   useEffect(() => {
@@ -566,13 +628,24 @@ export function KnowledgeClient({
       setBlocks(nextSelected?.articleBlocks ?? [])
     }
     try {
-      await Promise.all(
+      const responses = await Promise.all(
         [...subtreeIds]
           .reverse()
           .map((id) => fetch(`/api/viewpoints/${id}`, { method: "DELETE" }))
       )
+      if (responses.some((response) => !response.ok)) {
+        throw new Error("delete viewpoint failed")
+      }
+      for (const id of subtreeIds) {
+        viewpointBlocksCacheRef.current.delete(id)
+        viewpointBlocksRequestRef.current.delete(id)
+      }
+      if (selectedId && subtreeIds.includes(selectedId)) {
+        replaceKnowledgeUrl(nextSelected?.id ? { viewpointId: nextSelected.id } : {})
+      }
     } catch {
       setViewpoints(viewpoints)
+      setToast("删除失败，请重试")
     }
   }
 
@@ -627,6 +700,16 @@ export function KnowledgeClient({
     }
   }, [blocks, selectedBlockForChat])
 
+  const blocksRef = useRef(blocks)
+  blocksRef.current = blocks
+  const handleEditorBlockClick = useCallback(
+    (blockId: string) => {
+      const block = blocksRef.current.find((item) => item.id === blockId)
+      setSelectedBlockForChat(block ?? null)
+    },
+    []
+  )
+
   const refreshBlocks = useCallback(async () => {
     if (!selectedId) {
       return
@@ -640,15 +723,47 @@ export function KnowledgeClient({
     }
   }, [selectedId])
 
+  const clearSelectionCtx = useCallback(() => setSelectionCtx(null), [])
+  const clearChatBlock = useCallback(() => setSelectedBlockForChat(null), [])
+  const cancelDraft = useCallback(() => {
+    setDraftNode(null)
+    setDraftTitle("")
+  }, [])
+  const scheduleNoteStateSaveRef = useRef(scheduleNoteStateSave)
+  scheduleNoteStateSaveRef.current = scheduleNoteStateSave
+  const handleOutlineCollapsedChange = useCallback(
+    (collapsed: boolean) => scheduleNoteStateSaveRef.current({ outlineCollapsed: collapsed }),
+    []
+  )
+
+  const handleSelectImportedNote = useCallback(
+    (id: string) => {
+      flushCurrentNoteState()
+      setImportedReadyVersion(0)
+      setImportedNoteId(id)
+      setSelectedId("")
+      setSelectedBlockForChat(null)
+      setSelectionCtx(null)
+      replaceKnowledgeUrl({ importedNoteId: id })
+    },
+    [flushCurrentNoteState, replaceKnowledgeUrl]
+  )
+
   /** 批注变更回调 */
   const handleAnnotationsChange = useCallback((annos: Annotation[]) => {
-    const ids = new Set<string>()
+    const nextIds: string[] = []
     for (const a of annos) {
       if (a.targetBlockId && a.status !== "done") {
-        ids.add(a.targetBlockId)
+        nextIds.push(a.targetBlockId)
       }
     }
-    setAnnotatedBlockIds(ids)
+    nextIds.sort()
+    setAnnotatedBlockIdList((prev) => {
+      if (prev.length === nextIds.length && prev.every((id, i) => id === nextIds[i])) {
+        return prev
+      }
+      return nextIds
+    })
     const justDone = annos.some((a) => a.status === "done")
     if (justDone) {
       void refreshBlocks()
@@ -677,6 +792,25 @@ export function KnowledgeClient({
       setToast("保存失败，请重试")
     }
   }, [selectedId])
+
+  const handleBlocksUpdateFromSidebar = useCallback(
+    (newBlocks: NoteBlock[]) => void persistBlocksFromSidebar(newBlocks),
+    [persistBlocksFromSidebar]
+  )
+
+  const handleImportedReady = useCallback(
+    () => setImportedReadyVersion((value) => value + 1),
+    []
+  )
+  const openImportDialog = useCallback(() => setShowImportDialog(true), [])
+  const closeImportDialog = useCallback(() => setShowImportDialog(false), [])
+  const handleImportCreated = useCallback((jobId?: string) => {
+    setShowImportDialog(false)
+    if (jobId) {
+      window.location.href = `/sources/import/${jobId}`
+    }
+  }, [])
+  const clearToast = useCallback(() => setToast(""), [])
 
   const selectViewpoint = useCallback(
     (viewpointId: string) => {
@@ -725,7 +859,7 @@ export function KnowledgeClient({
 
   return (
     <>
-      {toast ? <Toast title={toast} onClose={() => setToast("")} /> : null}
+      {toast ? <Toast title={toast} onClose={clearToast} /> : null}
       <div className="flex h-screen overflow-hidden bg-surface">
         {/* 左侧主题树 */}
         <aside
@@ -750,22 +884,11 @@ export function KnowledgeClient({
             draftTitle={draftTitle}
             onDraftTitleChange={setDraftTitle}
             onDraftSubmit={submitDraft}
-            onDraftCancel={() => {
-              setDraftNode(null)
-              setDraftTitle("")
-            }}
+            onDraftCancel={cancelDraft}
             importedNotesSlot={
               <ImportedNotesTree
                 selectedNoteId={importedNoteId}
-                onSelectNote={(id) => {
-                  flushCurrentNoteState()
-                  setImportedReadyVersion(0)
-                  setImportedNoteId(id)
-                  setSelectedId("")
-                  setSelectedBlockForChat(null)
-                  setSelectionCtx(null)
-                  replaceKnowledgeUrl({ importedNoteId: id })
-                }}
+                onSelectNote={handleSelectImportedNote}
               />
             }
           />
@@ -780,101 +903,26 @@ export function KnowledgeClient({
           {importedNoteId ? (
             <ImportedNoteViewer
               noteId={importedNoteId}
-              onReady={() => setImportedReadyVersion((value) => value + 1)}
+              onReady={handleImportedReady}
               scrollContainerRef={contentScrollRef}
             />
           ) : (
           <>
-          {/* 顶部标题栏 */}
-          <div className="flex h-11 shrink-0 items-center justify-between border-b border-border/40 bg-surface px-6">
-            <div className="flex min-w-0 items-center gap-2.5">
-              {editingHeaderTitle && selected ? (
-                <input
-                  ref={headerInputRef}
-                  autoFocus
-                  className="min-w-0 flex-1 rounded-md bg-elevated/60 px-2 py-0.5 text-[15px] font-semibold text-foreground outline-none ring-1 ring-primary/30 transition-shadow focus:ring-primary/50"
-                  value={headerTitleDraft}
-                  onChange={(e) => setHeaderTitleDraft(e.target.value)}
-                  onFocus={(e) => e.target.select()}
-                  onBlur={() => {
-                    void renameViewpoint(selected.id, headerTitleDraft)
-                    setEditingHeaderTitle(false)
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      void renameViewpoint(selected.id, headerTitleDraft)
-                      setEditingHeaderTitle(false)
-                    }
-                    if (e.key === "Escape") {
-                      setEditingHeaderTitle(false)
-                    }
-                  }}
-                />
-              ) : (
-                <span
-                  className="group/title flex min-w-0 items-center gap-1.5 truncate text-[15px] font-semibold text-foreground cursor-text rounded-md px-2 py-0.5 -mx-2 transition-colors hover:bg-overlay/40"
-                  onClick={() => {
-                    if (selected) {
-                      setEditingHeaderTitle(true)
-                      setHeaderTitleDraft(selected.title)
-                    }
-                  }}
-                >
-                  <span className="truncate">{selected?.title ?? "未选择主题"}</span>
-                  {selected && (
-                    <Pencil className="h-3 w-3 shrink-0 text-muted/30 opacity-0 transition-opacity group-hover/title:opacity-100" />
-                  )}
-                </span>
-              )}
-              {selected?.lastSynthesizedAt && (
-                <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                  AI 生成
-                </span>
-              )}
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowImportDialog(true)}
-                className="h-7 gap-1.5 px-2.5 text-[12px] text-muted hover:text-foreground"
-              >
-                <Import className="h-3.5 w-3.5" />
-                导入
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1.5 px-2.5 text-[12px] text-muted hover:text-foreground"
-              >
-                <Download className="h-3.5 w-3.5" />
-                导出
-              </Button>
-            </div>
-          </div>
+          <KnowledgeHeaderBar
+            selected={selected}
+            editingHeaderTitle={editingHeaderTitle}
+            headerTitleDraft={headerTitleDraft}
+            headerInputRef={headerInputRef}
+            onHeaderTitleDraftChange={setHeaderTitleDraft}
+            onEditingHeaderTitleChange={setEditingHeaderTitle}
+            onRename={renameViewpoint}
+            onImport={openImportDialog}
+          />
 
-          {/* 元信息栏 */}
-          {selected && (
-            <div className="flex shrink-0 items-center gap-4 border-b border-border/30 bg-surface/80 px-6 py-1.5">
-              <div className="flex items-center gap-1.5 text-muted/60">
-                <BookOpen className="h-3 w-3" />
-                <span className="text-[11px]">
-                  来自 {selected.relatedBookIds.length} 本书 · {selected.highlightCount} 条划线
-                </span>
-              </div>
-              {pendingAnnoCount > 0 && (
-                <>
-                  <span className="text-[11px] text-muted">·</span>
-                  <div className="flex items-center gap-1.5">
-                    <MessageSquare className="h-3 w-3 text-primary" />
-                    <span className="text-[11px] font-medium text-primary">
-                      {pendingAnnoCount} 条批注待处理
-                    </span>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+          <KnowledgeMetaBar
+            selected={selected}
+            pendingAnnoCount={pendingAnnoCount}
+          />
 
           {/* 笔记块内容 */}
           <div
@@ -895,14 +943,9 @@ export function KnowledgeClient({
                     onBlocksChange={setBlocks}
                     onSelectText={handleSelectText}
                     onActiveHeadingChange={setActiveHeadingId}
-                    onOutlineCollapsedChange={(collapsed) => {
-                      scheduleNoteStateSave({ outlineCollapsed: collapsed })
-                    }}
+                    onOutlineCollapsedChange={handleOutlineCollapsedChange}
                     onSaveStatusChange={setSaveStatus}
-                    onBlockClick={activeRightTab === "chat" ? (blockId) => {
-                      const block = blocks.find((item) => item.id === blockId)
-                      setSelectedBlockForChat(block ?? null)
-                    } : undefined}
+                    onBlockClick={handleEditorBlockClick}
                   />
                 ) : (
                   <div className="mx-auto max-w-[1120px] rounded-[22px] border border-border/30 bg-elevated/20 px-6 py-8 text-[13px] text-muted">
@@ -913,35 +956,12 @@ export function KnowledgeClient({
             </div>
           </div>
 
-          {/* 底部状态栏 */}
-          <div className="flex h-8 shrink-0 items-center justify-between border-t border-border/30 bg-surface/80 px-6">
-            <div className="flex items-center gap-2">
-              {pendingAnnoCount > 0 && (
-                <>
-                  <div className="h-1.5 w-1.5 rounded-full bg-warning" />
-                  <span className="text-[11px] text-secondary">
-                    {pendingAnnoCount} 条批注排队中
-                  </span>
-                </>
-              )}
-            </div>
-            <div className="flex items-center gap-3 text-[11px] text-muted">
-              {saveStatus === "saving" && (
-                <span className="flex items-center gap-1 text-muted">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  保存中
-                </span>
-              )}
-              {saveStatus === "saved" && (
-                <span className="flex items-center gap-1 text-success/60">
-                  <Check className="h-3 w-3" />
-                  已保存
-                </span>
-              )}
-              <span>{charCount.toLocaleString()} 字</span>
-              <span>{blockCount} 个块</span>
-            </div>
-          </div>
+          <KnowledgeStatusBar
+            pendingAnnoCount={pendingAnnoCount}
+            saveStatus={saveStatus}
+            charCount={charCount}
+            blockCount={blockCount}
+          />
           </>
           )}
         </main>
@@ -960,10 +980,10 @@ export function KnowledgeClient({
             blocks={deferredChatBlocks}
             selectionContext={selectionCtx}
             selectedBlockForChat={selectedBlockForChat}
-            onClearSelection={() => setSelectionCtx(null)}
-            onClearChatBlock={() => setSelectedBlockForChat(null)}
+            onClearSelection={clearSelectionCtx}
+            onClearChatBlock={clearChatBlock}
             onAnnotationsChange={handleAnnotationsChange}
-            onBlocksUpdate={(newBlocks) => void persistBlocksFromSidebar(newBlocks)}
+            onBlocksUpdate={handleBlocksUpdateFromSidebar}
             activeTab={activeRightTab}
             onTabChange={setActiveRightTab}
           />
@@ -972,18 +992,181 @@ export function KnowledgeClient({
 
       {showImportDialog && (
         <AddSourceDialog
-          onClose={() => setShowImportDialog(false)}
-          onCreated={(jobId) => {
-            setShowImportDialog(false)
-            if (jobId) {
-              window.location.href = `/sources/import/${jobId}`
-            }
-          }}
+          onClose={closeImportDialog}
+          onCreated={handleImportCreated}
         />
       )}
     </>
   )
 }
+
+/** 顶部标题栏 — 仅在标题编辑态或选中主题变化时重渲染 */
+const KnowledgeHeaderBar = memo(function KnowledgeHeaderBar({
+  selected,
+  editingHeaderTitle,
+  headerTitleDraft,
+  headerInputRef,
+  onHeaderTitleDraftChange,
+  onEditingHeaderTitleChange,
+  onRename,
+  onImport
+}: {
+  selected?: Viewpoint
+  editingHeaderTitle: boolean
+  headerTitleDraft: string
+  headerInputRef: React.RefObject<HTMLInputElement>
+  onHeaderTitleDraftChange: (value: string) => void
+  onEditingHeaderTitleChange: (editing: boolean) => void
+  onRename: (id: string, title: string) => Promise<void>
+  onImport: () => void
+}) {
+  return (
+    <div className="flex h-11 shrink-0 items-center justify-between border-b border-border/40 bg-surface px-6">
+      <div className="flex min-w-0 items-center gap-2.5">
+        {editingHeaderTitle && selected ? (
+          <input
+            ref={headerInputRef}
+            autoFocus
+            className="min-w-0 flex-1 rounded-md bg-elevated/60 px-2 py-0.5 text-[15px] font-semibold text-foreground outline-none ring-1 ring-primary/30 transition-shadow focus:ring-primary/50"
+            value={headerTitleDraft}
+            onChange={(e) => onHeaderTitleDraftChange(e.target.value)}
+            onFocus={(e) => e.target.select()}
+            onBlur={() => {
+              void onRename(selected.id, headerTitleDraft)
+              onEditingHeaderTitleChange(false)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                void onRename(selected.id, headerTitleDraft)
+                onEditingHeaderTitleChange(false)
+              }
+              if (e.key === "Escape") {
+                onEditingHeaderTitleChange(false)
+              }
+            }}
+          />
+        ) : (
+          <span
+            className="group/title flex min-w-0 items-center gap-1.5 truncate text-[15px] font-semibold text-foreground cursor-text rounded-md px-2 py-0.5 -mx-2 transition-colors hover:bg-overlay/40"
+            onClick={() => {
+              if (selected) {
+                onEditingHeaderTitleChange(true)
+                onHeaderTitleDraftChange(selected.title)
+              }
+            }}
+          >
+            <span className="truncate">{selected?.title ?? "未选择主题"}</span>
+            {selected && (
+              <Pencil className="h-3 w-3 shrink-0 text-muted/30 opacity-0 transition-opacity group-hover/title:opacity-100" />
+            )}
+          </span>
+        )}
+        {selected?.lastSynthesizedAt && (
+          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+            AI 生成
+          </span>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onImport}
+          className="h-7 gap-1.5 px-2.5 text-[12px] text-muted hover:text-foreground"
+        >
+          <Import className="h-3.5 w-3.5" />
+          导入
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1.5 px-2.5 text-[12px] text-muted hover:text-foreground"
+        >
+          <Download className="h-3.5 w-3.5" />
+          导出
+        </Button>
+      </div>
+    </div>
+  )
+})
+
+/** 元信息栏 — 仅在选中主题或批注数变化时重渲染 */
+const KnowledgeMetaBar = memo(function KnowledgeMetaBar({
+  selected,
+  pendingAnnoCount
+}: {
+  selected?: Viewpoint
+  pendingAnnoCount: number
+}) {
+  if (!selected) {
+    return null
+  }
+  return (
+    <div className="flex shrink-0 items-center gap-4 border-b border-border/30 bg-surface/80 px-6 py-1.5">
+      <div className="flex items-center gap-1.5 text-muted/60">
+        <BookOpen className="h-3 w-3" />
+        <span className="text-[11px]">
+          来自 {selected.relatedBookIds.length} 本书 · {selected.highlightCount} 条划线
+        </span>
+      </div>
+      {pendingAnnoCount > 0 && (
+        <>
+          <span className="text-[11px] text-muted">·</span>
+          <div className="flex items-center gap-1.5">
+            <MessageSquare className="h-3 w-3 text-primary" />
+            <span className="text-[11px] font-medium text-primary">
+              {pendingAnnoCount} 条批注待处理
+            </span>
+          </div>
+        </>
+      )}
+    </div>
+  )
+})
+
+/** 底部状态栏 — 仅在保存状态或统计数变化时重渲染 */
+const KnowledgeStatusBar = memo(function KnowledgeStatusBar({
+  pendingAnnoCount,
+  saveStatus,
+  charCount,
+  blockCount
+}: {
+  pendingAnnoCount: number
+  saveStatus: "idle" | "saving" | "saved"
+  charCount: number
+  blockCount: number
+}) {
+  return (
+    <div className="flex h-8 shrink-0 items-center justify-between border-t border-border/30 bg-surface/80 px-6">
+      <div className="flex items-center gap-2">
+        {pendingAnnoCount > 0 && (
+          <>
+            <div className="h-1.5 w-1.5 rounded-full bg-warning" />
+            <span className="text-[11px] text-secondary">
+              {pendingAnnoCount} 条批注排队中
+            </span>
+          </>
+        )}
+      </div>
+      <div className="flex items-center gap-3 text-[11px] text-muted">
+        {saveStatus === "saving" && (
+          <span className="flex items-center gap-1 text-muted">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            保存中
+          </span>
+        )}
+        {saveStatus === "saved" && (
+          <span className="flex items-center gap-1 text-success/60">
+            <Check className="h-3 w-3" />
+            已保存
+          </span>
+        )}
+        <span>{charCount.toLocaleString()} 字</span>
+        <span>{blockCount} 个块</span>
+      </div>
+    </div>
+  )
+})
 
 function resolveClientSelectedViewpointId(
   viewpoints: Viewpoint[],
@@ -1040,4 +1223,45 @@ function getCancelIdleCallback() {
     return null
   }
   return window.cancelIdleCallback.bind(window)
+}
+
+function reportViewpointLoadTiming(input: {
+  viewpointId: string
+  totalDuration: number
+  responseDuration: number
+  parseDuration: number
+  serverTiming: Array<{
+    name: string
+    duration: number
+    description?: string
+  }>
+}) {
+  if (typeof window === "undefined" || process.env.NODE_ENV === "production") {
+    return
+  }
+  const markBase = `lumina:viewpoint:${input.viewpointId}:${Date.now()}`
+  if (typeof performance !== "undefined" && typeof performance.mark === "function") {
+    performance.mark(`${markBase}:start`)
+    performance.mark(`${markBase}:end`)
+    performance.measure(
+      `${markBase}:total`,
+      `${markBase}:start`,
+      `${markBase}:end`
+    )
+  }
+  console.info("[lumina] viewpoint load", {
+    viewpointId: input.viewpointId,
+    totalMs: roundClientTiming(input.totalDuration),
+    responseMs: roundClientTiming(input.responseDuration),
+    parseMs: roundClientTiming(input.parseDuration),
+    server: input.serverTiming.map((metric) => ({
+      name: metric.name,
+      duration: roundClientTiming(metric.duration),
+      description: metric.description
+    }))
+  })
+}
+
+function roundClientTiming(value: number) {
+  return Math.round(value * 100) / 100
 }

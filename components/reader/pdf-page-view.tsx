@@ -7,7 +7,7 @@
  */
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { memo, useEffect, useMemo, useRef, useState } from "react"
 import { normalizePdfDragRect, type PdfHighlightRect } from "@/components/reader/pdf-highlight-utils"
 import type { Highlight } from "@/src/server/store/types"
 
@@ -236,15 +236,7 @@ export function PdfPageView({
           ))
         )}
         {draftRect ? (
-          <div
-            className="absolute rounded border border-primary/70 bg-primary/10"
-            style={{
-              left: draftRect.left - (containerRef.current?.getBoundingClientRect().left ?? 0),
-              top: draftRect.top - (containerRef.current?.getBoundingClientRect().top ?? 0),
-              width: draftRect.width,
-              height: draftRect.height
-            }}
-          />
+          <DraftSelectionRect containerRef={containerRef} draftRect={draftRect} />
         ) : null}
       </div>
       {boxSelectionEnabled ? (
@@ -253,6 +245,29 @@ export function PdfPageView({
     </div>
   )
 }
+
+const DraftSelectionRect = memo(function DraftSelectionRect({
+  containerRef,
+  draftRect
+}: {
+  containerRef: React.RefObject<HTMLDivElement | null>
+  draftRect: { left: number; top: number; width: number; height: number }
+}) {
+  const containerRect = containerRef.current?.getBoundingClientRect()
+  const offsetLeft = containerRect?.left ?? 0
+  const offsetTop = containerRect?.top ?? 0
+  return (
+    <div
+      className="absolute rounded border border-primary/70 bg-primary/10"
+      style={{
+        left: draftRect.left - offsetLeft,
+        top: draftRect.top - offsetTop,
+        width: draftRect.width,
+        height: draftRect.height
+      }}
+    />
+  )
+})
 
 function PdfHighlightRectView({
   rect,

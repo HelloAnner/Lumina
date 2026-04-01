@@ -10,6 +10,7 @@ import { Hono } from "hono"
 import { z } from "zod"
 import type { AppEnv } from "@/src/server/lib/hono"
 import { repository } from "@/src/server/repositories"
+import { invalidateAnnotations } from "@/src/server/repositories/cached"
 import { processAnnotation } from "@/src/server/services/annotation/processor"
 
 const app = new Hono<AppEnv>()
@@ -34,7 +35,9 @@ app.put("/config/ai", async (c) => {
     })
     .parse(await c.req.json())
 
-  const item = repository.saveAnnotationConfig(c.get("userId"), payload)
+  const userId = c.get("userId")
+  const item = repository.saveAnnotationConfig(userId, payload)
+  void invalidateAnnotations(userId)
   return c.json({ item })
 })
 
@@ -77,6 +80,7 @@ app.post("/:viewpointId", async (c) => {
     void processAnnotation(userId, annotation.id)
   }
 
+  void invalidateAnnotations(userId)
   return c.json({ item: annotation })
 })
 

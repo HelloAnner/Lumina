@@ -8,6 +8,7 @@
  */
 "use client"
 
+import { memo } from "react"
 import { cn } from "@/src/lib/utils"
 import type { Annotation, NoteBlock } from "@/src/server/store/types"
 import { AnnotationSidebar, type SelectionContext } from "./annotation-sidebar"
@@ -36,7 +37,7 @@ const tabs: { key: RightSidebarTab; label: string }[] = [
 /**
  * 右侧面板：批注和对话的 Tab 容器
  */
-export function RightSidebar({
+export const RightSidebar = memo(function RightSidebar({
   viewpointId,
   blocks,
   selectionContext,
@@ -94,4 +95,4 @@ export function RightSidebar({
       </div>
     </div>
   )
-}
+})

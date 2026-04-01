@@ -5,6 +5,7 @@ import { z } from "zod"
 import { decryptValue } from "@/src/server/lib/crypto"
 import type { AppEnv } from "@/src/server/lib/hono"
 import { repository } from "@/src/server/repositories"
+import { invalidateBooks } from "@/src/server/repositories/cached"
 import {
   deriveBookMetadata,
   type HardParsedBookMetadata,
@@ -155,9 +156,10 @@ app.post("/upload", async (c) => {
     }
   }
 
+  const userId = c.get("userId")
   const book = await createBookInStore({
     id: bookId,
-    userId: c.get("userId"),
+    userId,
     title: metadata.title,
     author: metadata.author,
     format,
@@ -174,6 +176,7 @@ app.post("/upload", async (c) => {
     objectBucket: uploaded.bucket,
     objectKey: uploaded.objectName
   })
+  void invalidateBooks(userId)
   return c.json({
     item: book,
     parseMode: metadata.parseMode,
@@ -308,9 +311,11 @@ app.post("/:id/pdf-page-images/rebuild", async (c) => {
     bookId: book.id,
     sections: book.content
   })
-  const updated = await updateBookInStore(c.get("userId"), book.id, {
+  const userId = c.get("userId")
+  const updated = await updateBookInStore(userId, book.id, {
     content: nextContent
   })
+  void invalidateBooks(userId)
   return c.json({
     item: updated ?? {
       ...book,
@@ -352,12 +357,14 @@ app.put("/:id", async (c) => {
   }
 
   const book = await updateBookInStore(userId, bookId, updates)
+  void invalidateBooks(userId)
   const coverUrl = await getStoredObjectUrl(book?.coverPath)
   return c.json({ item: book, coverUrl })
 })
 
 app.delete("/:id", async (c) => {
-  const book = await getBookFromStore(c.get("userId"), c.req.param("id"))
+  const userId = c.get("userId")
+  const book = await getBookFromStore(userId, c.req.param("id"))
   const fileObject = parseMinioPath(book?.filePath)
   if (fileObject) {
     await removeBookObject(fileObject.bucket, fileObject.objectName)
@@ -366,7 +373,8 @@ app.delete("/:id", async (c) => {
   if (coverObject) {
     await removeBookObject(coverObject.bucket, coverObject.objectName)
   }
-  await deleteBookFromStore(c.get("userId"), c.req.param("id"))
+  await deleteBookFromStore(userId, c.req.param("id"))
+  void invalidateBooks(userId)
   return c.json({ ok: true })
 })
 
@@ -395,11 +403,13 @@ app.put("/:id/progress", async (c) => {
       targetLanguage: z.string().optional()
     })
     .parse(await c.req.json())
-  const book = await updateBookInStore(c.get("userId"), c.req.param("id"), {
+  const userId = c.get("userId")
+  const book = await updateBookInStore(userId, c.req.param("id"), {
     readProgress: payload.progress,
     lastReadAt: new Date().toISOString()
   })
-  const readerProgress = await saveReaderProgress(c.get("userId"), c.req.param("id"), {
+  void invalidateBooks(userId)
+  const readerProgress = await saveReaderProgress(userId, c.req.param("id"), {
     id: payload.id,
     progress: payload.progress,
     currentPageId: payload.currentPageId,

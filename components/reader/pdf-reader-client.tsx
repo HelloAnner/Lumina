@@ -8,7 +8,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   AlertTriangle,
   ArrowLeft,
@@ -31,6 +31,12 @@ import { ReaderHighlightPanel } from "@/components/reader/reader-highlight-panel
 import { ReaderNoteComposer } from "@/components/reader/reader-note-composer"
 import { PdfPageView } from "@/components/reader/pdf-page-view"
 import { PdfHighlightPanel } from "@/components/reader/pdf-highlight-panel"
+import {
+  readGuestReaderNotesCollapsed,
+  readGuestReaderTocCollapsed,
+  saveGuestReaderNotesCollapsed,
+  saveGuestReaderTocCollapsed
+} from "@/components/reader/reader-width-storage"
 import { usePdfReaderController } from "@/components/reader/use-pdf-reader-controller"
 import { useReaderController } from "@/components/reader/use-reader-controller"
 import type { ReaderClientProps } from "@/components/reader/reader-types"
@@ -61,8 +67,12 @@ export function PdfReaderClient(props: ReaderClientProps) {
   const [parsedBook, setParsedBook] = useState(props.book)
   const [isBackfillingImages, setIsBackfillingImages] = useState(false)
   const [pageImageAttempted, setPageImageAttempted] = useState(false)
-  const [tocCollapsed, setTocCollapsed] = useState(false)
-  const [highlightsCollapsed, setHighlightsCollapsed] = useState(false)
+  const [tocCollapsed, setTocCollapsed] = useState(props.initialLayout.outlineCollapsed)
+  const [highlightsCollapsed, setHighlightsCollapsed] = useState(
+    props.initialLayout.notesCollapsed
+  )
+  const layoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const layoutReadyRef = useRef(false)
   const parsedReader = useReaderController({
     ...props,
     book: parsedBook
@@ -80,6 +90,46 @@ export function PdfReaderClient(props: ReaderClientProps) {
     setParsedBook(props.book)
     setPageImageAttempted(false)
   }, [props.book])
+
+  useEffect(() => {
+    if (!readOnly) {
+      return
+    }
+    setTocCollapsed(readGuestReaderTocCollapsed())
+    setHighlightsCollapsed(readGuestReaderNotesCollapsed())
+  }, [readOnly])
+
+  useEffect(() => {
+    if (!layoutReadyRef.current) {
+      layoutReadyRef.current = true
+      return
+    }
+    if (layoutTimerRef.current) {
+      clearTimeout(layoutTimerRef.current)
+    }
+    layoutTimerRef.current = setTimeout(() => {
+      if (readOnly) {
+        saveGuestReaderTocCollapsed(tocCollapsed)
+        saveGuestReaderNotesCollapsed(highlightsCollapsed)
+        return
+      }
+      void fetch("/api/preferences/reader-layout", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          resourceType: "book",
+          resourceId: props.book.id,
+          outlineCollapsed: tocCollapsed,
+          notesCollapsed: highlightsCollapsed
+        })
+      })
+    }, 180)
+    return () => {
+      if (layoutTimerRef.current) {
+        clearTimeout(layoutTimerRef.current)
+      }
+    }
+  }, [highlightsCollapsed, props.book.id, readOnly, tocCollapsed])
 
   useEffect(() => {
     if (readOnly || !needsPageImages || isBackfillingImages || pageImageAttempted) {

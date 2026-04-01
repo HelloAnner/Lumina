@@ -4,7 +4,10 @@ import { ReaderClient } from "@/components/reader/reader-client"
 import { repository } from "@/src/server/repositories"
 import { getArticleReaderProgress } from "@/src/server/services/articles/progress"
 import { getReaderProgress } from "@/src/server/services/books/progress"
-import { getUiPreferences } from "@/src/server/services/preferences/store"
+import {
+  DEFAULT_READER_LAYOUT_STATE,
+  getUiPreferences
+} from "@/src/server/services/preferences/store"
 import { resolveSharedResource } from "@/src/server/services/share/resource"
 import { buildNormalizedTranslatedArticleSections } from "@/src/server/services/translation/article-content"
 
@@ -36,6 +39,7 @@ export default async function SharedReaderPage({
         highlights={[]}
         initialProgress={await getReaderProgress(resolved.owner.id, resolved.book.id)}
         initialWidths={initialWidths}
+        initialLayout={DEFAULT_READER_LAYOUT_STATE}
         settings={sharedSettings}
         initialTranslations={repository.listBookTranslations(resolved.owner.id, resolved.book.id)}
         initialTocTranslation={
@@ -52,6 +56,7 @@ export default async function SharedReaderPage({
       highlights={[]}
       initialProgress={await getArticleReaderProgress(resolved.owner.id, resolved.article.id)}
       initialWidths={initialWidths}
+      initialLayout={DEFAULT_READER_LAYOUT_STATE}
       settings={sharedSettings}
       initialTranslation={
         (() => {

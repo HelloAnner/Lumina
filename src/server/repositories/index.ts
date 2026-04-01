@@ -1,5 +1,10 @@
 import { randomUUID, createHash } from "node:crypto"
-import { readDatabase, mutateDatabase } from "@/src/server/store/db"
+import {
+  deleteViewpointBlocks,
+  mutateDatabase,
+  readDatabase,
+  readViewpointBlocks
+} from "@/src/server/store/db"
 import {
   DEFAULT_APP_KEYBOARD_SHORTCUTS,
   getEffectiveKeyboardShortcuts
@@ -425,10 +430,28 @@ export const repository = {
     }
     return viewpoints.map(({ articleBlocks: _articleBlocks, ...viewpoint }) => viewpoint)
   },
-  getViewpoint(userId: string, viewpointId: string) {
-    return readDatabase().viewpoints.find(
+  getViewpoint(userId: string, viewpointId: string, options: {
+    includeBlocks?: boolean
+  } = {}) {
+    const database = readDatabase({
+      hydrateViewpointBlocks: !!options.includeBlocks
+    })
+    const viewpoint = database.viewpoints.find(
       (item) => item.userId === userId && item.id === viewpointId
     )
+    if (!viewpoint) {
+      return undefined
+    }
+    if (!options.includeBlocks) {
+      return viewpoint
+    }
+    return {
+      ...viewpoint,
+      articleBlocks: readViewpointBlocks(userId, viewpointId) ?? []
+    }
+  },
+  getViewpointBlocks(userId: string, viewpointId: string) {
+    return readViewpointBlocks(userId, viewpointId) ?? []
   },
   createViewpoint(input: Omit<Viewpoint, "id" | "createdAt" | "highlightCount">) {
     return mutateDatabase((database) => {
@@ -455,11 +478,18 @@ export const repository = {
     })
   },
   deleteViewpoint(userId: string, viewpointId: string) {
-    return mutateDatabase((database) => {
+    const deleted = mutateDatabase((database) => {
       // 收集即将断开关联的高亮 ID
       const affectedHighlightIds = database.highlightViewpoints
         .filter((item) => item.viewpointId === viewpointId)
         .map((item) => item.highlightId)
+
+      const target = database.viewpoints.find(
+        (item) => item.id === viewpointId && item.userId === userId
+      )
+      if (!target) {
+        return false
+      }
 
       database.viewpoints = database.viewpoints.filter(
         (item) => !(item.id === viewpointId && item.userId === userId)
@@ -481,7 +511,12 @@ export const repository = {
           (item) => !orphanSet.has(item.id)
         )
       }
+      return true
     })
+    if (deleted) {
+      deleteViewpointBlocks(userId, viewpointId)
+    }
+    return deleted
   },
   listRelatedViewpoints(userId: string, viewpointId: string) {
     const database = readDatabase()
@@ -1047,14 +1082,17 @@ export const repository = {
 
   listArticles(
     userId: string,
-    opts?: { topicId?: string; search?: string; filter?: string; sortBy?: string; page?: number; pageSize?: number }
+    opts?: { topicId?: string; sourceId?: string; search?: string; filter?: string; sortBy?: string; page?: number; pageSize?: number }
   ) {
-    const { topicId, search, filter, sortBy = "lastRead", page = 1, pageSize = 20 } = opts ?? {}
+    const { topicId, sourceId, search, filter, sortBy = "lastRead", page = 1, pageSize = 20 } = opts ?? {}
     const filtered = readDatabase().scoutArticles.filter((item) => {
         if (item.userId !== userId) {
           return false
         }
         if (topicId && !item.topics.includes(topicId)) {
+          return false
+        }
+        if (sourceId && item.sourceId !== sourceId) {
           return false
         }
         if (search && !`${item.title} ${item.author ?? ""}`.toLowerCase().includes(search.toLowerCase())) {
@@ -1494,6 +1532,23 @@ export const repository = {
       (item) => item.userId === userId && item.contentHash === contentHash
     )
   },
+  /** 按归一化 URL 检查去重 */
+  findEntryByUrl(userId: string, normalizedUrl: string) {
+    return readDatabase().scoutEntries.find(
+      (item) => item.userId === userId && item.normalizedUrl === normalizedUrl
+    )
+  },
+  /** 清理过期条目 */
+  purgeExpiredEntries(userId: string, retentionDays: number) {
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - retentionDays)
+    const cutoffStr = cutoff.toISOString()
+    return mutateDatabase((database) => {
+      database.scoutEntries = database.scoutEntries.filter(
+        (item) => !(item.userId === userId && item.fetchedAt < cutoffStr)
+      )
+    })
+  },
 
   // ─── Scout: Patch ───
 
@@ -1588,6 +1643,10 @@ export const repository = {
 
   getScoutConfig(userId: string) {
     return readDatabase().scoutConfigs.find((item) => item.userId === userId)
+  },
+  /** 获取所有已启用自动同步的配置（供调度器使用） */
+  listEnabledScoutConfigs() {
+    return readDatabase().scoutConfigs.filter((item) => item.enabled && item.syncIntervalMinutes > 0)
   },
   saveScoutConfig(userId: string, input: Omit<ScoutConfig, "userId">) {
     return mutateDatabase((database) => {

@@ -9,9 +9,11 @@
 "use client"
 
 import { useState, useCallback } from "react"
+import Link from "next/link"
 import {
   AlertCircle,
   CheckCircle2,
+  ExternalLink,
   Loader2,
   Pause,
   Play,
@@ -223,11 +225,22 @@ function SourceCard({
         <p className="mb-2 truncate text-[11px] text-red-400" title={source.lastError}>{source.lastError}</p>
       )}
 
-      <div className="flex items-center gap-4 text-[11px] text-secondary">
-        <span>抓取 {source.totalFetched} 条</span>
-        <span>Patch {source.totalPatches} 个</span>
-        {source.lastFetchedAt && (
-          <span>上次 {new Date(source.lastFetchedAt).toLocaleDateString()}</span>
+      <div className="flex items-center justify-between text-[11px] text-secondary">
+        <div className="flex items-center gap-4">
+          <span>抓取 {source.totalFetched} 条</span>
+          <span>Patch {source.totalPatches} 个</span>
+          {source.lastFetchedAt && (
+            <span>上次 {new Date(source.lastFetchedAt).toLocaleDateString()}</span>
+          )}
+        </div>
+        {source.totalFetched > 0 && (
+          <Link
+            href={`/articles?sourceId=${source.id}`}
+            className="flex items-center gap-1 text-primary/70 hover:text-primary transition-colors"
+          >
+            <ExternalLink className="h-3 w-3" />
+            查看文章
+          </Link>
         )}
       </div>
     </Card>

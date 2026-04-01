@@ -1,8 +1,12 @@
 import { ArticleReaderClient } from "@/components/articles/article-reader-client"
 import { requirePageUser } from "@/src/server/lib/session"
 import { repository } from "@/src/server/repositories"
+import { cachedRepo } from "@/src/server/repositories/cached"
 import { getArticleReaderProgress } from "@/src/server/services/articles/progress"
-import { getUiPreferences } from "@/src/server/services/preferences/store"
+import {
+  getReaderLayoutState,
+  getUiPreferences
+} from "@/src/server/services/preferences/store"
 import { notFound } from "next/navigation"
 
 export default async function ArticleReaderPage({
@@ -17,16 +21,21 @@ export default async function ArticleReaderPage({
     notFound()
   }
 
-  const highlights = repository.listHighlightsByBook(user.id, article.id)
-  const initialWidths = await getUiPreferences(user.id)
-  const settings = repository.getReaderSettings(user.id)
+  const [highlights, progress, widths, layout, settings] = await Promise.all([
+    cachedRepo.listHighlightsByBook(user.id, article.id),
+    getArticleReaderProgress(user.id, article.id),
+    getUiPreferences(user.id),
+    getReaderLayoutState(user.id, "article", article.id),
+    cachedRepo.getReaderSettings(user.id)
+  ])
 
   return (
     <ArticleReaderClient
       article={article}
       highlights={highlights}
-      initialProgress={await getArticleReaderProgress(user.id, article.id)}
-      initialWidths={initialWidths}
+      initialProgress={progress}
+      initialWidths={widths}
+      initialLayout={layout}
       settings={settings}
     />
   )

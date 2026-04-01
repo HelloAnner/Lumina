@@ -36,7 +36,10 @@ import {
   saveGuestArticleOutlineWidth
 } from "@/components/reader/reader-width-storage"
 import { useArticleTranslation } from "@/components/articles/use-article-translation"
-import type { UiPreferences } from "@/src/server/services/preferences/store"
+import type {
+  ReaderLayoutState as PersistedReaderLayoutState,
+  UiPreferences
+} from "@/src/server/services/preferences/store"
 import { buildHighlightNoteState } from "@/components/reader/highlight-note-state"
 
 const COLORS = {
@@ -51,6 +54,7 @@ export interface ArticleReaderProps {
   highlights: Highlight[]
   initialProgress: ArticleProgressRecord
   initialWidths: UiPreferences
+  initialLayout: PersistedReaderLayoutState
   settings?: ReaderSettings
   initialTranslation?: ArticleTranslation | null
   sharedView?: SharedReaderView

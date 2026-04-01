@@ -10,6 +10,7 @@ import { Hono } from "hono"
 import { z } from "zod"
 import type { AppEnv } from "@/src/server/lib/hono"
 import { repository } from "@/src/server/repositories"
+import { invalidateScout } from "@/src/server/repositories/cached"
 import { BUILTIN_CHANNELS } from "@/src/server/services/scout/builtin-channels"
 import { fetchRss } from "@/src/server/services/scout/rss-fetcher"
 import { randomUUID } from "node:crypto"
@@ -53,10 +54,12 @@ app.post("/channels", async (c) => {
     credentialType: z.string().optional()
   }).parse(await c.req.json())
 
-  const item = repository.createChannel(c.get("userId"), {
+  const userId = c.get("userId")
+  const item = repository.createChannel(userId, {
     ...payload,
     origin: "user"
   })
+  void invalidateScout(userId)
   return c.json({ item }, 201)
 })
 
@@ -70,16 +73,20 @@ app.put("/channels/:id", async (c) => {
     defaultFetchCron: z.string().optional()
   }).parse(await c.req.json())
 
-  const item = repository.updateChannel(c.get("userId"), c.req.param("id"), payload)
+  const userId = c.get("userId")
+  const item = repository.updateChannel(userId, c.req.param("id"), payload)
   if (!item) {
     return c.json({ error: "Channel not found or not editable" }, 404)
   }
+  void invalidateScout(userId)
   return c.json({ item })
 })
 
 /** 删除自定义渠道 */
 app.delete("/channels/:id", (c) => {
-  repository.deleteChannel(c.get("userId"), c.req.param("id"))
+  const userId = c.get("userId")
+  repository.deleteChannel(userId, c.req.param("id"))
+  void invalidateScout(userId)
   return c.json({ ok: true })
 })
 
@@ -100,7 +107,9 @@ app.post("/credentials", async (c) => {
     credentials: z.record(z.string())
   }).parse(await c.req.json())
 
-  const item = repository.createCredential(c.get("userId"), payload)
+  const userId = c.get("userId")
+  const item = repository.createCredential(userId, payload)
+  void invalidateScout(userId)
   return c.json({ item }, 201)
 })
 
@@ -110,27 +119,33 @@ app.put("/credentials/:id", async (c) => {
     credentials: z.record(z.string()).optional()
   }).parse(await c.req.json())
 
-  const item = repository.updateCredential(c.get("userId"), c.req.param("id"), payload)
+  const userId = c.get("userId")
+  const item = repository.updateCredential(userId, c.req.param("id"), payload)
   if (!item) {
     return c.json({ error: "Credential not found" }, 404)
   }
+  void invalidateScout(userId)
   return c.json({ item })
 })
 
 app.delete("/credentials/:id", (c) => {
-  repository.deleteCredential(c.get("userId"), c.req.param("id"))
+  const userId = c.get("userId")
+  repository.deleteCredential(userId, c.req.param("id"))
+  void invalidateScout(userId)
   return c.json({ ok: true })
 })
 
 /** 验证凭证（标记为已验证） */
 app.post("/credentials/:id/verify", (c) => {
-  const item = repository.updateCredential(c.get("userId"), c.req.param("id"), {
+  const userId = c.get("userId")
+  const item = repository.updateCredential(userId, c.req.param("id"), {
     verified: true,
     lastVerifiedAt: new Date().toISOString()
   })
   if (!item) {
     return c.json({ error: "Credential not found" }, 404)
   }
+  void invalidateScout(userId)
   return c.json({ item })
 })
 
@@ -154,7 +169,9 @@ app.post("/sources", async (c) => {
     language: z.string().optional()
   }).parse(await c.req.json())
 
-  const item = repository.createSource(c.get("userId"), payload)
+  const userId = c.get("userId")
+  const item = repository.createSource(userId, payload)
+  void invalidateScout(userId)
   return c.json({ item }, 201)
 })
 
@@ -167,15 +184,19 @@ app.put("/sources/:id", async (c) => {
     language: z.string().optional()
   }).parse(await c.req.json())
 
-  const item = repository.updateSource(c.get("userId"), c.req.param("id"), payload)
+  const userId = c.get("userId")
+  const item = repository.updateSource(userId, c.req.param("id"), payload)
   if (!item) {
     return c.json({ error: "Source not found" }, 404)
   }
+  void invalidateScout(userId)
   return c.json({ item })
 })
 
 app.delete("/sources/:id", (c) => {
-  repository.deleteSource(c.get("userId"), c.req.param("id"))
+  const userId = c.get("userId")
+  repository.deleteSource(userId, c.req.param("id"))
+  void invalidateScout(userId)
   return c.json({ ok: true })
 })
 
@@ -224,7 +245,9 @@ app.post("/tasks", async (c) => {
     maxPatchesPerRun: z.number().int().min(1).default(20)
   }).parse(await c.req.json())
 
-  const item = repository.createTask(c.get("userId"), payload)
+  const userId = c.get("userId")
+  const item = repository.createTask(userId, payload)
+  void invalidateScout(userId)
   return c.json({ item }, 201)
 })
 
@@ -239,10 +262,12 @@ app.put("/tasks/:id", async (c) => {
     maxPatchesPerRun: z.number().optional()
   }).parse(await c.req.json())
 
-  const item = repository.updateTask(c.get("userId"), c.req.param("id"), payload)
+  const userId = c.get("userId")
+  const item = repository.updateTask(userId, c.req.param("id"), payload)
   if (!item) {
     return c.json({ error: "Task not found" }, 404)
   }
+  void invalidateScout(userId)
   return c.json({ item })
 })
 
@@ -256,6 +281,7 @@ app.post("/tasks/:id/toggle", (c) => {
   const item = repository.updateTask(userId, task.id, {
     status: task.status === "active" ? "paused" : "active"
   })
+  void invalidateScout(userId)
   return c.json({ item })
 })
 
@@ -286,11 +312,14 @@ app.post("/tasks/:id/run", async (c) => {
     m.runPipeline(userId, task, job.id).catch(() => {})
   )
 
+  void invalidateScout(userId)
   return c.json({ item: job })
 })
 
 app.delete("/tasks/:id", (c) => {
-  repository.deleteTask(c.get("userId"), c.req.param("id"))
+  const userId = c.get("userId")
+  repository.deleteTask(userId, c.req.param("id"))
+  void invalidateScout(userId)
   return c.json({ ok: true })
 })
 
@@ -311,7 +340,9 @@ app.get("/entries/:id", (c) => {
 })
 
 app.delete("/entries/:id", (c) => {
-  repository.deleteEntry(c.get("userId"), c.req.param("id"))
+  const userId = c.get("userId")
+  repository.deleteEntry(userId, c.req.param("id"))
+  void invalidateScout(userId)
   return c.json({ ok: true })
 })
 
@@ -384,6 +415,7 @@ app.post("/patches/:id/approve", async (c) => {
     status: "merged",
     mergedAt: new Date().toISOString()
   })
+  void invalidateScout(userId)
 
   return c.json({ ok: true })
 })
@@ -394,17 +426,19 @@ app.post("/patches/:id/reject", async (c) => {
     reviewNote: z.string().optional()
   }).parse(await c.req.json())
 
-  const item = repository.updatePatch(c.get("userId"), c.req.param("id"), {
+  const userId = c.get("userId")
+  const item = repository.updatePatch(userId, c.req.param("id"), {
     status: "rejected",
     reviewNote: payload.reviewNote
   })
   if (!item) {
     return c.json({ error: "Patch not found" }, 404)
   }
+  void invalidateScout(userId)
   return c.json({ item })
 })
 
-/** 追问展开 Patch */
+/** 追问展开 Patch — 调用 AI 生成回复 */
 app.post("/patches/:id/expand", async (c) => {
   const payload = z.object({
     message: z.string().min(1)
@@ -424,12 +458,35 @@ app.post("/patches/:id/expand", async (c) => {
     createdAt: new Date().toISOString()
   })
 
-  const item = repository.updatePatch(userId, patch.id, {
+  repository.updatePatch(userId, patch.id, {
     status: "expanding",
     thread
   })
+  void invalidateScout(userId)
 
-  return c.json({ item })
+  // 异步调用 AI 生成回复
+  try {
+    const { expandPatch } = await import("@/src/server/services/scout/analyzer")
+    const reply = await expandPatch(userId, patch.id, payload.message)
+
+    thread.push({
+      id: randomUUID(),
+      role: "assistant",
+      content: reply,
+      createdAt: new Date().toISOString()
+    })
+
+    const item = repository.updatePatch(userId, patch.id, {
+      status: "pending",
+      thread
+    })
+    void invalidateScout(userId)
+    return c.json({ item })
+  } catch {
+    // AI 失败时仍保留用户消息
+    const item = repository.getPatch(userId, patch.id)
+    return c.json({ item })
+  }
 })
 
 /** 修改 Patch 目标观点 */
@@ -439,10 +496,12 @@ app.put("/patches/:id/target", async (c) => {
     targetViewpointTitle: z.string()
   }).parse(await c.req.json())
 
-  const item = repository.updatePatch(c.get("userId"), c.req.param("id"), payload)
+  const userId = c.get("userId")
+  const item = repository.updatePatch(userId, c.req.param("id"), payload)
   if (!item) {
     return c.json({ error: "Patch not found" }, 404)
   }
+  void invalidateScout(userId)
   return c.json({ item })
 })
 
@@ -469,6 +528,7 @@ app.get("/config", (c) => {
   return c.json({
     item: item ?? {
       enabled: false,
+      syncIntervalMinutes: 60,
       defaultRelevanceThreshold: 0.6,
       dailyPatchLimit: 50,
       entryRetentionDays: 30
@@ -479,13 +539,22 @@ app.get("/config", (c) => {
 app.put("/config", async (c) => {
   const payload = z.object({
     enabled: z.boolean(),
+    syncIntervalMinutes: z.number().int().min(0).max(1440),
     defaultRelevanceThreshold: z.number().min(0).max(1),
     dailyPatchLimit: z.number().int().min(1),
     entryRetentionDays: z.number().int().min(1),
     rsshubBaseUrl: z.string().optional()
   }).parse(await c.req.json())
 
-  const item = repository.saveScoutConfig(c.get("userId"), payload)
+  const userId = c.get("userId")
+  const item = repository.saveScoutConfig(userId, payload)
+  void invalidateScout(userId)
+
+  // 通知调度器配置变更
+  void import("@/src/server/services/scout/scheduler").then((m) =>
+    m.scoutScheduler.reconfigure()
+  )
+
   return c.json({ item })
 })
 

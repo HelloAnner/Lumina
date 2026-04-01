@@ -1,6 +1,6 @@
 /**
  * 审批台三栏布局
- * 左：任务筛选 | 中：Patch 列表 | 右：Patch 详情
+ * 左：任务筛选 | 中：Patch 列表 | 右：Patch 详情 + 追问
  *
  * @author Anner
  * @since 0.1.0
@@ -15,10 +15,13 @@ import {
   Clock,
   ExternalLink,
   Filter,
+  Loader2,
   MessageSquare,
+  Send,
   X
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Toast } from "@/components/ui/toast"
 import { cn } from "@/src/lib/utils"
 import type { ScoutPatch, ScoutTask } from "@/src/server/store/types"
@@ -35,16 +38,14 @@ export function ReviewPanel({ tasks, patches, onPatchesChange }: Props) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("pending")
   const [selectedPatchId, setSelectedPatchId] = useState<string | null>(null)
+  const [expandInput, setExpandInput] = useState("")
+  const [expanding, setExpanding] = useState(false)
   const [toast, setToast] = useState<{ title: string; tone: "success" | "error" } | null>(null)
 
   const filtered = useMemo(() => {
     return patches.filter((p) => {
-      if (selectedTaskId && p.taskId !== selectedTaskId) {
-        return false
-      }
-      if (statusFilter !== "all" && p.status !== statusFilter) {
-        return false
-      }
+      if (selectedTaskId && p.taskId !== selectedTaskId) return false
+      if (statusFilter !== "all" && p.status !== statusFilter) return false
       return true
     })
   }, [patches, selectedTaskId, statusFilter])
@@ -85,6 +86,27 @@ export function ReviewPanel({ tasks, patches, onPatchesChange }: Props) {
     }
   }, [patches, onPatchesChange])
 
+  const handleExpand = useCallback(async (patchId: string, message: string) => {
+    if (!message.trim()) return
+    setExpanding(true)
+    try {
+      const res = await fetch(`/api/scout/patches/${patchId}/expand`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: message.trim() })
+      })
+      if (res.ok) {
+        const { item } = await res.json()
+        onPatchesChange(patches.map((p) => (p.id === patchId ? item : p)))
+        setExpandInput("")
+      }
+    } catch {
+      setToast({ title: "追问失败", tone: "error" })
+    } finally {
+      setExpanding(false)
+    }
+  }, [patches, onPatchesChange])
+
   return (
     <div className="flex h-full">
       {/* 左栏：任务筛选 */}
@@ -120,7 +142,6 @@ export function ReviewPanel({ tasks, patches, onPatchesChange }: Props) {
           )
         })}
 
-        {/* 状态筛选 */}
         <div className="mt-4 mb-2 text-[11px] font-medium text-muted uppercase tracking-wide">
           状态
         </div>
@@ -144,6 +165,9 @@ export function ReviewPanel({ tasks, patches, onPatchesChange }: Props) {
           <div className="flex flex-col items-center justify-center py-20 text-muted">
             <Clock className="mb-2 h-6 w-6 opacity-40" />
             <p className="text-[13px]">暂无 Patch</p>
+            <p className="mt-1 text-[11px] text-muted/70">
+              任务执行后会自动生成匹配建议
+            </p>
           </div>
         ) : (
           <div className="flex flex-col">
@@ -217,11 +241,29 @@ export function ReviewPanel({ tasks, patches, onPatchesChange }: Props) {
               <h4 className="mb-2 text-[12px] font-medium text-muted">
                 建议添加 ({selectedPatch.suggestedBlocks.length} 个块)
               </h4>
-              <div className="rounded-lg border border-border/40 bg-overlay/20 p-3">
+              <div className="rounded-lg border border-border/40 bg-overlay/20 p-3 space-y-2">
                 {selectedPatch.suggestedBlocks.map((block, i) => (
-                  <div key={block.id || i} className="mb-2 last:mb-0">
-                    {"text" in block && (
-                      <p className="text-[13px] text-foreground/80">{(block as any).text}</p>
+                  <div key={block.id || i}>
+                    {block.type === "heading" && (
+                      <p className={cn(
+                        "font-medium text-foreground",
+                        (block as any).level === 1 ? "text-[16px]" : (block as any).level === 2 ? "text-[14px]" : "text-[13px]"
+                      )}>
+                        {(block as any).text}
+                      </p>
+                    )}
+                    {block.type === "paragraph" && (
+                      <p className="text-[13px] text-foreground/80 leading-relaxed">{(block as any).text}</p>
+                    )}
+                    {block.type === "quote" && (
+                      <blockquote className="border-l-2 border-primary/30 pl-3 text-[13px] text-foreground/70 italic">
+                        {(block as any).text}
+                      </blockquote>
+                    )}
+                    {block.type === "insight" && (
+                      <p className="rounded bg-primary/5 px-3 py-2 text-[13px] text-foreground/80">
+                        {(block as any).text}
+                      </p>
                     )}
                   </div>
                 ))}
@@ -258,33 +300,75 @@ export function ReviewPanel({ tasks, patches, onPatchesChange }: Props) {
               </div>
             )}
 
-            {/* 追问线程 */}
-            {selectedPatch.thread && selectedPatch.thread.length > 0 && (
-              <div className="mt-6 border-t border-border pt-4">
-                <h4 className="mb-3 flex items-center gap-1 text-[12px] font-medium text-muted">
-                  <MessageSquare className="h-3 w-3" />
-                  追问记录
-                </h4>
-                {selectedPatch.thread.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={cn(
-                      "mb-2 rounded-lg p-2.5 text-[13px]",
-                      msg.role === "user"
-                        ? "bg-primary/10 text-foreground ml-8"
-                        : "bg-overlay/40 text-foreground/80 mr-8"
-                    )}
+            {/* 追问对话线程 */}
+            <div className="mt-6 border-t border-border pt-4">
+              <h4 className="mb-3 flex items-center gap-1 text-[12px] font-medium text-muted">
+                <MessageSquare className="h-3 w-3" />
+                追问与展开
+              </h4>
+
+              {/* 历史消息 */}
+              {selectedPatch.thread && selectedPatch.thread.length > 0 && (
+                <div className="mb-3 space-y-2">
+                  {selectedPatch.thread.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={cn(
+                        "rounded-lg p-2.5 text-[13px]",
+                        msg.role === "user"
+                          ? "bg-primary/10 text-foreground ml-8"
+                          : "bg-overlay/40 text-foreground/80 mr-8"
+                      )}
+                    >
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                      <p className="mt-1 text-[10px] text-muted">
+                        {new Date(msg.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* 追问输入框 */}
+              {(selectedPatch.status === "pending" || selectedPatch.status === "expanding") && (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={expandInput}
+                    onChange={(e) => setExpandInput(e.target.value)}
+                    placeholder="输入追问，进一步了解此条目..."
+                    className="h-8 flex-1 text-[13px]"
+                    disabled={expanding}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault()
+                        handleExpand(selectedPatch.id, expandInput)
+                      }
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handleExpand(selectedPatch.id, expandInput)}
+                    disabled={expanding || !expandInput.trim()}
+                    className="h-8 w-8 p-0"
                   >
-                    {msg.content}
-                  </div>
-                ))}
-              </div>
-            )}
+                    {expanding ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Send className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <div className="flex h-full flex-col items-center justify-center text-muted">
             <Clock className="mb-2 h-8 w-8 opacity-30" />
             <p className="text-[14px]">选择一个 Patch 查看详情</p>
+            <p className="mt-1 text-[12px] text-muted/70">
+              Patch 由任务执行后自动匹配生成
+            </p>
           </div>
         )}
       </div>

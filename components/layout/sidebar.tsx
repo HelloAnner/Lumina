@@ -9,56 +9,43 @@
  */
 "use client"
 
+import { useCallback, useEffect } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { BookOpen, FileText, Library, Network, Radar, Rss, Send, Settings } from "lucide-react"
+import { usePathname, useRouter } from "next/navigation"
+import { BookOpen } from "lucide-react"
 import { cn } from "@/src/lib/utils"
-import type { LucideIcon } from "lucide-react"
-
-interface NavItem {
-  href: string
-  label: string
-  icon: LucideIcon
-}
-
-interface NavGroup {
-  label?: string
-  items: NavItem[]
-}
-
-const navGroups: NavGroup[] = [
-  {
-    label: "阅读",
-    items: [
-      { href: "/library", label: "书库", icon: Library },
-      { href: "/articles", label: "文章", icon: FileText }
-    ]
-  },
-  {
-    label: "知识",
-    items: [
-      { href: "/knowledge", label: "观点库", icon: BookOpen },
-      { href: "/graph", label: "图谱", icon: Network }
-    ]
-  },
-  {
-    label: "搜寻",
-    items: [
-      { href: "/scout", label: "搜寻", icon: Radar },
-      { href: "/sources", label: "信息源", icon: Rss }
-    ]
-  },
-  {
-    items: [
-      { href: "/publish", label: "发布", icon: Send }
-    ]
-  }
-]
-
-const settingsItem: NavItem = { href: "/settings", label: "设置", icon: Settings }
+import {
+  buildSidebarPrefetchRoutes,
+  navGroups,
+  settingsItem,
+  type NavItem
+} from "./sidebar-nav"
 
 export function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+
+  const prefetchRoute = useCallback((href: string) => {
+    router.prefetch(href)
+  }, [router])
+
+  useEffect(() => {
+    const targets = buildSidebarPrefetchRoutes(pathname)
+    if (targets.length === 0) {
+      return
+    }
+    const prefetchAll = () => {
+      for (const href of targets) {
+        router.prefetch(href)
+      }
+    }
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      const idleId = window.requestIdleCallback(prefetchAll, { timeout: 1200 })
+      return () => window.cancelIdleCallback(idleId)
+    }
+    const timer = globalThis.setTimeout(prefetchAll, 160)
+    return () => globalThis.clearTimeout(timer)
+  }, [pathname, router])
 
   return (
     <aside className="flex h-screen w-[220px] flex-col border-r border-border bg-sidebar">
@@ -85,7 +72,12 @@ export function Sidebar() {
             )}
             <div className="flex flex-col gap-0.5">
               {group.items.map((item) => (
-                <NavLink key={item.href} item={item} pathname={pathname} />
+                <NavLink
+                  key={item.href}
+                  item={item}
+                  pathname={pathname}
+                  onPrefetch={prefetchRoute}
+                />
               ))}
             </div>
           </div>
@@ -95,14 +87,22 @@ export function Sidebar() {
         <div className="flex-1" />
         <div className="h-px bg-border/50" />
         <div className="mt-2">
-          <NavLink item={settingsItem} pathname={pathname} />
+          <NavLink item={settingsItem} pathname={pathname} onPrefetch={prefetchRoute} />
         </div>
       </nav>
     </aside>
   )
 }
 
-function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+function NavLink({
+  item,
+  pathname,
+  onPrefetch
+}: {
+  item: NavItem
+  pathname: string
+  onPrefetch: (href: string) => void
+}) {
   const Icon = item.icon
   const active = pathname.startsWith(item.href)
 
@@ -115,6 +115,8 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
           ? "bg-selected text-foreground"
           : "text-muted hover:bg-overlay hover:text-foreground"
       )}
+      onMouseEnter={() => onPrefetch(item.href)}
+      onFocus={() => onPrefetch(item.href)}
     >
       <Icon className={cn("h-4 w-4 shrink-0", active ? "text-primary" : "")} />
       <span>{item.label}</span>

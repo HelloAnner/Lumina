@@ -8,6 +8,7 @@ import { maskSecret } from "@/src/lib/utils"
 import { decryptValue } from "@/src/server/lib/crypto"
 import type { AppEnv } from "@/src/server/lib/hono"
 import { repository } from "@/src/server/repositories"
+import { invalidateSettings } from "@/src/server/repositories/cached"
 import type { ModelCategory } from "@/src/server/store/types"
 
 const modelSchema = z.object({
@@ -159,20 +160,26 @@ app.get("/models", (c) => {
 })
 
 app.post("/models", async (c) => {
+  const userId = c.get("userId")
   const payload = modelSchema.parse(await c.req.json())
-  const item = repository.saveModelConfig(c.get("userId"), payload)
+  const item = repository.saveModelConfig(userId, payload)
+  void invalidateSettings(userId)
   return c.json({ item })
 })
 
 app.put("/models/:id", async (c) => {
+  const userId = c.get("userId")
   const body = await c.req.json()
   const payload = modelSchema.parse({ ...body, id: c.req.param("id") })
-  const item = repository.saveModelConfig(c.get("userId"), payload)
+  const item = repository.saveModelConfig(userId, payload)
+  void invalidateSettings(userId)
   return c.json({ item })
 })
 
 app.delete("/models/:id", (c) => {
-  repository.deleteModelConfig(c.get("userId"), c.req.param("id"))
+  const userId = c.get("userId")
+  repository.deleteModelConfig(userId, c.req.param("id"))
+  void invalidateSettings(userId)
   return c.json({ ok: true })
 })
 
@@ -216,8 +223,10 @@ app.get("/model-bindings", (c) => {
 })
 
 app.put("/model-bindings", async (c) => {
+  const userId = c.get("userId")
   const payload = bindingSchema.parse(await c.req.json())
-  const item = repository.saveModelBinding(c.get("userId"), payload)
+  const item = repository.saveModelBinding(userId, payload)
+  void invalidateSettings(userId)
   return c.json({ item })
 })
 
@@ -252,7 +261,9 @@ app.put("/schedule", async (c) => {
       aggregateCron: z.string().optional()
     })
     .parse(await c.req.json())
-  const user = repository.updateUser(c.get("userId"), payload)
+  const userId = c.get("userId")
+  const user = repository.updateUser(userId, payload)
+  void invalidateSettings(userId)
   return c.json({ item: user })
 })
 
@@ -323,7 +334,9 @@ app.put("/reader", async (c) => {
     }
     return c.json({ error: "快捷键配置无效" }, 400)
   }
-  const item = repository.updateReaderSettings(c.get("userId"), payload)
+  const userId = c.get("userId")
+  const item = repository.updateReaderSettings(userId, payload)
+  void invalidateSettings(userId)
   return c.json({ item })
 })
 
@@ -344,7 +357,9 @@ app.put("/archive", async (c) => {
       autoArchiveAfterDays: z.number().int().min(0).max(365).optional()
     })
     .parse(await c.req.json())
-  const user = repository.updateUser(c.get("userId"), payload)
+  const userId = c.get("userId")
+  const user = repository.updateUser(userId, payload)
+  void invalidateSettings(userId)
   return c.json({ item: user })
 })
 

@@ -882,6 +882,8 @@ export interface ScoutJob {
 export interface ScoutConfig {
   userId: string
   enabled: boolean
+  /** 自动同步间隔（分钟），0 表示禁用自动同步 */
+  syncIntervalMinutes: number
   defaultRelevanceThreshold: number
   dailyPatchLimit: number
   entryRetentionDays: number

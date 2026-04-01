@@ -1,6 +1,6 @@
 /**
  * 搜寻主页面
- * 双 Tab 切换：审批台 / 任务管理
+ * 三 Tab 切换：审批台 / 任务管理 / 最新抓取
  *
  * @author Anner
  * @since 0.1.0
@@ -9,31 +9,35 @@
 "use client"
 
 import { useState } from "react"
-import { ClipboardCheck, ListTodo, Radar } from "lucide-react"
+import { ClipboardCheck, FileText, ListTodo, Radar } from "lucide-react"
 import { cn } from "@/src/lib/utils"
 import { ReviewPanel } from "@/components/scout/review-panel"
 import { TaskManager } from "@/components/scout/task-manager"
+import { ScoutArticlesPanel } from "@/components/scout/articles-panel"
 import type {
   ScoutTask,
   ScoutPatch,
   ScoutSource,
+  ScoutArticle,
   Viewpoint
 } from "@/src/server/store/types"
 
-type Tab = "review" | "tasks"
+type Tab = "review" | "tasks" | "articles"
 
 interface Props {
   initialTasks: ScoutTask[]
   initialPatches: ScoutPatch[]
   initialSources: ScoutSource[]
   initialViewpoints: Viewpoint[]
+  initialArticles: ScoutArticle[]
 }
 
 export function ScoutClient({
   initialTasks,
   initialPatches,
   initialSources,
-  initialViewpoints
+  initialViewpoints,
+  initialArticles
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("review")
   const [tasks, setTasks] = useState(initialTasks)
@@ -43,7 +47,6 @@ export function ScoutClient({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* 头部 */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-border px-6">
         <div className="flex items-center gap-2">
           <Radar className="h-4 w-4 text-muted" />
@@ -63,10 +66,16 @@ export function ScoutClient({
             icon={ListTodo}
             label="任务管理"
           />
+          <TabButton
+            active={activeTab === "articles"}
+            onClick={() => setActiveTab("articles")}
+            icon={FileText}
+            label="最新抓取"
+            badge={initialArticles.length}
+          />
         </div>
       </header>
 
-      {/* 内容区 */}
       <div className="flex-1 overflow-hidden">
         {activeTab === "review" ? (
           <ReviewPanel
@@ -74,12 +83,17 @@ export function ScoutClient({
             patches={patches}
             onPatchesChange={setPatches}
           />
-        ) : (
+        ) : activeTab === "tasks" ? (
           <TaskManager
             tasks={tasks}
             sources={initialSources}
             viewpoints={initialViewpoints}
             onTasksChange={setTasks}
+          />
+        ) : (
+          <ScoutArticlesPanel
+            articles={initialArticles}
+            sources={initialSources}
           />
         )}
       </div>

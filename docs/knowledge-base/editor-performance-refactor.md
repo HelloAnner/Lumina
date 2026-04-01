@@ -80,6 +80,7 @@
 ### 4.2 页面容器降温
 
 - `KnowledgeClient` 不再保留旧版块编辑逻辑和遗留定时器
+- 观点切换与导入笔记切换只用原生 history 同步 URL，不再通过同页 App Router 导航触发整页 Server Component 重跑
 - 页面层只保存：
   - 当前 viewpoint 标识
   - 节流后的块快照

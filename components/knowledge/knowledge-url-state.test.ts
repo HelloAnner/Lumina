@@ -9,6 +9,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import {
   DEFAULT_KNOWLEDGE_NOTE_STATE,
+  buildKnowledgeHref,
   buildKnowledgeSearch,
   readKnowledgeSelection
 } from "@/components/knowledge/knowledge-url-state"
@@ -19,6 +20,15 @@ test("buildKnowledgeSearch 会写入 viewpoint 查询参数并清理 importedNot
   assert.equal(
     buildKnowledgeSearch(params, { viewpointId: "vp-1" }),
     "tab=chat&viewpoint=vp-1"
+  )
+})
+
+test("buildKnowledgeHref 会保留原有查询参数并输出完整地址", () => {
+  const params = new URLSearchParams("tab=chat&importedNote=note-1")
+
+  assert.equal(
+    buildKnowledgeHref("/knowledge", params, { viewpointId: "vp-1" }),
+    "/knowledge?tab=chat&viewpoint=vp-1"
   )
 })
 

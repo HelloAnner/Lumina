@@ -7,7 +7,7 @@
  */
 import test from "node:test"
 import assert from "node:assert/strict"
-import { mkdtempSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -352,6 +352,48 @@ test("repository.listViewpoints 在 metadataOnly 模式下不返回 articleBlock
 
     assert.ok(items.length > 0)
     assert.equal(items.some((item) => item.articleBlocks !== undefined), false)
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true })
+  }
+})
+
+test("repository.deleteViewpoint 会持久删除主题并清理独立块文件", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "lumina-viewpoint-delete-test-"))
+  process.env.DATA_DIR = dataDir
+
+  const { repository } = await import("@/src/server/repositories")
+
+  try {
+    const demo = repository.getUserByEmail(
+      process.env.DEFAULT_DEMO_EMAIL ?? "demo@lumina.local"
+    )
+
+    assert.ok(demo, "应存在默认演示账号")
+
+    const created = repository.createViewpoint({
+      userId: demo!.id,
+      title: "待删除主题",
+      isFolder: false,
+      isCandidate: false,
+      sortOrder: 999,
+      articleContent: "",
+      articleBlocks: [
+        { id: "b-1", type: "paragraph", text: "temp", sortOrder: 0 }
+      ],
+      relatedBookIds: []
+    } as any)
+
+    const blocksPath = join(dataDir, "viewpoint-blocks", demo!.id, `${created.id}.json`)
+    assert.equal(existsSync(blocksPath), true)
+
+    repository.deleteViewpoint(demo!.id, created.id)
+
+    assert.equal(repository.getViewpoint(demo!.id, created.id), undefined)
+    assert.equal(
+      repository.listViewpoints(demo!.id, { metadataOnly: true }).some((item) => item.id === created.id),
+      false
+    )
+    assert.equal(existsSync(blocksPath), false)
   } finally {
     rmSync(dataDir, { recursive: true, force: true })
   }

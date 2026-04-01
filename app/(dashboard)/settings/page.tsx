@@ -1,12 +1,25 @@
-import { SettingsClient } from "@/components/settings/settings-client"
+import dynamic from "next/dynamic"
 import { requirePageUser } from "@/src/server/lib/session"
 import { repository } from "@/src/server/repositories"
+import { cachedRepo } from "@/src/server/repositories/cached"
+
+const SettingsClient = dynamic(
+  () => import("@/components/settings/settings-client").then((m) => m.SettingsClient),
+  { ssr: false }
+)
 
 export default async function SettingsPage() {
   const user = await requirePageUser()
 
-  // 获取导入来源及统计
-  const importSources = repository.listImportSources(user.id).map((source) => {
+  const [modelBindings, modelConfigs, readerSettings, importSources] = await Promise.all([
+    cachedRepo.listModelBindings(user.id),
+    cachedRepo.listModelConfigs(user.id),
+    cachedRepo.getReaderSettings(user.id),
+    cachedRepo.listImportSources(user.id)
+  ])
+
+  // 获取导入来源统计
+  const sourcesWithStats = importSources.map((source) => {
     const notes = repository.listImportedNotes(user.id, source.id)
     const imageCount = notes.reduce((sum, n) => sum + n.imageKeys.length, 0)
     const links = notes.flatMap((n) => repository.listNoteViewpointLinks(n.id))
@@ -23,11 +36,11 @@ export default async function SettingsPage() {
 
   return (
     <SettingsClient
-      modelBindings={repository.listModelBindings(user.id)}
-      modelConfigs={repository.listModelConfigs(user.id)}
-      readerSettings={repository.getReaderSettings(user.id)}
+      modelBindings={modelBindings}
+      modelConfigs={modelConfigs}
+      readerSettings={readerSettings}
       shareEndpointConfig={repository.getShareEndpointConfig()}
-      importSources={importSources}
+      importSources={sourcesWithStats}
       user={user}
     />
   )

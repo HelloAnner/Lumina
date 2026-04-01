@@ -1,11 +1,14 @@
 import { notFound } from "next/navigation"
 import { ReaderClient } from "@/components/reader/reader-client"
 import { requirePageUser } from "@/src/server/lib/session"
-import { repository } from "@/src/server/repositories"
+import { cachedRepo } from "@/src/server/repositories/cached"
 import { getReaderProgress } from "@/src/server/services/books/progress"
 import { repairStoredBook } from "@/src/server/services/books/book-repair"
 import { getBookFromStore } from "@/src/server/services/books/store"
-import { getUiPreferences } from "@/src/server/services/preferences/store"
+import {
+  getReaderLayoutState,
+  getUiPreferences
+} from "@/src/server/services/preferences/store"
 
 export default async function ReaderPage({
   params
@@ -18,13 +21,21 @@ export default async function ReaderPage({
   if (!book) {
     notFound()
   }
+  const [highlights, progress, widths, layout, settings] = await Promise.all([
+    cachedRepo.listHighlightsByBook(user.id, book.id),
+    getReaderProgress(user.id, book.id),
+    getUiPreferences(user.id),
+    getReaderLayoutState(user.id, "book", book.id),
+    cachedRepo.getReaderSettings(user.id)
+  ])
   return (
     <ReaderClient
       book={book}
-      highlights={repository.listHighlightsByBook(user.id, book.id)}
-      initialProgress={await getReaderProgress(user.id, book.id)}
-      initialWidths={await getUiPreferences(user.id)}
-      settings={repository.getReaderSettings(user.id)}
+      highlights={highlights}
+      initialProgress={progress}
+      initialWidths={widths}
+      initialLayout={layout}
+      settings={settings}
     />
   )
 }

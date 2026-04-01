@@ -2,6 +2,7 @@ import { KnowledgeClient } from "@/components/knowledge/knowledge-client"
 import { readKnowledgeSelection } from "@/components/knowledge/knowledge-url-state"
 import { requirePageUser } from "@/src/server/lib/session"
 import { repository } from "@/src/server/repositories"
+import { cachedRepo } from "@/src/server/repositories/cached"
 import { getUiPreferences } from "@/src/server/services/preferences/store"
 import type { Viewpoint } from "@/src/server/store/types"
 
@@ -11,28 +12,35 @@ export default async function KnowledgePage({
   searchParams?: Record<string, string | string[] | undefined>
 }) {
   const user = await requirePageUser()
-  const viewpoints = repository.listViewpoints(user.id, { metadataOnly: true })
+  const viewpoints = await cachedRepo.listViewpoints(user.id, { metadataOnly: true })
   const selection = readKnowledgeSelection(buildSearchParams(searchParams))
   const importedNote = selection.importedNoteId
     ? repository.getImportedNote(user.id, selection.importedNoteId)
     : undefined
+  const selectedViewpoint = importedNote
+    ? undefined
+    : selection.viewpointId
+      ? await cachedRepo.getViewpoint(user.id, selection.viewpointId, { includeBlocks: true })
+      : await cachedRepo.getViewpoint(user.id, viewpoints[0]?.id ?? "", { includeBlocks: true })
   const selected = importedNote
     ? undefined
     : resolveSelectedViewpoint(
         viewpoints,
-        selection.viewpointId
-          ? repository.getViewpoint(user.id, selection.viewpointId)
-          : repository.getViewpoint(user.id, viewpoints[0]?.id ?? "")
+        selectedViewpoint
       )
-  const unconfirmed = selected
-    ? repository.listUnconfirmedHighlights(user.id, selected.id)
-    : []
+  const [unconfirmed, readerSettings, uiPrefs] = await Promise.all([
+    selected
+      ? cachedRepo.listUnconfirmedHighlights(user.id, selected.id)
+      : Promise.resolve([]),
+    cachedRepo.getReaderSettings(user.id),
+    getUiPreferences(user.id)
+  ])
 
   return (
     <KnowledgeClient
       initialImportedNoteId={importedNote?.id}
-      keyboardShortcuts={repository.getReaderSettings(user.id)?.keyboardShortcuts}
-      initialWidths={await getUiPreferences(user.id)}
+      keyboardShortcuts={readerSettings?.keyboardShortcuts}
+      initialWidths={uiPrefs}
       initialSelected={selected}
       initialViewpoints={viewpoints}
       unconfirmed={unconfirmed as never}

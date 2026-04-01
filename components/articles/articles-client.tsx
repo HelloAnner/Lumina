@@ -8,8 +8,8 @@
  */
 "use client"
 
-import { useState, useCallback } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useCallback, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   Plus,
   Archive,
@@ -76,11 +76,14 @@ const TOPIC_COLORS = [
 
 export function ArticlesClient({ initialData, initialTopics, initialSortBy = "lastRead", archiveRetentionDays = 30 }: Props) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const sourceIdParam = searchParams.get("sourceId")
   const [data, setData] = useState<PaginatedResult>(initialData)
   const [topics] = useState(initialTopics)
   const [search, setSearch] = useState("")
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all")
   const [activeTopic, setActiveTopic] = useState<string | null>(null)
+  const [activeSourceId, setActiveSourceId] = useState<string | null>(sourceIdParam)
   const [sortBy, setSortBy] = useState<ArticleSortBy>(initialSortBy)
   const [loading, setLoading] = useState(false)
   const [showImportDialog, setShowImportDialog] = useState(false)
@@ -101,21 +104,12 @@ export function ArticlesClient({ initialData, initialTopics, initialSortBy = "la
     setLoading(true)
     try {
       const query = new URLSearchParams()
-      if (params.filter) {
-        query.set("filter", params.filter)
-      }
-      if (params.topicId) {
-        query.set("topicId", params.topicId)
-      }
-      if (params.search) {
-        query.set("search", params.search)
-      }
-      if (params.sortBy) {
-        query.set("sortBy", params.sortBy)
-      }
-      if (params.page) {
-        query.set("page", String(params.page))
-      }
+      if (params.filter) query.set("filter", params.filter)
+      if (params.topicId) query.set("topicId", params.topicId)
+      if (activeSourceId) query.set("sourceId", activeSourceId)
+      if (params.search) query.set("search", params.search)
+      if (params.sortBy) query.set("sortBy", params.sortBy)
+      if (params.page) query.set("page", String(params.page))
       const res = await fetch(`/api/articles?${query.toString()}`)
       if (res.ok) {
         const result = await res.json()
@@ -124,7 +118,7 @@ export function ArticlesClient({ initialData, initialTopics, initialSortBy = "la
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [activeSourceId])
 
   const handleFilterChange = (tab: FilterTab) => {
     setActiveFilter(tab)
@@ -166,6 +160,13 @@ export function ArticlesClient({ initialData, initialTopics, initialSortBy = "la
       page: data.page
     })
   }, [fetchArticles, activeFilter, activeTopic, search, sortBy, data.page])
+
+  // 当 URL 携带 sourceId 时，立即按来源过滤
+  useEffect(() => {
+    if (sourceIdParam) {
+      fetchArticles({ filter: activeFilter, sortBy })
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   /** 归档（软删除） */
   const handleArchive = async (articleId: string) => {
@@ -275,6 +276,25 @@ export function ArticlesClient({ initialData, initialTopics, initialSortBy = "la
           </Button>
         </div>
       </header>
+
+      {/* 来源过滤提示 */}
+      {activeSourceId && (
+        <div className="flex shrink-0 items-center justify-between border-b border-border/40 bg-primary/5 px-6 py-2">
+          <span className="text-[12px] text-foreground/70">
+            正在查看来自指定信息源的文章
+          </span>
+          <button
+            onClick={() => {
+              setActiveSourceId(null)
+              router.replace("/articles")
+              fetchArticles({ filter: activeFilter, sortBy })
+            }}
+            className="text-[12px] text-primary/70 hover:text-primary transition-colors"
+          >
+            清除过滤
+          </button>
+        </div>
+      )}
 
       {/* 筛选 Tab + 排序 */}
       <div className="flex shrink-0 items-center justify-between border-b border-border px-6">

@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { z } from "zod"
 import type { AppEnv } from "@/src/server/lib/hono"
 import { repository } from "@/src/server/repositories"
+import { invalidatePublish } from "@/src/server/repositories/cached"
 import {
   renderTaskContentById,
   triggerPublish
@@ -32,23 +33,25 @@ app.get("/targets", (c) => {
 })
 
 app.post("/targets", async (c) => {
+  const userId = c.get("userId")
   const payload = targetSchema.parse(await c.req.json())
-  const item = repository.createPublishTarget(c.get("userId"), payload)
+  const item = repository.createPublishTarget(userId, payload)
+  void invalidatePublish(userId)
   return c.json({ item })
 })
 
 app.put("/targets/:id", async (c) => {
+  const userId = c.get("userId")
   const payload = targetSchema.partial().parse(await c.req.json())
-  const item = repository.updatePublishTarget(
-    c.get("userId"),
-    c.req.param("id"),
-    payload
-  )
+  const item = repository.updatePublishTarget(userId, c.req.param("id"), payload)
+  void invalidatePublish(userId)
   return c.json({ item })
 })
 
 app.delete("/targets/:id", (c) => {
-  repository.deletePublishTarget(c.get("userId"), c.req.param("id"))
+  const userId = c.get("userId")
+  repository.deletePublishTarget(userId, c.req.param("id"))
+  void invalidatePublish(userId)
   return c.json({ ok: true })
 })
 
@@ -57,28 +60,32 @@ app.get("/tasks", (c) => {
 })
 
 app.post("/tasks", async (c) => {
+  const userId = c.get("userId")
   const payload = taskSchema.parse(await c.req.json())
-  const item = repository.createPublishTask(c.get("userId"), payload)
+  const item = repository.createPublishTask(userId, payload)
+  void invalidatePublish(userId)
   return c.json({ item })
 })
 
 app.put("/tasks/:id", async (c) => {
+  const userId = c.get("userId")
   const payload = taskSchema.partial().parse(await c.req.json())
-  const item = repository.updatePublishTask(
-    c.get("userId"),
-    c.req.param("id"),
-    payload
-  )
+  const item = repository.updatePublishTask(userId, c.req.param("id"), payload)
+  void invalidatePublish(userId)
   return c.json({ item })
 })
 
 app.delete("/tasks/:id", (c) => {
-  repository.deletePublishTask(c.get("userId"), c.req.param("id"))
+  const userId = c.get("userId")
+  repository.deletePublishTask(userId, c.req.param("id"))
+  void invalidatePublish(userId)
   return c.json({ ok: true })
 })
 
 app.post("/tasks/:id/trigger", async (c) => {
-  const record = await triggerPublish(c.get("userId"), c.req.param("id"))
+  const userId = c.get("userId")
+  const record = await triggerPublish(userId, c.req.param("id"))
+  void invalidatePublish(userId)
   return c.json({ item: record })
 })
 

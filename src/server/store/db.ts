@@ -2,6 +2,8 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  statSync,
+  unlinkSync,
   writeFileSync
 } from "node:fs"
 import { dirname, join } from "node:path"
@@ -12,9 +14,12 @@ import type {
   Viewpoint
 } from "@/src/server/store/types"
 
-const DATA_DIR = process.env.DATA_DIR ?? "data/app"
-const DB_PATH = join(DATA_DIR, "lumina.json")
-const VIEWPOINT_BLOCKS_DIR = join(DATA_DIR, "viewpoint-blocks")
+// ---- 进程内内存缓存 ----
+// 避免每次请求重复读取 + 解析整个 JSON 文件
+let memoryCache: {
+  database: Database
+  mtime: number // 文件修改时间，用于检测外部写入
+} | null = null
 
 export interface ViewpointBlockEntry {
   userId: string
@@ -23,26 +28,28 @@ export interface ViewpointBlockEntry {
 }
 
 function ensureDbFile() {
-  if (!existsSync(DATA_DIR)) {
-    mkdirSync(DATA_DIR, { recursive: true })
+  const dataDir = getDataDir()
+  const dbPath = getDbPath()
+  if (!existsSync(dataDir)) {
+    mkdirSync(dataDir, { recursive: true })
   }
-  if (!existsSync(dirname(DB_PATH))) {
-    mkdirSync(dirname(DB_PATH), { recursive: true })
+  if (!existsSync(dirname(dbPath))) {
+    mkdirSync(dirname(dbPath), { recursive: true })
   }
-  if (!existsSync(DB_PATH)) {
-    writeFileSync(DB_PATH, JSON.stringify(buildSeedDatabase(), null, 2), "utf-8")
+  if (!existsSync(dbPath)) {
+    writeFileSync(dbPath, JSON.stringify(buildSeedDatabase(), null, 2), "utf-8")
   }
 }
 
 function ensureBlocksDir(userId?: string) {
-  const target = userId ? join(VIEWPOINT_BLOCKS_DIR, userId) : VIEWPOINT_BLOCKS_DIR
+  const target = userId ? join(getViewpointBlocksDir(), userId) : getViewpointBlocksDir()
   if (!existsSync(target)) {
     mkdirSync(target, { recursive: true })
   }
 }
 
 function buildViewpointBlocksPath(userId: string, viewpointId: string) {
-  return join(VIEWPOINT_BLOCKS_DIR, userId, `${viewpointId}.json`)
+  return join(getViewpointBlocksDir(), userId, `${viewpointId}.json`)
 }
 
 function readStoredViewpointBlocks(userId: string, viewpointId: string) {
@@ -54,6 +61,29 @@ function readStoredViewpointBlocks(userId: string, viewpointId: string) {
     return JSON.parse(readFileSync(path, "utf-8")) as NoteBlock[]
   } catch {
     return undefined
+  }
+}
+
+export function readViewpointBlocks(userId: string, viewpointId: string) {
+  const stored = readStoredViewpointBlocks(userId, viewpointId)
+  if (stored) {
+    return stored
+  }
+  const database = readDatabase({ hydrateViewpointBlocks: false })
+  return database.viewpoints.find(
+    (item) => item.userId === userId && item.id === viewpointId
+  )?.articleBlocks
+}
+
+export function deleteViewpointBlocks(userId: string, viewpointId: string) {
+  const path = buildViewpointBlocksPath(userId, viewpointId)
+  if (!existsSync(path)) {
+    return
+  }
+  try {
+    unlinkSync(path)
+  } catch {
+    /* ignore */
   }
 }
 
@@ -118,7 +148,18 @@ export function readDatabase(options: {
   hydrateViewpointBlocks?: boolean
 } = {}): Database {
   ensureDbFile()
-  const raw = JSON.parse(readFileSync(DB_PATH, "utf-8"))
+  const dbPath = getDbPath()
+
+  // 检查内存缓存是否有效（通过文件 mtime 判断）
+  const currentMtime = getFileMtime(dbPath)
+  if (memoryCache && memoryCache.mtime === currentMtime) {
+    if (options.hydrateViewpointBlocks === false) {
+      return memoryCache.database
+    }
+    return memoryCache.database
+  }
+
+  const raw = JSON.parse(readFileSync(dbPath, "utf-8"))
   const database = {
     scoutArticles: [],
     articleTopics: [],
@@ -155,16 +196,23 @@ export function readDatabase(options: {
       blocks
     })
   }
-  return hydrateViewpointBlocks(database, blockEntries)
+  const hydrated = hydrateViewpointBlocks(database, blockEntries)
+
+  // 写入内存缓存
+  memoryCache = { database: hydrated, mtime: currentMtime }
+
+  return hydrated
 }
 
 export function writeDatabase(database: Database) {
   ensureDbFile()
   const { database: stripped, blockEntries } = splitViewpointBlocksFromDatabase(database)
-  writeFileSync(DB_PATH, JSON.stringify(stripped, null, 2), "utf-8")
+  writeFileSync(getDbPath(), JSON.stringify(stripped, null, 2), "utf-8")
   for (const entry of blockEntries) {
     writeStoredViewpointBlocks(entry)
   }
+  // 更新内存缓存（避免下次 readDatabase 重新解析）
+  memoryCache = { database, mtime: getFileMtime(getDbPath()) }
 }
 
 export function mutateDatabase<T>(updater: (database: Database) => T): T {
@@ -174,6 +222,11 @@ export function mutateDatabase<T>(updater: (database: Database) => T): T {
   return result
 }
 
+/** 手动清除内存缓存（测试或热重载时使用） */
+export function clearDatabaseCache() {
+  memoryCache = null
+}
+
 function stripViewpointBlocks(viewpoint: Viewpoint): Viewpoint {
   const { articleBlocks: _articleBlocks, ...rest } = viewpoint
   return rest
@@ -181,4 +234,24 @@ function stripViewpointBlocks(viewpoint: Viewpoint): Viewpoint {
 
 function getViewpointBlocksKey(userId: string, viewpointId: string) {
   return `${userId}:${viewpointId}`
+}
+
+function getDataDir() {
+  return process.env.DATA_DIR ?? "data/app"
+}
+
+function getDbPath() {
+  return join(getDataDir(), "lumina.json")
+}
+
+function getViewpointBlocksDir() {
+  return join(getDataDir(), "viewpoint-blocks")
+}
+
+function getFileMtime(path: string): number {
+  try {
+    return statSync(path).mtimeMs
+  } catch {
+    return 0
+  }
 }

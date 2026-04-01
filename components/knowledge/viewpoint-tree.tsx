@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   DndContext,
   DragOverlay,
@@ -171,6 +171,35 @@ export function ViewpointTree({
 
   useEffect(() => () => stopAutoScroll(), [stopAutoScroll])
 
+  const handleSetExpanded = useCallback(
+    (id: string, val: boolean) => setExpanded((c) => ({ ...c, [id]: val })),
+    []
+  )
+  const expandedRef = useRef(expanded)
+  expandedRef.current = expanded
+  const handleQueueExpand = useCallback(
+    (id: string) => {
+      if (expandedRef.current[id]) return
+      if (expandTimerRef.current) clearTimeout(expandTimerRef.current)
+      expandTimerRef.current = setTimeout(() => {
+        setExpanded((current) => ({ ...current, [id]: true }))
+        expandTimerRef.current = null
+      }, AUTO_EXPAND_DELAY)
+    },
+    []
+  )
+  const handleClearQueuedExpand = useCallback(() => {
+    if (expandTimerRef.current) {
+      clearTimeout(expandTimerRef.current)
+      expandTimerRef.current = null
+    }
+  }, [])
+  const handleContextMenu = useCallback(
+    (nodeId: string, pos: { x: number; y: number }) => setCtxMenu({ nodeId, position: pos }),
+    []
+  )
+  const handleRenameCancel = useCallback(() => setRenamingId(null), [])
+
   /** 键盘快捷键 */
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -315,35 +344,15 @@ export function ViewpointTree({
               draftParentId={draftParentId ?? undefined}
               draftTitle={draftTitle}
               onSelect={onSelect}
-              onSetExpanded={(id, val) =>
-                setExpanded((c) => ({ ...c, [id]: val }))
-              }
-              onQueueExpand={(id) => {
-                if (expanded[id]) {
-                  return
-                }
-                if (expandTimerRef.current) {
-                  clearTimeout(expandTimerRef.current)
-                }
-                expandTimerRef.current = setTimeout(() => {
-                  setExpanded((current) => ({ ...current, [id]: true }))
-                  expandTimerRef.current = null
-                }, AUTO_EXPAND_DELAY)
-              }}
-              onClearQueuedExpand={() => {
-                if (expandTimerRef.current) {
-                  clearTimeout(expandTimerRef.current)
-                  expandTimerRef.current = null
-                }
-              }}
+              onSetExpanded={handleSetExpanded}
+              onQueueExpand={handleQueueExpand}
+              onClearQueuedExpand={handleClearQueuedExpand}
               onSetDropTarget={setDropTarget}
               onTrackPointer={updateAutoScroll}
-              onContextMenu={(nodeId, pos) =>
-                setCtxMenu({ nodeId, position: pos })
-              }
+              onContextMenu={handleContextMenu}
               onRenameChange={setRenameTitle}
               onRenameConfirm={confirmRename}
-              onRenameCancel={() => setRenamingId(null)}
+              onRenameCancel={handleRenameCancel}
               onCreateChild={onCreate}
               onDraftTitleChange={onDraftTitleChange}
               onDraftSubmit={onDraftSubmit}
@@ -420,7 +429,7 @@ export function ViewpointTree({
 // ---- 子组件 ----
 
 /** 单个树节点 */
-function TreeNodeItem({
+const TreeNodeItem = memo(function TreeNodeItem({
   node,
   depth,
   selectedId,
@@ -748,7 +757,7 @@ function TreeNodeItem({
       )}
     </div>
   )
-}
+})
 
 /** 根级 drop zone */
 function RootDropZone({

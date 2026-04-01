@@ -9,7 +9,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   AlertTriangle,
   ArrowLeft,
@@ -35,7 +35,9 @@ import { ArticleReaderContent } from "@/components/articles/article-reader-conte
 import { formatArticlePublishedAt } from "@/components/articles/article-published-at"
 import {
   readGuestArticleOutlineCollapsed,
-  saveGuestArticleOutlineCollapsed
+  readGuestReaderNotesCollapsed,
+  saveGuestArticleOutlineCollapsed,
+  saveGuestReaderNotesCollapsed
 } from "@/components/reader/reader-width-storage"
 import {
   useArticleReaderController,
@@ -48,22 +50,54 @@ export function ArticleReaderClient(props: ArticleReaderProps) {
   const reader = useArticleReaderController(props)
   const readOnly = props.sharedView?.readOnly ?? false
   const { theme, setTheme } = useTheme()
-  const [outlineCollapsed, setOutlineCollapsed] = useState(false)
-  const [highlightsCollapsed, setHighlightsCollapsed] = useState(false)
+  const [outlineCollapsed, setOutlineCollapsed] = useState(
+    props.initialLayout.outlineCollapsed
+  )
+  const [highlightsCollapsed, setHighlightsCollapsed] = useState(
+    props.initialLayout.notesCollapsed
+  )
+  const layoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const layoutReadyRef = useRef(false)
 
   useEffect(() => {
     if (!readOnly) {
       return
     }
     setOutlineCollapsed(readGuestArticleOutlineCollapsed())
+    setHighlightsCollapsed(readGuestReaderNotesCollapsed())
   }, [readOnly])
 
   useEffect(() => {
-    if (!readOnly) {
+    if (!layoutReadyRef.current) {
+      layoutReadyRef.current = true
       return
     }
-    saveGuestArticleOutlineCollapsed(outlineCollapsed)
-  }, [outlineCollapsed, readOnly])
+    if (layoutTimerRef.current) {
+      clearTimeout(layoutTimerRef.current)
+    }
+    layoutTimerRef.current = setTimeout(() => {
+      if (readOnly) {
+        saveGuestArticleOutlineCollapsed(outlineCollapsed)
+        saveGuestReaderNotesCollapsed(highlightsCollapsed)
+        return
+      }
+      void fetch("/api/preferences/reader-layout", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          resourceType: "article",
+          resourceId: reader.article.id,
+          outlineCollapsed,
+          notesCollapsed: highlightsCollapsed
+        })
+      })
+    }, 180)
+    return () => {
+      if (layoutTimerRef.current) {
+        clearTimeout(layoutTimerRef.current)
+      }
+    }
+  }, [highlightsCollapsed, outlineCollapsed, readOnly, reader.article.id])
 
   const { showShortcutHint, dismissShortcutHint } = useReaderShortcuts({
     selectedText: reader.selectedText,

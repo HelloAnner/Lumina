@@ -1,6 +1,7 @@
 import { ensureBookSchema, getBookPool } from "@/src/server/services/books/postgres"
 
 export type ArticleSortBy = "lastRead" | "created"
+export type ReaderLayoutResourceType = "book" | "article"
 
 export interface UiPreferences {
   knowledgeTreeWidth: number
@@ -17,6 +18,11 @@ export interface KnowledgeNoteState {
   anchorHeadingId?: string
 }
 
+export interface ReaderLayoutState {
+  outlineCollapsed: boolean
+  notesCollapsed: boolean
+}
+
 const DEFAULT_PREFERENCES: UiPreferences = {
   knowledgeTreeWidth: 240,
   knowledgeListWidth: 280,
@@ -29,6 +35,11 @@ const DEFAULT_PREFERENCES: UiPreferences = {
 const DEFAULT_KNOWLEDGE_NOTE_STATE: KnowledgeNoteState = {
   outlineCollapsed: true,
   scrollTop: 0
+}
+
+export const DEFAULT_READER_LAYOUT_STATE: ReaderLayoutState = {
+  outlineCollapsed: false,
+  notesCollapsed: false
 }
 
 let preferenceSchemaReady: Promise<void> | null = null
@@ -109,6 +120,31 @@ async function ensurePreferenceSchema() {
         getBookPool().query(`
           ALTER TABLE user_knowledge_note_state
           ADD COLUMN IF NOT EXISTS anchor_heading_id TEXT
+        `)
+      )
+      .then(() =>
+        getBookPool().query(`
+          CREATE TABLE IF NOT EXISTS user_reader_layout_preferences (
+            user_id TEXT NOT NULL,
+            resource_type TEXT NOT NULL,
+            resource_id TEXT NOT NULL,
+            outline_collapsed BOOLEAN NOT NULL DEFAULT FALSE,
+            notes_collapsed BOOLEAN NOT NULL DEFAULT FALSE,
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+            PRIMARY KEY (user_id, resource_type, resource_id)
+          )
+        `)
+      )
+      .then(() =>
+        getBookPool().query(`
+          ALTER TABLE user_reader_layout_preferences
+          ADD COLUMN IF NOT EXISTS outline_collapsed BOOLEAN NOT NULL DEFAULT FALSE
+        `)
+      )
+      .then(() =>
+        getBookPool().query(`
+          ALTER TABLE user_reader_layout_preferences
+          ADD COLUMN IF NOT EXISTS notes_collapsed BOOLEAN NOT NULL DEFAULT FALSE
         `)
       )
       .then(() => undefined)
@@ -253,6 +289,69 @@ export async function saveKnowledgeNoteState(
         next.scrollTop,
         next.anchorHeadingId ?? null
       ]
+    )
+  } catch {
+    return next
+  }
+  return next
+}
+
+export async function getReaderLayoutState(
+  userId: string,
+  resourceType: ReaderLayoutResourceType,
+  resourceId: string
+): Promise<ReaderLayoutState> {
+  if (!resourceId.trim()) {
+    return DEFAULT_READER_LAYOUT_STATE
+  }
+  try {
+    await ensurePreferenceSchema()
+    const result = await getBookPool().query(
+      `SELECT outline_collapsed, notes_collapsed
+       FROM user_reader_layout_preferences
+       WHERE user_id = $1 AND resource_type = $2 AND resource_id = $3
+       LIMIT 1`,
+      [userId, resourceType, resourceId]
+    )
+    const row = result.rows[0]
+    if (!row) {
+      return DEFAULT_READER_LAYOUT_STATE
+    }
+    return {
+      outlineCollapsed: Boolean(row.outline_collapsed),
+      notesCollapsed: Boolean(row.notes_collapsed)
+    }
+  } catch {
+    return DEFAULT_READER_LAYOUT_STATE
+  }
+}
+
+export async function saveReaderLayoutState(
+  userId: string,
+  resourceType: ReaderLayoutResourceType,
+  resourceId: string,
+  state: Partial<ReaderLayoutState>
+): Promise<ReaderLayoutState> {
+  const current = await getReaderLayoutState(userId, resourceType, resourceId)
+  const next = {
+    outlineCollapsed: state.outlineCollapsed ?? current.outlineCollapsed,
+    notesCollapsed: state.notesCollapsed ?? current.notesCollapsed
+  }
+  if (!resourceId.trim()) {
+    return next
+  }
+  try {
+    await ensurePreferenceSchema()
+    await getBookPool().query(
+      `INSERT INTO user_reader_layout_preferences
+        (user_id, resource_type, resource_id, outline_collapsed, notes_collapsed, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (user_id, resource_type, resource_id)
+       DO UPDATE SET
+         outline_collapsed = EXCLUDED.outline_collapsed,
+         notes_collapsed = EXCLUDED.notes_collapsed,
+         updated_at = NOW()`,
+      [userId, resourceType, resourceId, next.outlineCollapsed, next.notesCollapsed]
     )
   } catch {
     return next

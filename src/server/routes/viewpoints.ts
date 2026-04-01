@@ -1,7 +1,9 @@
 import { Hono } from "hono"
 import { z } from "zod"
+import { formatServerTiming } from "@/src/lib/timing"
 import type { AppEnv } from "@/src/server/lib/hono"
 import { repository } from "@/src/server/repositories"
+import { invalidateViewpoints } from "@/src/server/repositories/cached"
 import { exportTaskAsPdf } from "@/src/server/services/publish/service"
 import {
   buildObjectResponse,
@@ -17,6 +19,7 @@ app.get("/tree", (c) => {
 })
 
 app.post("/", async (c) => {
+  const userId = c.get("userId")
   const payload = z
     .object({
       title: z.string().min(1),
@@ -25,15 +28,16 @@ app.post("/", async (c) => {
     })
     .parse(await c.req.json())
   const item = repository.createViewpoint({
-    userId: c.get("userId"),
+    userId,
     title: payload.title,
     parentId: payload.parentId,
     isFolder: payload.isFolder,
     isCandidate: false,
-    sortOrder: repository.listViewpoints(c.get("userId")).length + 1,
+    sortOrder: repository.listViewpoints(userId, { metadataOnly: true }).length + 1,
     articleContent: "",
     relatedBookIds: []
   })
+  void invalidateViewpoints(userId)
   return c.json({ item })
 })
 
@@ -46,6 +50,7 @@ app.get("/:id", (c) => {
 })
 
 app.put("/:id", async (c) => {
+  const userId = c.get("userId")
   const payload = z
     .object({
       title: z.string().optional(),
@@ -53,45 +58,59 @@ app.put("/:id", async (c) => {
       sortOrder: z.number().optional()
     })
     .parse(await c.req.json())
-  const item = repository.updateViewpoint(
-    c.get("userId"),
-    c.req.param("id"),
-    payload
-  )
+  const item = repository.updateViewpoint(userId, c.req.param("id"), payload)
+  void invalidateViewpoints(userId)
   return c.json({ item })
 })
 
 app.delete("/:id", (c) => {
-  repository.deleteViewpoint(c.get("userId"), c.req.param("id"))
+  const userId = c.get("userId")
+  repository.deleteViewpoint(userId, c.req.param("id"))
+  void invalidateViewpoints(userId)
   return c.json({ ok: true })
 })
 
 app.put("/:id/article", async (c) => {
+  const userId = c.get("userId")
   const payload = z.object({ articleContent: z.string() }).parse(await c.req.json())
-  const item = repository.updateViewpoint(c.get("userId"), c.req.param("id"), {
+  const item = repository.updateViewpoint(userId, c.req.param("id"), {
     articleContent: payload.articleContent,
     lastSynthesizedAt: new Date().toISOString()
   })
+  void invalidateViewpoints(userId)
   return c.json({ item })
 })
 
 /** 获取观点的块状笔记内容 */
 app.get("/:id/blocks", (c) => {
-  const item = repository.getViewpoint(c.get("userId"), c.req.param("id"))
+  const startedAt = performance.now()
+  const userId = c.get("userId")
+  const viewpointId = c.req.param("id")
+  const metaStartedAt = performance.now()
+  const item = repository.getViewpoint(userId, viewpointId)
+  const metaDuration = performance.now() - metaStartedAt
   if (!item) {
     return c.json({ error: "观点不存在" }, 404)
   }
-  return c.json({ blocks: item.articleBlocks ?? [] })
+  const blocksStartedAt = performance.now()
+  const blocks = repository.getViewpointBlocks(userId, viewpointId)
+  const blocksDuration = performance.now() - blocksStartedAt
+  const totalDuration = performance.now() - startedAt
+  c.header("Server-Timing", formatServerTiming([
+    { name: "meta", duration: metaDuration, description: "viewpoint-meta" },
+    { name: "blocks", duration: blocksDuration, description: "viewpoint-blocks" },
+    { name: "total", duration: totalDuration, description: "viewpoint-route" }
+  ]))
+  c.header("X-Lumina-Viewpoint-Id", viewpointId)
+  return c.json({ blocks })
 })
 
 /** 更新观点的块状笔记内容 */
 app.put("/:id/blocks", async (c) => {
+  const userId = c.get("userId")
   const payload = z.object({ blocks: z.array(z.any()) }).parse(await c.req.json())
-  const item = repository.updateViewpointBlocks(
-    c.get("userId"),
-    c.req.param("id"),
-    payload.blocks
-  )
+  const item = repository.updateViewpointBlocks(userId, c.req.param("id"), payload.blocks)
+  void invalidateViewpoints(userId)
   return c.json({ item })
 })
 
@@ -167,7 +186,7 @@ app.post("/:id/send-email", (c) => {
 })
 
 app.get("/:id/export", async (c) => {
-  const item = repository.getViewpoint(c.get("userId"), c.req.param("id"))
+  const item = repository.getViewpoint(c.get("userId"), c.req.param("id"), { includeBlocks: true })
   if (!item) {
     return c.json({ error: "观点不存在" }, 404)
   }

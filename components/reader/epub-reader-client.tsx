@@ -8,6 +8,7 @@
 "use client"
 
 import Link from "next/link"
+import { useEffect, useRef, useState } from "react"
 import { AlertTriangle, ArrowLeft, Languages, Moon, PanelLeftOpen, PanelRightOpen, Sun, Type } from "lucide-react"
 import { ShareLinkButton } from "@/components/share/share-link-button"
 import { Toast } from "@/components/ui/toast"
@@ -20,15 +21,64 @@ import { ReaderNoteComposer } from "@/components/reader/reader-note-composer"
 import type { ReaderClientProps } from "@/components/reader/reader-types"
 import { useReaderController } from "@/components/reader/use-reader-controller"
 import { useReaderShortcuts } from "@/components/reader/use-reader-shortcuts"
+import {
+  readGuestReaderNotesCollapsed,
+  readGuestReaderTocCollapsed,
+  saveGuestReaderNotesCollapsed,
+  saveGuestReaderTocCollapsed
+} from "@/components/reader/reader-width-storage"
 import { useTheme } from "@/components/theme-provider"
-import { useState } from "react"
 
 export function EpubReaderClient(props: ReaderClientProps) {
   const reader = useReaderController(props)
   const readOnly = props.sharedView?.readOnly ?? false
   const { theme, setTheme } = useTheme()
-  const [tocCollapsed, setTocCollapsed] = useState(false)
-  const [highlightsCollapsed, setHighlightsCollapsed] = useState(false)
+  const [tocCollapsed, setTocCollapsed] = useState(props.initialLayout.outlineCollapsed)
+  const [highlightsCollapsed, setHighlightsCollapsed] = useState(
+    props.initialLayout.notesCollapsed
+  )
+  const layoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const layoutReadyRef = useRef(false)
+
+  useEffect(() => {
+    if (!readOnly) {
+      return
+    }
+    setTocCollapsed(readGuestReaderTocCollapsed())
+    setHighlightsCollapsed(readGuestReaderNotesCollapsed())
+  }, [readOnly])
+
+  useEffect(() => {
+    if (!layoutReadyRef.current) {
+      layoutReadyRef.current = true
+      return
+    }
+    if (layoutTimerRef.current) {
+      clearTimeout(layoutTimerRef.current)
+    }
+    layoutTimerRef.current = setTimeout(() => {
+      if (readOnly) {
+        saveGuestReaderTocCollapsed(tocCollapsed)
+        saveGuestReaderNotesCollapsed(highlightsCollapsed)
+        return
+      }
+      void fetch("/api/preferences/reader-layout", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          resourceType: "book",
+          resourceId: reader.book.id,
+          outlineCollapsed: tocCollapsed,
+          notesCollapsed: highlightsCollapsed
+        })
+      })
+    }, 180)
+    return () => {
+      if (layoutTimerRef.current) {
+        clearTimeout(layoutTimerRef.current)
+      }
+    }
+  }, [highlightsCollapsed, readOnly, reader.book.id, tocCollapsed])
 
   useReaderShortcuts({
     selectedText: reader.selectedText,

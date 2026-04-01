@@ -10,6 +10,7 @@
 import {
   type Dispatch,
   type SetStateAction,
+  memo,
   useDeferredValue,
   useCallback,
   useEffect,
@@ -136,7 +137,7 @@ interface NoteEditorProps {
 /**
  * TipTap 笔记编辑器主体
  */
-export function NoteEditor({
+export const NoteEditor = memo(function NoteEditor({
   viewpointId,
   blocks,
   annotatedBlockIds,
@@ -486,13 +487,14 @@ export function NoteEditor({
 
   useEffect(() => {
     const container = resolveScrollContainer(scrollContainerRef, scrollRef)
-    if (!editor || !container) {
+    const shell = rootRef.current
+    if (!editor || !container || !shell) {
       return
     }
     const updateHover = (target: EventTarget | null) => {
       const block = findBlockElement(target, editor.view.dom)
       hoveredElementRef.current = block
-      setGutter(block ? buildGutterState(block, container) : null)
+      setGutter(block ? buildGutterState(block, shell) : null)
     }
     const handleMouseMove = (event: MouseEvent) => {
       pendingHoverTargetRef.current = event.target
@@ -508,18 +510,26 @@ export function NoteEditor({
       hoveredElementRef.current = null
       setGutter(null)
     }
+    let scrollRaf: number | null = null
     const handleScroll = () => {
-      if (hoveredElementRef.current) {
-        setGutter(buildGutterState(hoveredElementRef.current, container))
-      }
+      if (scrollRaf) return
+      scrollRaf = requestAnimationFrame(() => {
+        scrollRaf = null
+        if (hoveredElementRef.current) {
+          setGutter(buildGutterState(hoveredElementRef.current, shell))
+        }
+      })
     }
     container.addEventListener("mousemove", handleMouseMove)
     container.addEventListener("mouseleave", handleMouseLeave)
-    container.addEventListener("scroll", handleScroll)
+    container.addEventListener("scroll", handleScroll, { passive: true })
     return () => {
       if (hoverFrameRef.current) {
         cancelAnimationFrame(hoverFrameRef.current)
         hoverFrameRef.current = null
+      }
+      if (scrollRaf) {
+        cancelAnimationFrame(scrollRaf)
       }
       container.removeEventListener("mousemove", handleMouseMove)
       container.removeEventListener("mouseleave", handleMouseLeave)
@@ -545,12 +555,24 @@ export function NoteEditor({
         headingNodeCacheRef.current
       )
     }
+    let prevHeading: string | undefined
+    let headingRaf: number | null = null
     const syncActiveHeading = () => {
       const next = resolveActiveHeadingId(
         headingMeasuresRef.current,
         container.scrollTop
       )
-      setActiveOutlineBlockId(next)
+      if (next !== prevHeading) {
+        prevHeading = next
+        setActiveOutlineBlockId(next)
+      }
+    }
+    const throttledSyncHeading = () => {
+      if (headingRaf) return
+      headingRaf = requestAnimationFrame(() => {
+        headingRaf = null
+        syncActiveHeading()
+      })
     }
     const handleResize = () => {
       syncMeasures()
@@ -558,10 +580,11 @@ export function NoteEditor({
     }
     syncMeasures()
     syncActiveHeading()
-    container.addEventListener("scroll", syncActiveHeading, { passive: true })
+    container.addEventListener("scroll", throttledSyncHeading, { passive: true })
     window.addEventListener("resize", handleResize)
     return () => {
-      container.removeEventListener("scroll", syncActiveHeading)
+      if (headingRaf) cancelAnimationFrame(headingRaf)
+      container.removeEventListener("scroll", throttledSyncHeading)
       window.removeEventListener("resize", handleResize)
     }
   }, [deferredOutlineItems, editor, scrollContainerRef, blocks])
@@ -777,6 +800,27 @@ export function NoteEditor({
       ) : null}
     </div>
   )
+}, noteEditorPropsEqual)
+
+function noteEditorPropsEqual(prev: NoteEditorProps, next: NoteEditorProps) {
+  if (prev.viewpointId !== next.viewpointId) return false
+  if (prev.blocks !== next.blocks) return false
+  if (prev.selectedBlockId !== next.selectedBlockId) return false
+  if (prev.outlineCollapsed !== next.outlineCollapsed) return false
+  if (prev.scrollContainerRef !== next.scrollContainerRef) return false
+  if (prev.keyboardShortcuts !== next.keyboardShortcuts) return false
+  if (prev.onBlocksChange !== next.onBlocksChange) return false
+  if (prev.onSelectText !== next.onSelectText) return false
+  if (prev.onBlockClick !== next.onBlockClick) return false
+  if (prev.onOutlineCollapsedChange !== next.onOutlineCollapsedChange) return false
+  if (prev.onActiveHeadingChange !== next.onActiveHeadingChange) return false
+  if (prev.onSaveStatusChange !== next.onSaveStatusChange) return false
+  if (prev.annotatedBlockIds === next.annotatedBlockIds) return true
+  if (prev.annotatedBlockIds.size !== next.annotatedBlockIds.size) return false
+  for (const id of prev.annotatedBlockIds) {
+    if (!next.annotatedBlockIds.has(id)) return false
+  }
+  return true
 }
 
 function BubbleToolbar({
@@ -1189,12 +1233,12 @@ function createEmptyParagraph(sortOrder: number): NoteBlock {
   }
 }
 
-function buildGutterState(block: HTMLElement, container: HTMLElement): GutterState {
+function buildGutterState(block: HTMLElement, shell: HTMLElement): GutterState {
   const rect = block.getBoundingClientRect()
-  const containerRect = container.getBoundingClientRect()
+  const shellRect = shell.getBoundingClientRect()
   return {
     blockId: block.dataset.blockId ?? "",
-    top: rect.top - containerRect.top + container.scrollTop
+    top: rect.top - shellRect.top
   }
 }
 

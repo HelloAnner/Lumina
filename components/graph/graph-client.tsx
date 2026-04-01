@@ -1,7 +1,16 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import * as d3 from "d3"
+import { select } from "d3-selection"
+import { zoom, zoomIdentity, type ZoomTransform } from "d3-zoom"
+import {
+  forceSimulation,
+  forceLink,
+  forceManyBody,
+  forceCenter,
+  forceCollide,
+  type Simulation
+} from "d3-force"
 import { Button } from "@/components/ui/button"
 
 interface GraphNode {
@@ -40,8 +49,8 @@ export function GraphClient({
   const ref = useRef<SVGSVGElement>(null)
   const [selectedNode, setSelectedNode] = useState<string | null>(null)
   const [hoveredNode, setHoveredNode] = useState<string | null>(null)
-  const simulationRef = useRef<d3.Simulation<GraphNode, undefined> | null>(null)
-  const transformRef = useRef<d3.ZoomTransform>(d3.zoomIdentity)
+  const simulationRef = useRef<Simulation<GraphNode, undefined> | null>(null)
+  const transformRef = useRef<ZoomTransform>(zoomIdentity)
 
   const preparedNodes = useMemo(
     () => nodes.map((item) => ({ ...item })),
@@ -63,12 +72,12 @@ export function GraphClient({
 
     // 重置缩放
     if (ref.current) {
-      const svg = d3.select(ref.current)
+      const svg = select(ref.current)
       svg.transition().duration(750).call(
-        (d3.zoom() as any).transform,
-        d3.zoomIdentity
+        (zoom() as any).transform,
+        zoomIdentity
       )
-      transformRef.current = d3.zoomIdentity
+      transformRef.current = zoomIdentity
     }
   }, [preparedNodes])
 
@@ -77,35 +86,33 @@ export function GraphClient({
 
     const width = ref.current.clientWidth || 1000
     const height = 640
-    const svg = d3.select(ref.current)
+    const svg = select(ref.current)
     svg.selectAll("*").remove()
 
     // 创建主图层
     const layer = svg.append("g")
 
     // 创建缩放行为
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
+    const zoomBehavior = zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.3, 3])
       .on("zoom", (event) => {
         transformRef.current = event.transform
         layer.attr("transform", event.transform)
       })
 
-    svg.call(zoom)
+    svg.call(zoomBehavior)
 
     // 初始化力导向模拟
-    const simulation = d3
-      .forceSimulation<GraphNode>(preparedNodes)
+    const simulation = forceSimulation<GraphNode>(preparedNodes)
       .force(
         "link",
-        d3
-          .forceLink<GraphNode, GraphLink>(links)
+        forceLink<GraphNode, GraphLink>(links)
           .id((d) => d.id)
           .distance((d) => 120 / ((d.weight || 0.5) + 0.3))
       )
-      .force("charge", d3.forceManyBody().strength(-280))
-      .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide<GraphNode>().radius((d) =>
+      .force("charge", forceManyBody().strength(-280))
+      .force("center", forceCenter(width / 2, height / 2))
+      .force("collision", forceCollide<GraphNode>().radius((d) =>
         Math.min(16 + (d.highlightCount || 0) * 2, 28)
       ))
 
@@ -136,14 +143,14 @@ export function GraphClient({
       .style("cursor", "pointer")
       .on("mouseover", function(event, d) {
         setHoveredNode(d.id)
-        d3.select(this)
+        select(this)
           .attr("fill", colors.highlight)
           .attr("stroke-width", 3)
       })
       .on("mouseout", function(event, d) {
         setHoveredNode(null)
         if (selectedNode !== d.id) {
-          d3.select(this)
+          select(this)
             .attr("fill", colors.node)
             .attr("stroke-width", 2)
         }
@@ -154,7 +161,7 @@ export function GraphClient({
         // 重置所有节点样式
         node.attr("fill", colors.node).attr("stroke-width", 2)
         // 高亮选中节点
-        d3.select(this)
+        select(this)
           .attr("fill", colors.highlight)
           .attr("stroke-width", 3)
       })

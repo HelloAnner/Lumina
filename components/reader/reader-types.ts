@@ -13,7 +13,10 @@ import type {
   ReaderSettings
 } from "@/src/server/store/types"
 import type { ReaderProgressRecord } from "@/src/server/services/books/progress"
-import type { UiPreferences } from "@/src/server/services/preferences/store"
+import type {
+  ReaderLayoutState,
+  UiPreferences
+} from "@/src/server/services/preferences/store"
 
 export type SidebarNode = {
   id: string
@@ -44,6 +47,7 @@ export interface ReaderClientProps {
   highlights: Highlight[]
   initialProgress: ReaderProgressRecord
   initialWidths: UiPreferences
+  initialLayout: ReaderLayoutState
   settings?: ReaderSettings
   initialTranslations?: BookTranslation[]
   initialTocTranslation?: BookTocTranslation | null

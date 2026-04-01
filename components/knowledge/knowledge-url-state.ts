@@ -57,6 +57,18 @@ export function buildKnowledgeSearch(
 }
 
 /**
+ * 构建知识库页面完整地址
+ */
+export function buildKnowledgeHref(
+  pathname: string,
+  params: URLSearchParams,
+  selection: KnowledgeSelection
+): string {
+  const search = buildKnowledgeSearch(params, selection)
+  return search ? `${pathname}?${search}` : pathname
+}
+
+/**
  * 生成笔记状态存储键
  */
 export function buildKnowledgeNoteKey(

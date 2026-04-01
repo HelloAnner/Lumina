@@ -10,6 +10,7 @@ import { Hono } from "hono"
 import { z } from "zod"
 import type { AppEnv } from "@/src/server/lib/hono"
 import { repository } from "@/src/server/repositories"
+import { invalidateArticles } from "@/src/server/repositories/cached"
 import { syncPendingHighlights } from "@/src/server/services/aggregation/highlight-sync"
 import {
   findArticleImageSection,
@@ -46,7 +47,9 @@ app.post("/topics", async (c) => {
     sortOrder: z.number().int().default(0)
   }).parse(await c.req.json())
 
-  const item = repository.createArticleTopic(c.get("userId"), payload)
+  const userId = c.get("userId")
+  const item = repository.createArticleTopic(userId, payload)
+  void invalidateArticles(userId)
   return c.json({ item }, 201)
 })
 
@@ -57,15 +60,19 @@ app.put("/topics/:id", async (c) => {
     sortOrder: z.number().optional()
   }).parse(await c.req.json())
 
-  const item = repository.updateArticleTopic(c.get("userId"), c.req.param("id"), payload)
+  const userId = c.get("userId")
+  const item = repository.updateArticleTopic(userId, c.req.param("id"), payload)
   if (!item) {
     return c.json({ error: "Topic not found" }, 404)
   }
+  void invalidateArticles(userId)
   return c.json({ item })
 })
 
 app.delete("/topics/:id", (c) => {
-  repository.deleteArticleTopic(c.get("userId"), c.req.param("id"))
+  const userId = c.get("userId")
+  repository.deleteArticleTopic(userId, c.req.param("id"))
+  void invalidateArticles(userId)
   return c.json({ ok: true })
 })
 
@@ -73,7 +80,7 @@ app.delete("/topics/:id", (c) => {
 
 app.get("/", (c) => {
   const userId = c.get("userId")
-  const { topicId, search, filter, sortBy, page, pageSize } = c.req.query()
+  const { topicId, sourceId, search, filter, sortBy, page, pageSize } = c.req.query()
 
   // 请求驱动：自动归档已读完文章 + 清理过期归档
   const user = repository.getUserById(userId)
@@ -89,6 +96,7 @@ app.get("/", (c) => {
 
   const result = repository.listArticles(userId, {
     topicId,
+    sourceId,
     search,
     filter,
     sortBy,
@@ -103,11 +111,13 @@ app.post("/import", async (c) => {
     url: z.string().trim().min(1)
   }).parse(await c.req.json())
 
+  const userId = c.get("userId")
   try {
     const result = await importArticleFromUrl({
-      userId: c.get("userId"),
+      userId,
       url: payload.url
     })
+    void invalidateArticles(userId)
     return c.json(result, result.status === "created" ? 201 : 200)
   } catch (error) {
     if (error instanceof ArticleImportError) {
@@ -143,6 +153,7 @@ app.put("/:id", async (c) => {
   if (!item) {
     return c.json({ error: "Article not found" }, 404)
   }
+  void invalidateArticles(userId)
 
   // 切换到翻译视图时，后台异步触发翻译（即使用户退出阅读也能完成）
   if (payload.translationView === "translation" && item.content?.length > 0) {
@@ -199,6 +210,7 @@ app.post("/:id/refetch", async (c) => {
     translatedTitle: "",
     readProgress: 0
   })
+  void invalidateArticles(userId)
 
   return c.json({ item: updated })
 })
@@ -222,12 +234,14 @@ app.put("/:id/progress", async (c) => {
     currentPageIndex: z.number().min(0).optional()
   }).parse(await c.req.json())
 
-  const updatedArticle = repository.updateArticle(c.get("userId"), c.req.param("id"), {
+  const userId = c.get("userId")
+  const updatedArticle = repository.updateArticle(userId, c.req.param("id"), {
     readProgress: payload.progress,
     lastReadAt: new Date().toISOString(),
     lastReadPosition: payload.currentPageId ?? undefined
   })
-  const progress = await saveArticleReaderProgress(c.get("userId"), c.req.param("id"), {
+  void invalidateArticles(userId)
+  const progress = await saveArticleReaderProgress(userId, c.req.param("id"), {
     id: payload.id,
     progress: payload.progress,
     currentPageId: payload.currentPageId,
@@ -249,6 +263,7 @@ app.post("/:id/favorite", async (c) => {
     favoritedAt: new Date().toISOString()
   })
   void autoTagFavoritedArticle(userId, articleId).catch(() => undefined)
+  void invalidateArticles(userId)
   return c.json({ item })
 })
 
@@ -263,27 +278,32 @@ app.post("/:id/unfavorite", async (c) => {
     favorite: false,
     favoritedAt: undefined
   })
+  void invalidateArticles(userId)
   return c.json({ item })
 })
 
 /** 删除即归档：将文章移入归档态，不丢数据 */
 app.delete("/:id", (c) => {
-  const item = repository.updateArticle(c.get("userId"), c.req.param("id"), {
+  const userId = c.get("userId")
+  const item = repository.updateArticle(userId, c.req.param("id"), {
     archived: true,
     archivedAt: new Date().toISOString()
   })
   if (!item) {
     return c.json({ error: "Article not found" }, 404)
   }
+  void invalidateArticles(userId)
   return c.json({ item })
 })
 
 /** 从归档恢复到活跃态 */
 app.post("/:id/restore", (c) => {
-  const item = repository.updateArticle(c.get("userId"), c.req.param("id"), { archived: false })
+  const userId = c.get("userId")
+  const item = repository.updateArticle(userId, c.req.param("id"), { archived: false })
   if (!item) {
     return c.json({ error: "Article not found" }, 404)
   }
+  void invalidateArticles(userId)
   return c.json({ item })
 })
 
@@ -303,6 +323,7 @@ app.delete("/:id/permanent", async (c) => {
   }
   await removeArticleAssets(article)
   repository.deleteArticle(userId, articleId)
+  void invalidateArticles(userId)
   return c.json({ ok: true })
 })
 
@@ -392,6 +413,7 @@ app.post("/:id/highlights", async (c) => {
 
   /** 异步同步高亮到知识库 */
   void syncPendingHighlights(userId).catch(() => undefined)
+  void invalidateArticles(userId)
 
   return c.json({ item }, 201)
 })

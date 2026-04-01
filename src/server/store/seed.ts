@@ -394,6 +394,7 @@ export function buildSeedDatabase(): Database {
       {
         userId,
         enabled: false,
+        syncIntervalMinutes: 60,
         defaultRelevanceThreshold: 0.6,
         dailyPatchLimit: 50,
         entryRetentionDays: 30

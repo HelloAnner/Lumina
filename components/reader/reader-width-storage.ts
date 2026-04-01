@@ -9,6 +9,8 @@
 
 const GUEST_READER_TOC_KEY = "lumina-guest-reader-toc-width"
 const GUEST_ARTICLE_OUTLINE_KEY = "lumina-guest-article-outline-width"
+const GUEST_READER_TOC_COLLAPSED_KEY = "lumina-guest-reader-toc-collapsed"
+const GUEST_READER_NOTES_COLLAPSED_KEY = "lumina-guest-reader-notes-collapsed"
 const GUEST_ARTICLE_OUTLINE_COLLAPSED_KEY = "lumina-guest-article-outline-collapsed"
 
 function readWidth(key: string, fallback: number, bounds: { min: number; max: number }) {
@@ -38,12 +40,46 @@ export function saveGuestReaderTocWidth(value: number) {
   writeWidth(GUEST_READER_TOC_KEY, value)
 }
 
+export function readGuestReaderTocCollapsed() {
+  if (typeof window === "undefined") {
+    return false
+  }
+  return window.localStorage.getItem(GUEST_READER_TOC_COLLAPSED_KEY) === "1"
+}
+
+export function saveGuestReaderTocCollapsed(collapsed: boolean) {
+  if (typeof window === "undefined") {
+    return
+  }
+  window.localStorage.setItem(
+    GUEST_READER_TOC_COLLAPSED_KEY,
+    collapsed ? "1" : "0"
+  )
+}
+
 export function readGuestArticleOutlineWidth(fallback: number) {
   return readWidth(GUEST_ARTICLE_OUTLINE_KEY, fallback, { min: 180, max: 360 })
 }
 
 export function saveGuestArticleOutlineWidth(value: number) {
   writeWidth(GUEST_ARTICLE_OUTLINE_KEY, value)
+}
+
+export function readGuestReaderNotesCollapsed() {
+  if (typeof window === "undefined") {
+    return false
+  }
+  return window.localStorage.getItem(GUEST_READER_NOTES_COLLAPSED_KEY) === "1"
+}
+
+export function saveGuestReaderNotesCollapsed(collapsed: boolean) {
+  if (typeof window === "undefined") {
+    return
+  }
+  window.localStorage.setItem(
+    GUEST_READER_NOTES_COLLAPSED_KEY,
+    collapsed ? "1" : "0"
+  )
 }
 
 export function readGuestArticleOutlineCollapsed() {

@@ -1,10 +1,13 @@
 import { Hono } from "hono"
 import { z } from "zod"
 import type { AppEnv } from "@/src/server/lib/hono"
+import { invalidateSettings } from "@/src/server/repositories/cached"
 import {
   getKnowledgeNoteState,
+  getReaderLayoutState,
   getUiPreferences,
   saveKnowledgeNoteState,
+  saveReaderLayoutState,
   saveUiPreferences
 } from "@/src/server/services/preferences/store"
 
@@ -25,7 +28,10 @@ app.put("/ui", async (c) => {
       articleSortBy: z.enum(["lastRead", "created"]).optional()
     })
     .parse(await c.req.json())
-  return c.json({ item: await saveUiPreferences(c.get("userId"), payload) })
+  const userId = c.get("userId")
+  const item = await saveUiPreferences(userId, payload)
+  void invalidateSettings(userId)
+  return c.json({ item })
 })
 
 app.get("/knowledge-note", async (c) => {
@@ -44,13 +50,49 @@ app.put("/knowledge-note", async (c) => {
     scrollTop: z.number().min(0).max(2_000_000).optional(),
     anchorHeadingId: z.string().max(160).nullable().optional()
   }).parse(await c.req.json())
-  return c.json({
-    item: await saveKnowledgeNoteState(c.get("userId"), payload.noteKey, {
-      outlineCollapsed: payload.outlineCollapsed,
-      scrollTop: payload.scrollTop,
-      anchorHeadingId: payload.anchorHeadingId ?? undefined
-    })
+  const userId = c.get("userId")
+  const item = await saveKnowledgeNoteState(userId, payload.noteKey, {
+    outlineCollapsed: payload.outlineCollapsed,
+    scrollTop: payload.scrollTop,
+    anchorHeadingId: payload.anchorHeadingId ?? undefined
   })
+  void invalidateSettings(userId)
+  return c.json({ item })
+})
+
+app.get("/reader-layout", async (c) => {
+  const query = z.object({
+    resourceType: z.enum(["book", "article"]),
+    resourceId: z.string().min(1)
+  }).parse(c.req.query())
+  return c.json({
+    item: await getReaderLayoutState(
+      c.get("userId"),
+      query.resourceType,
+      query.resourceId
+    )
+  })
+})
+
+app.put("/reader-layout", async (c) => {
+  const payload = z.object({
+    resourceType: z.enum(["book", "article"]),
+    resourceId: z.string().min(1),
+    outlineCollapsed: z.boolean().optional(),
+    notesCollapsed: z.boolean().optional()
+  }).parse(await c.req.json())
+  const userId = c.get("userId")
+  const item = await saveReaderLayoutState(
+    userId,
+    payload.resourceType,
+    payload.resourceId,
+    {
+      outlineCollapsed: payload.outlineCollapsed,
+      notesCollapsed: payload.notesCollapsed
+    }
+  )
+  void invalidateSettings(userId)
+  return c.json({ item })
 })
 
 export default app

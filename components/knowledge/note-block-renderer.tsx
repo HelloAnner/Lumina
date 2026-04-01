@@ -9,7 +9,7 @@
  */
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useRef, useState } from "react"
 import {
   BookOpen,
   ExternalLink,
@@ -137,7 +137,7 @@ function EditableText({
 /**
  * 渲染单个笔记块
  */
-export function NoteBlockItem({
+export const NoteBlockItem = memo(function NoteBlockItem({
   block,
   hasAnnotation,
   isSelected,
@@ -202,7 +202,7 @@ export function NoteBlockItem({
       {renderBlock(block, onTextChange, onSlashTrigger, onSlashClose, onEnterNewBlock, onBackspaceEmpty)}
     </div>
   )
-}
+})
 
 function renderBlock(
   block: NoteBlock,
