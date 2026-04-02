@@ -42,6 +42,34 @@ export function buildPortBusyMessage(port: string) {
   return `Port ${port} is already in use. Run \`make stop\` to close the container stack, or restart with \`PORT=20262 make dev\`.`
 }
 
+type DependencySyncState = {
+  packageLockExists: boolean
+  installedLockExists: boolean
+  packageLockMtimeMs?: number
+  installedLockMtimeMs?: number
+}
+
+export function shouldSyncNodeModules({
+  packageLockExists,
+  installedLockExists,
+  packageLockMtimeMs,
+  installedLockMtimeMs
+}: DependencySyncState) {
+  if (!packageLockExists) {
+    return false
+  }
+
+  if (!installedLockExists) {
+    return true
+  }
+
+  if (packageLockMtimeMs === undefined || installedLockMtimeMs === undefined) {
+    return true
+  }
+
+  return packageLockMtimeMs > installedLockMtimeMs
+}
+
 export async function isPortAvailable(port: string) {
   return new Promise<boolean>((resolve, reject) => {
     const server = createServer()

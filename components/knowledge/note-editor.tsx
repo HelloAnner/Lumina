@@ -35,10 +35,9 @@ import {
   ChevronRight,
   Copy,
   ExternalLink,
-  Highlighter,
-  Link2,
   Trash2
 } from "lucide-react"
+import { BubbleToolbarFormattingButtons } from "@/components/knowledge/note-bubble-toolbar-buttons"
 import { ContextMenu } from "@/components/ui/context-menu"
 import {
   findNoteEditorCommand,
@@ -47,6 +46,11 @@ import {
 import { NoteBlockHoverActions } from "@/components/knowledge/note-block-hover-actions"
 import { NoteEditorCommandMenu } from "@/components/knowledge/note-editor-command-menu"
 import { NoteOutlineToggle } from "@/components/knowledge/note-outline-toggle"
+import {
+  NOTE_EDITOR_EMPTY_LINE_HEIGHT_PX,
+  resolveBlankAreaClick,
+  resolveBlankLineCountFromGap
+} from "@/components/knowledge/note-editor-blank-click"
 import {
   BlockIdExtension,
   CalloutBlockNode,
@@ -124,6 +128,7 @@ interface NoteEditorProps {
   annotatedBlockIds: Set<string>
   keyboardShortcuts?: AppKeyboardShortcuts
   selectedBlockId?: string
+  jumpTargetBlockId?: string
   scrollContainerRef?: React.RefObject<HTMLDivElement>
   outlineCollapsed?: boolean
   onBlocksChange: (blocks: NoteBlock[]) => void
@@ -143,6 +148,7 @@ export const NoteEditor = memo(function NoteEditor({
   annotatedBlockIds,
   keyboardShortcuts,
   selectedBlockId,
+  jumpTargetBlockId,
   scrollContainerRef,
   outlineCollapsed = true,
   onBlocksChange,
@@ -152,6 +158,7 @@ export const NoteEditor = memo(function NoteEditor({
   onActiveHeadingChange,
   onSaveStatusChange
 }: NoteEditorProps) {
+  const layoutRef = useRef<HTMLDivElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -170,6 +177,7 @@ export const NoteEditor = memo(function NoteEditor({
   const headingMeasuresRef = useRef<Array<{ blockId: string; top: number }>>([])
   const previousAnnotatedRef = useRef<Set<string>>(new Set())
   const previousSelectedRef = useRef<string | undefined>()
+  const previousJumpTargetRef = useRef<string | undefined>()
   const editorRef = useRef<ReturnType<typeof useEditor>>(null)
   const [gutter, setGutter] = useState<GutterState | null>(null)
   const [slashMenu, setSlashMenu] = useState<FloatingMenuState | null>(null)
@@ -463,12 +471,31 @@ export const NoteEditor = memo(function NoteEditor({
       editor,
       annotatedBlockIds,
       selectedBlockId,
+      jumpTargetBlockId,
       previousAnnotatedRef.current,
-      previousSelectedRef.current
+      previousSelectedRef.current,
+      previousJumpTargetRef.current
     )
     previousAnnotatedRef.current = new Set(annotatedBlockIds)
     previousSelectedRef.current = selectedBlockId
-  }, [annotatedBlockIds, editor, selectedBlockId])
+    previousJumpTargetRef.current = jumpTargetBlockId
+  }, [annotatedBlockIds, editor, jumpTargetBlockId, selectedBlockId])
+
+  useEffect(() => {
+    if (!editor || !jumpTargetBlockId) {
+      return
+    }
+    const container = resolveScrollContainer(scrollContainerRef, scrollRef)
+    const target = editor.view.dom.querySelector(
+      `[data-block-id="${jumpTargetBlockId}"]`
+    ) as HTMLElement | null
+    if (!target) {
+      return
+    }
+    requestAnimationFrame(() => {
+      scrollBlockIntoView(target, container)
+    })
+  }, [blocks, editor, jumpTargetBlockId, scrollContainerRef])
 
   useEffect(() => {
     if (!editor) {
@@ -629,6 +656,60 @@ export const NoteEditor = memo(function NoteEditor({
     return null
   }
 
+  const handleBlankAreaMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+      return
+    }
+    const target = event.target
+    if (!(target instanceof HTMLElement) || target.closest("button, input, textarea, a")) {
+      return
+    }
+    if (target.closest(".note-outline-panel") || target.closest("[data-block-id]")) {
+      return
+    }
+    const shell = rootRef.current
+    const layout = layoutRef.current
+    if (!shell || !layout) {
+      return
+    }
+    const mainRect = shell.getBoundingClientRect()
+    if (event.clientX < mainRect.left || event.clientX > mainRect.right) {
+      return
+    }
+    const blockElements = Array.from(
+      editor.view.dom.querySelectorAll("[data-block-id]")
+    ) as HTMLElement[]
+    const lastBlock = blockElements.at(-1)
+    if (!lastBlock) {
+      return
+    }
+    const lastBlockRect = lastBlock.getBoundingClientRect()
+    if (event.clientY <= lastBlockRect.bottom) {
+      return
+    }
+    const layoutRect = layout.getBoundingClientRect()
+    if (event.clientY > layoutRect.bottom) {
+      return
+    }
+    event.preventDefault()
+    const blankLineCount = resolveBlankLineCountFromGap(
+      event.clientY - lastBlockRect.bottom,
+      NOTE_EDITOR_EMPTY_LINE_HEIGHT_PX
+    )
+    const action = resolveBlankAreaClick(readEditorBlocks(editor), { blankLineCount })
+    if (action.type === "focus-existing") {
+      requestAnimationFrame(() =>
+        focusBlock(
+          editor,
+          action.focusBlockId,
+          resolveScrollContainer(scrollContainerRef, scrollRef)
+        )
+      )
+      return
+    }
+    applyBlocks(action.nextBlocks, action.focusBlockId)
+  }
+
   return (
     <div
       ref={scrollRef}
@@ -648,10 +729,12 @@ export const NoteEditor = memo(function NoteEditor({
       onDragEnd={() => setDragState(null)}
     >
       <div
+        ref={layoutRef}
         className={cn(
           "note-editor-layout mx-auto max-w-[1120px] px-8 py-8",
           outlineCollapsed && "is-outline-collapsed"
         )}
+        onMouseDown={handleBlankAreaMouseDown}
       >
         <div ref={rootRef} className="note-editor-shell note-editor-main">
           <EditorContent editor={editor} />
@@ -806,6 +889,7 @@ function noteEditorPropsEqual(prev: NoteEditorProps, next: NoteEditorProps) {
   if (prev.viewpointId !== next.viewpointId) return false
   if (prev.blocks !== next.blocks) return false
   if (prev.selectedBlockId !== next.selectedBlockId) return false
+  if (prev.jumpTargetBlockId !== next.jumpTargetBlockId) return false
   if (prev.outlineCollapsed !== next.outlineCollapsed) return false
   if (prev.scrollContainerRef !== next.scrollContainerRef) return false
   if (prev.keyboardShortcuts !== next.keyboardShortcuts) return false
@@ -846,48 +930,30 @@ function BubbleToolbar({
   }
   return (
     <div className="note-bubble-menu" style={style}>
-      <ToolbarButton
-        active={editor.isActive("bold")}
-        hint={`加粗 ${formatShortcutForDisplay(shortcuts.bold, shortcutPlatform)}`}
-        onClick={() => editor.chain().focus().toggleBold().run()}
-      >
-        B
-      </ToolbarButton>
-      <ToolbarButton
-        active={editor.isActive("italic")}
-        hint={`斜体 ${formatShortcutForDisplay(shortcuts.italic, shortcutPlatform)}`}
-        onClick={() => editor.chain().focus().toggleItalic().run()}
-      >
-        I
-      </ToolbarButton>
-      <ToolbarButton
-        active={editor.isActive("highlight")}
-        hint={`高亮 ${formatShortcutForDisplay(shortcuts.highlight, shortcutPlatform)}`}
-        onClick={() => editor.chain().focus().toggleHighlight().run()}
-      >
-        <Highlighter className="h-3.5 w-3.5" />
-      </ToolbarButton>
-      <ToolbarButton
-        active={editor.isActive("strike")}
-        hint={`删除线 ${formatShortcutForDisplay(shortcuts.strike, shortcutPlatform)}`}
-        onClick={() => editor.chain().focus().toggleStrike().run()}
-      >
-        S
-      </ToolbarButton>
-      <ToolbarButton
-        active={editor.isActive("code")}
-        hint={`行内代码 ${formatShortcutForDisplay(shortcuts.code, shortcutPlatform)}`}
-        onClick={() => editor.chain().focus().toggleCode().run()}
-      >
-        &lt;&gt;
-      </ToolbarButton>
-      <ToolbarButton
-        active={editor.isActive("link")}
-        hint={`链接 ${formatShortcutForDisplay(shortcuts.link, shortcutPlatform)}`}
-        onClick={onLinkEdit}
-      >
-        <Link2 className="h-3.5 w-3.5" />
-      </ToolbarButton>
+      <BubbleToolbarFormattingButtons
+        activeMarks={{
+          bold: editor.isActive("bold"),
+          italic: editor.isActive("italic"),
+          highlight: editor.isActive("highlight"),
+          strike: editor.isActive("strike"),
+          code: editor.isActive("code"),
+          link: editor.isActive("link")
+        }}
+        hints={{
+          bold: `加粗 ${formatShortcutForDisplay(shortcuts.bold, shortcutPlatform)}`,
+          italic: `斜体 ${formatShortcutForDisplay(shortcuts.italic, shortcutPlatform)}`,
+          highlight: `高亮 ${formatShortcutForDisplay(shortcuts.highlight, shortcutPlatform)}`,
+          strike: `删除线 ${formatShortcutForDisplay(shortcuts.strike, shortcutPlatform)}`,
+          code: `行内代码 ${formatShortcutForDisplay(shortcuts.code, shortcutPlatform)}`,
+          link: `链接 ${formatShortcutForDisplay(shortcuts.link, shortcutPlatform)}`
+        }}
+        onToggleBold={() => editor.chain().focus().toggleBold().run()}
+        onToggleItalic={() => editor.chain().focus().toggleItalic().run()}
+        onToggleHighlight={() => editor.chain().focus().toggleHighlight().run()}
+        onToggleStrike={() => editor.chain().focus().toggleStrike().run()}
+        onToggleCode={() => editor.chain().focus().toggleCode().run()}
+        onToggleLink={onLinkEdit}
+      />
       <span className="separator" />
       <button
         className="note-bubble-action"
@@ -904,28 +970,6 @@ function BubbleToolbar({
         Turn into
       </button>
     </div>
-  )
-}
-
-function ToolbarButton({
-  active,
-  hint,
-  children,
-  onClick
-}: {
-  active?: boolean
-  hint?: string
-  children: React.ReactNode
-  onClick: () => void
-}) {
-  return (
-    <button
-      className={cn("note-bubble-button", active && "is-active")}
-      title={hint}
-      onClick={onClick}
-    >
-      {children}
-    </button>
   )
 }
 
@@ -1422,8 +1466,10 @@ function syncBlockClasses(
   editor: NonNullable<ReturnType<typeof useEditor>>,
   annotatedBlockIds: Set<string>,
   selectedBlockId?: string,
+  jumpTargetBlockId?: string,
   previousAnnotatedBlockIds: Set<string> = new Set(),
-  previousSelectedBlockId?: string
+  previousSelectedBlockId?: string,
+  previousJumpTargetBlockId?: string
 ) {
   for (const blockId of previousAnnotatedBlockIds) {
     if (annotatedBlockIds.has(blockId)) {
@@ -1450,6 +1496,22 @@ function syncBlockClasses(
     editor.view.dom
       .querySelector(`[data-block-id="${selectedBlockId}"]`)
       ?.classList.add("note-block-selected")
+  }
+  if (
+    previousJumpTargetBlockId &&
+    previousJumpTargetBlockId !== jumpTargetBlockId
+  ) {
+    editor.view.dom
+      .querySelector(`[data-block-id="${previousJumpTargetBlockId}"]`)
+      ?.classList.remove("note-block-jump-target")
+  }
+  if (
+    jumpTargetBlockId &&
+    previousJumpTargetBlockId !== jumpTargetBlockId
+  ) {
+    editor.view.dom
+      .querySelector(`[data-block-id="${jumpTargetBlockId}"]`)
+      ?.classList.add("note-block-jump-target")
   }
 }
 

@@ -585,7 +585,7 @@ const TreeNodeItem = memo(function TreeNodeItem({
         role="button"
         tabIndex={0}
         className={cn(
-          "group viewpoint-tree-item relative flex w-full items-center gap-1.5 rounded-lg py-[7px] pr-2 text-left text-[13px] transition-colors",
+          "group viewpoint-tree-item relative flex w-full items-start gap-1.5 rounded-lg py-[7px] pr-2 text-left text-[13px] transition-colors",
           active
             ? "bg-overlay/80 text-foreground before:absolute before:left-0 before:top-1 before:bottom-1 before:w-[2px] before:rounded-full before:bg-primary/80 before:content-['']"
             : isDropInside
@@ -603,7 +603,7 @@ const TreeNodeItem = memo(function TreeNodeItem({
         {/* 展开/折叠 或 文件图标 */}
         {hasChildren ? (
           <span
-            className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted transition-colors hover:text-foreground"
+            className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted transition-colors hover:text-foreground"
             onClick={(e) => {
               e.stopPropagation()
               onSetExpanded(node.id, !isExpanded)
@@ -616,7 +616,7 @@ const TreeNodeItem = memo(function TreeNodeItem({
             )}
           </span>
         ) : (
-          <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted/40">
+          <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted/40">
             <FileText className="h-3.5 w-3.5" />
           </span>
         )}
@@ -643,11 +643,12 @@ const TreeNodeItem = memo(function TreeNodeItem({
           />
         ) : (
           <span
-            className="min-w-0 flex-1 truncate"
+            className="min-w-0 flex-1 break-words py-0.5 leading-[1.35] whitespace-normal"
             onDoubleClick={(e) => {
               e.stopPropagation()
               onRenameChange(node.title)
             }}
+            title={node.title}
           >
             {node.title}
           </span>
@@ -655,7 +656,7 @@ const TreeNodeItem = memo(function TreeNodeItem({
 
         {/* 高亮数 */}
         {node.highlightCount > 0 && (
-          <span className="shrink-0 rounded px-1 text-[10px] tabular-nums text-muted/50">
+          <span className="mt-0.5 shrink-0 rounded px-1 text-[10px] tabular-nums text-muted/50">
             {node.highlightCount}
           </span>
         )}
@@ -670,7 +671,7 @@ const TreeNodeItem = memo(function TreeNodeItem({
           {...attributes}
           {...listeners}
           className={cn(
-            "inline-flex h-5 w-5 shrink-0 cursor-grab items-center justify-center rounded-md text-muted/35 opacity-0 transition-all hover:bg-overlay/80 hover:text-foreground group-hover:opacity-100",
+            "mt-0.5 inline-flex h-5 w-5 shrink-0 cursor-grab items-center justify-center rounded-md text-muted/35 opacity-0 transition-all hover:bg-overlay/80 hover:text-foreground group-hover:opacity-100",
             isDragging && "cursor-grabbing opacity-100",
             isDropInside && "opacity-100 text-primary/80"
           )}
@@ -682,7 +683,7 @@ const TreeNodeItem = memo(function TreeNodeItem({
 
         {/* hover 时的 + 按钮 */}
         <span
-          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-muted/40 opacity-0 transition-all hover:bg-overlay/80 hover:text-foreground group-hover:opacity-100"
+          className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-muted/40 opacity-0 transition-all hover:bg-overlay/80 hover:text-foreground group-hover:opacity-100"
           onClick={(e) => {
             e.stopPropagation()
             onCreateChild(node.id)

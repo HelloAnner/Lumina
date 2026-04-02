@@ -272,6 +272,12 @@ export const repository = {
       )
     ).map((item) => normalizeHighlight(item))
   },
+  getHighlight(userId: string, highlightId: string) {
+    const item = readDatabase().highlights.find(
+      (entry) => entry.userId === userId && entry.id === highlightId
+    )
+    return item ? normalizeHighlight(item) : undefined
+  },
   /** 按状态查询用户的所有划线（不依赖 bookId） */
   listHighlightsByStatus(userId: string, status: Highlight["status"]) {
     return sortByDate(
@@ -530,6 +536,47 @@ export const repository = {
       }))
       .filter(Boolean)
       .slice(0, 5)
+  },
+  listHighlightReferences(userId: string, highlightId: string) {
+    const database = readDatabase()
+    const linkedViewpointIds = database.highlightViewpoints
+      .filter((item) => item.highlightId === highlightId)
+      .map((item) => item.viewpointId)
+
+    return linkedViewpointIds.flatMap((viewpointId) => {
+      const viewpoint = database.viewpoints.find(
+        (item) => item.id === viewpointId && item.userId === userId
+      )
+      if (!viewpoint) {
+        return []
+      }
+      const blocks = readViewpointBlocks(userId, viewpointId) ?? []
+      return blocks.flatMap((block) => {
+        if (
+          !("highlightId" in block) ||
+          block.highlightId !== highlightId ||
+          !["quote", "highlight", "image"].includes(block.type)
+        ) {
+          return []
+        }
+
+        const blockText =
+          "text" in block
+            ? block.text
+            : "alt" in block
+              ? block.alt || block.originalName
+              : ""
+
+        return [{
+          viewpointId,
+          viewpointTitle: viewpoint.title,
+          blockId: block.id,
+          blockType: block.type,
+          blockText,
+          sourceLocation: "sourceLocation" in block ? block.sourceLocation : undefined
+        }]
+      })
+    })
   },
   getGraph(userId: string) {
     const database = readDatabase()
@@ -1082,9 +1129,9 @@ export const repository = {
 
   listArticles(
     userId: string,
-    opts?: { topicId?: string; sourceId?: string; search?: string; filter?: string; sortBy?: string; page?: number; pageSize?: number }
+    opts?: { topicId?: string; sourceId?: string; search?: string; filter?: string; sortBy?: string; page?: number; pageSize?: number; all?: boolean }
   ) {
-    const { topicId, sourceId, search, filter, sortBy = "lastRead", page = 1, pageSize = 20 } = opts ?? {}
+    const { topicId, sourceId, search, filter, sortBy = "lastRead", page = 1, pageSize = 20, all = false } = opts ?? {}
     const filtered = readDatabase().scoutArticles.filter((item) => {
         if (item.userId !== userId) {
           return false
@@ -1115,18 +1162,90 @@ export const repository = {
         }
         return true
       })
-    const all = sortBy === "created"
+    const sortedItems = sortBy === "created"
       ? sortByDate(filtered, "createdAt")
       : [...filtered].sort((a, b) => {
         const aTime = a.lastReadAt || a.createdAt
         const bTime = b.lastReadAt || b.createdAt
         return bTime.localeCompare(aTime)
       })
-    const total = all.length
-    const totalPages = Math.max(1, Math.ceil(total / pageSize))
-    const safePage = Math.min(Math.max(1, page), totalPages)
-    const items = all.slice((safePage - 1) * pageSize, safePage * pageSize)
+    const total = sortedItems.length
+    const totalPages = all ? 1 : Math.max(1, Math.ceil(total / pageSize))
+    const safePage = all ? 1 : Math.min(Math.max(1, page), totalPages)
+    const items = all
+      ? sortedItems
+      : sortedItems.slice((safePage - 1) * pageSize, safePage * pageSize)
     return { items, total, page: safePage, pageSize, totalPages }
+  },
+  listArticleSourceFolders(userId: string) {
+    const database = readDatabase()
+    const sourceMap = new Map(
+      database.scoutSources
+        .filter((item) => item.userId === userId)
+        .map((item) => [item.id, item] as const)
+    )
+    const articleStats = new Map<string, {
+      articleCount: number
+      lastArticleAt?: string
+      channelName?: string
+    }>()
+
+    for (const article of database.scoutArticles) {
+      if (article.userId !== userId || article.archived) {
+        continue
+      }
+      const current = articleStats.get(article.sourceId) ?? {
+        articleCount: 0,
+        lastArticleAt: undefined,
+        channelName: article.channelName
+      }
+      current.articleCount += 1
+      current.channelName = current.channelName ?? article.channelName
+      const candidate = article.lastReadAt || article.createdAt
+      if (!current.lastArticleAt || candidate > current.lastArticleAt) {
+        current.lastArticleAt = candidate
+      }
+      articleStats.set(article.sourceId, current)
+    }
+
+    const folderIds = new Set<string>([
+      ...sourceMap.keys(),
+      ...articleStats.keys()
+    ])
+
+    return Array.from(folderIds)
+      .map((sourceId) => {
+        const source = sourceMap.get(sourceId)
+        const stats = articleStats.get(sourceId)
+        const isManual = sourceId === "manual"
+        const isLegacyMissingSource = !source && !isManual
+        if ((isManual || isLegacyMissingSource) && !stats) {
+          return null
+        }
+        return {
+          sourceId,
+          kind: isManual ? "manual" as const : "source" as const,
+          name: isManual ? "手动添加" : (source?.name ?? stats?.channelName ?? "未知来源"),
+          endpoint: isManual ? "手动导入链接" : (source?.endpoint ?? "历史来源"),
+          protocol: isManual ? "manual" : (source?.protocol ?? "rss"),
+          status: source?.status ?? "active",
+          articleCount: stats?.articleCount ?? 0,
+          lastFetchedAt: source?.lastFetchedAt,
+          lastArticleAt: stats?.lastArticleAt
+        }
+      })
+      .filter((item): item is NonNullable<typeof item> => item != null)
+      .sort((left, right) => {
+        const leftTime = left.lastFetchedAt ?? left.lastArticleAt ?? ""
+        const rightTime = right.lastFetchedAt ?? right.lastArticleAt ?? ""
+        if (leftTime !== rightTime) {
+          return rightTime.localeCompare(leftTime)
+        }
+        if (left.articleCount !== right.articleCount) {
+          return right.articleCount - left.articleCount
+        }
+        return left.name.localeCompare(right.name)
+      })
   },
   getArticle(userId: string, articleId: string) {
     return readDatabase().scoutArticles.find(
@@ -1427,6 +1546,20 @@ export const repository = {
       database.scoutSources = database.scoutSources.filter(
         (item) => !(item.userId === userId && item.id === sourceId)
       )
+
+      for (const task of database.scoutTasks) {
+        if (task.userId !== userId || !task.sourceIds.includes(sourceId)) {
+          continue
+        }
+
+        task.sourceIds = task.sourceIds.filter((id) => id !== sourceId)
+        task.updatedAt = now()
+
+        if (task.sourceIds.length === 0) {
+          task.status = "paused"
+          task.nextRunAt = undefined
+        }
+      }
     })
   },
 

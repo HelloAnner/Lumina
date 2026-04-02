@@ -1019,6 +1019,28 @@ select {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent-blue) 40%, transparent);
 }
 
+.note-block-jump-target {
+  border-radius: 16px;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-accent-warm) 55%, transparent),
+    0 0 0 8px color-mix(in srgb, var(--color-accent-warm) 10%, transparent);
+  animation: note-jump-target-pulse 1.8s ease-out 1;
+}
+
+@keyframes note-jump-target-pulse {
+  0% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--color-accent-warm) 72%, transparent),
+      0 0 0 0 color-mix(in srgb, var(--color-accent-warm) 18%, transparent);
+  }
+
+  100% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--color-accent-warm) 40%, transparent),
+      0 0 0 12px color-mix(in srgb, var(--color-accent-warm) 0%, transparent);
+  }
+}
+
 .note-outline-panel {
   position: sticky;
   top: 24px;

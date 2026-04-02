@@ -36,6 +36,10 @@ export async function runPipeline(userId: string, task: ScoutTask, jobId: string
       .map((id) => repository.getSource(userId, id))
       .filter((s): s is ScoutSource => s != null && s.status === "active")
 
+    if (task.sourceIds.length > 0 && sources.length === 0) {
+      throw new Error("任务未绑定任何可用信息源")
+    }
+
     // ─── Phase 1: Fetch ───
     const rawEntries: RawEntry[] = []
     let fetchErrors = 0

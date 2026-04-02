@@ -1,12 +1,54 @@
-import { spawn } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
+import { stat } from "node:fs/promises"
 import {
   buildDevEnvironment,
   buildDevServerArgs,
   buildPortBusyMessage,
-  isPortAvailable
+  isPortAvailable,
+  shouldSyncNodeModules
 } from "@/src/lib/dev-runtime"
 
+async function readMtimeMs(path: string) {
+  try {
+    const file = await stat(path)
+    return file.mtimeMs
+  } catch {
+    return undefined
+  }
+}
+
+async function syncDependenciesIfNeeded() {
+  const packageLockMtimeMs = await readMtimeMs("package-lock.json")
+  const installedLockMtimeMs = await readMtimeMs("node_modules/.package-lock.json")
+
+  if (
+    !shouldSyncNodeModules({
+      packageLockExists: packageLockMtimeMs !== undefined,
+      installedLockExists: installedLockMtimeMs !== undefined,
+      packageLockMtimeMs,
+      installedLockMtimeMs
+    })
+  ) {
+    return
+  }
+
+  console.log("[lumina] syncing npm dependencies with package-lock.json")
+
+  const result = spawnSync("npm", ["ci"], {
+    cwd: process.cwd(),
+    env: process.env,
+    shell: process.platform === "win32",
+    stdio: "inherit"
+  })
+
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1)
+  }
+}
+
 async function start() {
+  await syncDependenciesIfNeeded()
+
   const environment = buildDevEnvironment(process.env)
   const port = environment.PORT || "20261"
 

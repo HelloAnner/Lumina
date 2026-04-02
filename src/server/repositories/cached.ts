@@ -20,6 +20,7 @@ const SCOPE = {
   BOOKS: "books",
   ARTICLES: "articles",
   ARTICLE_TOPICS: "article-topics",
+  ARTICLE_FOLDERS: "article-folders",
   READER_SETTINGS: "reader-settings",
   MODEL_BINDINGS: "model-bindings",
   MODEL_CONFIGS: "model-configs",
@@ -89,10 +90,20 @@ export const cachedRepo = {
   },
 
   listArticles(userId: string, opts?: Parameters<typeof repository.listArticles>[1]) {
-    const suffix = opts ? `:p${opts.page ?? 1}:s${opts.sortBy ?? ""}:t${opts.topicId ?? ""}` : ""
+    const suffix = opts
+      ? `:p${opts.page ?? 1}:s${opts.sortBy ?? ""}:t${opts.topicId ?? ""}:src${opts.sourceId ?? ""}:f${opts.filter ?? ""}:q${opts.search ?? ""}:a${opts.all ? 1 : 0}`
+      : ""
     return cached(
       userKey(userId, SCOPE.ARTICLES + suffix),
       () => repository.listArticles(userId, opts),
+      TTL_SHORT
+    )
+  },
+
+  listArticleSourceFolders(userId: string) {
+    return cached(
+      userKey(userId, SCOPE.ARTICLE_FOLDERS),
+      () => repository.listArticleSourceFolders(userId),
       TTL_SHORT
     )
   },
@@ -244,6 +255,7 @@ export function invalidateBooks(userId: string) {
 export function invalidateArticles(userId: string) {
   return invalidate(
     `user:${userId}:${SCOPE.ARTICLES}*`,
+    `user:${userId}:${SCOPE.ARTICLE_FOLDERS}*`,
     `user:${userId}:${SCOPE.ARTICLE_TOPICS}*`,
     `user:${userId}:${SCOPE.HIGHLIGHTS}:*`
   )

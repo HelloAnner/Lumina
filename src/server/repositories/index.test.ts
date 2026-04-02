@@ -294,6 +294,140 @@ test("repository.clearArticleDerivedData 在保留分享时不会删除分享链
   }
 })
 
+test("repository.deleteSource 会清理任务中的 source 引用并在无可用来源时暂停任务", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "lumina-scout-source-delete-test-"))
+  process.env.DATA_DIR = dataDir
+
+  const { repository } = await import("@/src/server/repositories")
+
+  try {
+    const owner = repository.createUser({
+      email: "scout-source-delete@test.local",
+      passwordHash: "hashed",
+      name: "Scout Source Delete"
+    })
+
+    const sourceA = repository.createSource(owner.id, {
+      name: "HN",
+      channelId: "builtin-hn",
+      protocol: "rss",
+      endpoint: "https://hnrss.org/best",
+      paramValues: {},
+      status: "active",
+      includeKeywords: [],
+      excludeKeywords: []
+    })
+    const sourceB = repository.createSource(owner.id, {
+      name: "arXiv",
+      channelId: "builtin-arxiv",
+      protocol: "rss",
+      endpoint: "https://rss.arxiv.org/rss/cs.AI",
+      paramValues: {},
+      status: "active",
+      includeKeywords: [],
+      excludeKeywords: []
+    })
+
+    const task = repository.createTask(owner.id, {
+      name: "AI 前沿追踪",
+      status: "active",
+      sourceIds: [sourceA.id, sourceB.id],
+      scopeViewpointIds: [],
+      relevanceThreshold: 0.6,
+      maxPatchesPerRun: 20
+    })
+
+    repository.deleteSource(owner.id, sourceA.id)
+
+    const updatedAfterFirstDelete = repository.getTask(owner.id, task.id)
+    assert.deepEqual(updatedAfterFirstDelete?.sourceIds, [sourceB.id])
+    assert.equal(updatedAfterFirstDelete?.status, "active")
+
+    repository.deleteSource(owner.id, sourceB.id)
+
+    const updatedAfterSecondDelete = repository.getTask(owner.id, task.id)
+    assert.deepEqual(updatedAfterSecondDelete?.sourceIds, [])
+    assert.equal(updatedAfterSecondDelete?.status, "paused")
+    assert.equal(repository.listSources(owner.id).length, 0)
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true })
+  }
+})
+
+test("repository.listArticleSourceFolders 会按来源生成文件夹并包含手动导入来源", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "lumina-article-folders-test-"))
+  process.env.DATA_DIR = dataDir
+
+  const { repository } = await import("@/src/server/repositories")
+
+  try {
+    const owner = repository.createUser({
+      email: "article-folders@test.local",
+      passwordHash: "hashed",
+      name: "Article Folders"
+    })
+
+    const source = repository.createSource(owner.id, {
+      name: "HN",
+      channelId: "builtin-hn",
+      protocol: "rss",
+      endpoint: "https://hnrss.org/best",
+      paramValues: {},
+      status: "active",
+      includeKeywords: [],
+      excludeKeywords: []
+    })
+
+    repository.createArticle({
+      userId: owner.id,
+      entryId: "entry-1",
+      sourceId: source.id,
+      title: "HN A",
+      sourceUrl: "https://example.com/hn-a",
+      channelName: "HN",
+      channelIcon: "",
+      topics: [],
+      summary: "summary",
+      content: [],
+      readProgress: 0,
+      highlightCount: 0,
+      status: "ready"
+    })
+    repository.createArticle({
+      userId: owner.id,
+      entryId: "entry-2",
+      sourceId: "manual",
+      title: "Manual A",
+      sourceUrl: "https://example.com/manual-a",
+      channelName: "Wait But Why",
+      channelIcon: "",
+      topics: [],
+      summary: "summary",
+      content: [],
+      readProgress: 0,
+      highlightCount: 0,
+      status: "ready"
+    })
+
+    const folders = repository.listArticleSourceFolders(owner.id)
+
+    assert.equal(folders.length, 2)
+    assert.deepEqual(
+      folders.map((item) => ({
+        sourceId: item.sourceId,
+        name: item.name,
+        articleCount: item.articleCount
+      })),
+      [
+        { sourceId: source.id, name: "HN", articleCount: 1 },
+        { sourceId: "manual", name: "手动添加", articleCount: 1 }
+      ]
+    )
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true })
+  }
+})
+
 test("repository.purgeExpiredArchives 不会清理已收藏文章", async () => {
   const dataDir = mkdtempSync(join(tmpdir(), "lumina-article-favorite-archive-test-"))
   process.env.DATA_DIR = dataDir
@@ -352,6 +486,72 @@ test("repository.listViewpoints 在 metadataOnly 模式下不返回 articleBlock
 
     assert.ok(items.length > 0)
     assert.equal(items.some((item) => item.articleBlocks !== undefined), false)
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true })
+  }
+})
+
+test("repository.listHighlightReferences 返回高亮对应的观点块引用", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "lumina-highlight-references-test-"))
+  process.env.DATA_DIR = dataDir
+
+  const { repository } = await import("@/src/server/repositories")
+
+  try {
+    const user = repository.createUser({
+      email: "highlight-ref@test.local",
+      passwordHash: "hashed",
+      name: "Highlight Ref"
+    })
+
+    const viewpoint = repository.createViewpoint({
+      userId: user.id,
+      title: "市场定义与叙事策略",
+      isFolder: false,
+      isCandidate: false,
+      sortOrder: 1,
+      articleContent: "",
+      articleBlocks: [],
+      relatedBookIds: []
+    } as any)
+
+    const highlight = repository.createHighlight({
+      userId: user.id,
+      bookId: "book-1",
+      format: "EPUB",
+      pageIndex: 2,
+      content: "垄断常常伪装成更大的市场竞争。",
+      color: "yellow"
+    } as any)
+
+    repository.updateViewpointBlocks(user.id, viewpoint.id, [
+      {
+        id: "block-quote-1",
+        type: "quote",
+        sortOrder: 1,
+        text: "垄断常常伪装成更大的市场竞争。",
+        sourceBookTitle: "Zero to One",
+        sourceLocation: "第三章",
+        highlightId: highlight.id
+      }
+    ])
+    repository.upsertHighlightLink({
+      highlightId: highlight.id,
+      viewpointId: viewpoint.id,
+      similarityScore: 0.92,
+      confirmed: true
+    })
+
+    assert.deepEqual(repository.listHighlightReferences(user.id, highlight.id), [
+      {
+        viewpointId: viewpoint.id,
+        viewpointTitle: "市场定义与叙事策略",
+        blockId: "block-quote-1",
+        blockType: "quote",
+        blockText: "垄断常常伪装成更大的市场竞争。",
+        sourceLocation: "第三章"
+      }
+    ])
   } finally {
     rmSync(dataDir, { recursive: true, force: true })
   }

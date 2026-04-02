@@ -22,8 +22,11 @@ import noteChatRoutes from "@/src/server/routes/note-chat"
 import systemRoutes from "@/src/server/routes/system"
 import sharesRoutes from "@/src/server/routes/shares"
 import { requireAuth } from "@/src/server/middleware/auth"
+import { ensureServerRuntimeStarted } from "@/src/server/bootstrap"
 
 const app = new Hono<AppEnv>()
+
+ensureServerRuntimeStarted()
 
 app.onError((error, c) => {
   if (error instanceof HTTPException) {

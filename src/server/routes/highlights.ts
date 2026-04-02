@@ -81,6 +81,19 @@ app.put("/:id", async (c) => {
   return c.json({ item: highlight })
 })
 
+app.get("/:id/references", (c) => {
+  const userId = c.get("userId")
+  const highlightId = c.req.param("id")
+  const item = repository.getHighlight(userId, highlightId)
+  if (!item) {
+    return c.json({ error: "Highlight not found" }, 404)
+  }
+  return c.json({
+    item,
+    references: repository.listHighlightReferences(userId, highlightId)
+  })
+})
+
 app.delete("/:id", (c) => {
   const userId = c.get("userId")
   const highlightId = c.req.param("id")

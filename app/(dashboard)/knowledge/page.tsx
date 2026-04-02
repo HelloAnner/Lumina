@@ -39,6 +39,7 @@ export default async function KnowledgePage({
   return (
     <KnowledgeClient
       initialImportedNoteId={importedNote?.id}
+      initialSelection={selection}
       keyboardShortcuts={readerSettings?.keyboardShortcuts}
       initialWidths={uiPrefs}
       initialSelected={selected}

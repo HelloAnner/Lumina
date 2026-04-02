@@ -127,6 +127,28 @@ app.post("/import", async (c) => {
   }
 })
 
+app.delete("/bulk", async (c) => {
+  const payload = z.object({
+    ids: z.array(z.string().min(1)).min(1)
+  }).parse(await c.req.json())
+
+  const userId = c.get("userId")
+  let deletedCount = 0
+
+  for (const articleId of payload.ids) {
+    const article = repository.getArticle(userId, articleId)
+    if (!article) {
+      continue
+    }
+    await removeArticleAssets(article)
+    repository.deleteArticle(userId, articleId)
+    deletedCount += 1
+  }
+
+  void invalidateArticles(userId)
+  return c.json({ ok: true, deletedCount })
+})
+
 app.get("/:id", (c) => {
   const item = repository.getArticle(c.get("userId"), c.req.param("id"))
   if (!item) {

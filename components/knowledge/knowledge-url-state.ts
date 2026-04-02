@@ -8,6 +8,8 @@
 export interface KnowledgeSelection {
   viewpointId?: string
   importedNoteId?: string
+  blockId?: string
+  highlightId?: string
 }
 
 export interface KnowledgeNoteState {
@@ -29,12 +31,21 @@ export function readKnowledgeSelection(
 ): KnowledgeSelection {
   const importedNoteId = readParam(params, "importedNote")
   if (importedNoteId) {
-    return { importedNoteId, viewpointId: undefined }
+    return {
+      importedNoteId,
+      viewpointId: undefined,
+      blockId: undefined,
+      highlightId: undefined
+    }
   }
   const viewpointId = readParam(params, "viewpoint")
+  const blockId = readParam(params, "block")
+  const highlightId = readParam(params, "highlight")
   return {
     viewpointId,
-    importedNoteId: undefined
+    importedNoteId: undefined,
+    blockId,
+    highlightId
   }
 }
 
@@ -48,10 +59,18 @@ export function buildKnowledgeSearch(
   const next = new URLSearchParams(params)
   next.delete("viewpoint")
   next.delete("importedNote")
+  next.delete("block")
+  next.delete("highlight")
   if (selection.importedNoteId) {
     next.set("importedNote", selection.importedNoteId)
   } else if (selection.viewpointId) {
     next.set("viewpoint", selection.viewpointId)
+    if (selection.blockId) {
+      next.set("block", selection.blockId)
+    }
+    if (selection.highlightId) {
+      next.set("highlight", selection.highlightId)
+    }
   }
   return next.toString()
 }

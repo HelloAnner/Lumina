@@ -40,6 +40,7 @@ import {
   buildKnowledgeNoteKey,
   readKnowledgeSelection
 } from "@/components/knowledge/knowledge-url-state"
+import { resolveJumpTargetBlockId } from "@/components/knowledge/knowledge-jump"
 import { RightSidebar, type RightSidebarTab } from "@/components/knowledge/right-sidebar"
 import { buildNoteEditorStats } from "@/components/knowledge/note-editor-state"
 import { ViewpointTree } from "@/components/knowledge/viewpoint-tree"
@@ -73,6 +74,7 @@ type DraftNode = {
 export function KnowledgeClient({
   initialViewpoints,
   initialImportedNoteId,
+  initialSelection,
   keyboardShortcuts,
   initialSelected,
   unconfirmed,
@@ -80,6 +82,7 @@ export function KnowledgeClient({
 }: {
   initialViewpoints: Viewpoint[]
   initialImportedNoteId?: string
+  initialSelection: KnowledgeSelection
   keyboardShortcuts?: AppKeyboardShortcuts
   initialSelected?: Viewpoint
   unconfirmed: (Highlight & { similarityScore?: number })[]
@@ -91,15 +94,13 @@ export function KnowledgeClient({
   const pathname = usePathname()
   const [toast, setToast] = useState("")
   const [viewpoints, setViewpoints] = useState(initialViewpoints)
-  const [routeSelection, setRouteSelection] = useState<KnowledgeSelection>(() =>
-    initialImportedNoteId
-      ? { importedNoteId: initialImportedNoteId }
-      : { viewpointId: initialSelected?.id ?? initialViewpoints[0]?.id ?? undefined }
+  const [routeSelection, setRouteSelection] = useState<KnowledgeSelection>(
+    initialSelection
   )
   const [selectedId, setSelectedId] = useState(
     initialImportedNoteId
       ? ""
-      : (initialSelected?.id ?? initialViewpoints[0]?.id ?? "")
+      : (initialSelection.viewpointId ?? initialSelected?.id ?? initialViewpoints[0]?.id ?? "")
   )
   const [blocks, setBlocks] = useState<NoteBlock[]>(
     initialSelected?.articleBlocks ?? []
@@ -129,10 +130,12 @@ export function KnowledgeClient({
   const [activeHeadingId, setActiveHeadingId] = useState<string>()
   const [showImportDialog, setShowImportDialog] = useState(false)
   const [importedReadyVersion, setImportedReadyVersion] = useState(0)
+  const [jumpTargetBlockId, setJumpTargetBlockId] = useState<string>()
 
   const prefTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const noteStateTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveStatusResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const jumpTargetResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const contentScrollRef = useRef<HTMLDivElement>(null)
   const restoringNoteKeyRef = useRef<string | null>(null)
   const isRestoringScrollRef = useRef(false)
@@ -240,10 +243,7 @@ export function KnowledgeClient({
     })
   }, [activeHeadingId, currentNoteKey, scheduleNoteStateSave])
 
-  const replaceKnowledgeUrl = useCallback((selection: {
-    viewpointId?: string
-    importedNoteId?: string
-  }) => {
+  const replaceKnowledgeUrl = useCallback((selection: KnowledgeSelection) => {
     setRouteSelection(selection)
     if (typeof window === "undefined") {
       return
@@ -341,6 +341,7 @@ export function KnowledgeClient({
       setBlocks([])
       setSelectionCtx(null)
       setSelectedBlockForChat(null)
+      setJumpTargetBlockId(undefined)
       return
     }
     const nextViewpointId = resolveClientSelectedViewpointId(
@@ -356,8 +357,44 @@ export function KnowledgeClient({
       setSelectedId(nextViewpointId)
       setSelectionCtx(null)
       setSelectedBlockForChat(null)
+      setJumpTargetBlockId(undefined)
     }
   }, [importedNoteId, routeSelection, selectedId, viewpoints])
+
+  useEffect(() => {
+    if (!selectedId || !readyViewpointId || selectedId !== readyViewpointId) {
+      return
+    }
+    if (routeSelection.importedNoteId) {
+      return
+    }
+    if (!routeSelection.blockId && !routeSelection.highlightId) {
+      return
+    }
+
+    const targetBlockId = resolveJumpTargetBlockId(blocks, {
+      blockId: routeSelection.blockId,
+      highlightId: routeSelection.highlightId
+    })
+
+    if (jumpTargetResetTimerRef.current) {
+      clearTimeout(jumpTargetResetTimerRef.current)
+    }
+    setJumpTargetBlockId(targetBlockId)
+    jumpTargetResetTimerRef.current = setTimeout(() => {
+      setJumpTargetBlockId(undefined)
+    }, 2200)
+
+    replaceKnowledgeUrl({ viewpointId: selectedId })
+  }, [
+    blocks,
+    readyViewpointId,
+    replaceKnowledgeUrl,
+    routeSelection.blockId,
+    routeSelection.highlightId,
+    routeSelection.importedNoteId,
+    selectedId
+  ])
 
   useEffect(() => {
     if (!selectedId || !readyViewpointId || selectedId !== readyViewpointId) {
@@ -396,6 +433,9 @@ export function KnowledgeClient({
     if (!currentNoteKey || !contentScrollRef.current) {
       return
     }
+    if (jumpTargetBlockId || routeSelection.blockId || routeSelection.highlightId) {
+      return
+    }
     const contentReady = importedNoteId
       ? importedReadyVersion > 0
       : blocks.length > 0 || selectedId === ""
@@ -417,7 +457,10 @@ export function KnowledgeClient({
     currentNoteKey,
     importedNoteId,
     importedReadyVersion,
+    jumpTargetBlockId,
     noteState.scrollTop,
+    routeSelection.blockId,
+    routeSelection.highlightId,
     selectedId
   ])
 
@@ -489,6 +532,9 @@ export function KnowledgeClient({
     return () => {
       if (saveStatusResetTimerRef.current) {
         clearTimeout(saveStatusResetTimerRef.current)
+      }
+      if (jumpTargetResetTimerRef.current) {
+        clearTimeout(jumpTargetResetTimerRef.current)
       }
     }
   }, [])
@@ -937,6 +983,7 @@ export function KnowledgeClient({
                     blocks={blocks}
                     annotatedBlockIds={annotatedBlockIds}
                     keyboardShortcuts={keyboardShortcuts}
+                    jumpTargetBlockId={jumpTargetBlockId}
                     outlineCollapsed={noteState.outlineCollapsed}
                     selectedBlockId={activeRightTab === "chat" ? selectedBlockForChat?.id : undefined}
                     scrollContainerRef={contentScrollRef}

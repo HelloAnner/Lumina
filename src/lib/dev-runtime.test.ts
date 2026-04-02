@@ -5,7 +5,8 @@ import {
   buildDevEnvironment,
   buildDevServerArgs,
   buildPortBusyMessage,
-  isPortAvailable
+  isPortAvailable,
+  shouldSyncNodeModules
 } from "@/src/lib/dev-runtime"
 
 test("buildDevEnvironment 提供本地热更新所需的默认环境变量", () => {
@@ -73,5 +74,39 @@ test("buildPortBusyMessage 给出平和的开发提示", () => {
   assert.equal(
     buildPortBusyMessage("20261"),
     "Port 20261 is already in use. Run `make stop` to close the container stack, or restart with `PORT=20262 make dev`."
+  )
+})
+
+test("shouldSyncNodeModules 在 lockfile 比已安装状态更新时返回 true", () => {
+  assert.equal(
+    shouldSyncNodeModules({
+      packageLockExists: true,
+      installedLockExists: true,
+      packageLockMtimeMs: 200,
+      installedLockMtimeMs: 100
+    }),
+    true
+  )
+})
+
+test("shouldSyncNodeModules 在已安装状态不落后时返回 false", () => {
+  assert.equal(
+    shouldSyncNodeModules({
+      packageLockExists: true,
+      installedLockExists: true,
+      packageLockMtimeMs: 100,
+      installedLockMtimeMs: 200
+    }),
+    false
+  )
+})
+
+test("shouldSyncNodeModules 在缺少已安装锁文件时返回 true", () => {
+  assert.equal(
+    shouldSyncNodeModules({
+      packageLockExists: true,
+      installedLockExists: false
+    }),
+    true
   )
 })
