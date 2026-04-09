@@ -1,186 +1,146 @@
-# 模块 09：设置（settings）
-
-> 阶段：001
-> 对应 PRD：§三.5 设置（Settings）
-> 对应 Tech：§九设置模块完整覆盖（9.1~9.4）
+# 模块：设置（settings）
 
 ---
 
 ## 1. 模块职责
 
-- 多模型配置：为"聚合分析 / 文章生成 / 即时解释 / Embedding"分别配置 Base URL、API Key、Model Name
-- 模型连通性测试：一键验证配置是否可用
-- 聚合频率配置：手动 / 每天 / 每周
-- 手动触发聚合：设置页可直接触发一次全量聚合
-- MinIO 存储配置：支持使用平台默认存储或自定义 MinIO
-- 全局分享地址配置：配置阅读分享链接使用的 IP 与端口
-- 账户信息：修改基本信息、修改密码、全量数据导出、账户注销
+- AI 模型配置：为各场景独立配置 Base URL、API Key、Model Name
+- Scout 信源管理：添加/编辑/删除信源（详见 scout.md）
+- MCP API Key 管理：生成、查看、撤销 MCP 访问密钥
+- 存储配置：书籍文件存储模式
+- 账户：数据导出、清除数据
 
 ---
 
-## 2. 设置页面布局
+## 2. 页面布局
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  设置                                                        │
 ├──────────────────────────────────────────────────────────────┤
-│  [模型配置]  [存储配置]  [同步设置]  [账户]                   │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ── 模型配置 ───────────────────────────────────────────     │
-│                                                              │
-│  即时解释模型                                                 │
-│  Base URL: [____________________________]                    │
-│  API Key:  [****************************]                    │
-│  Model:    [gpt-4o-mini               ]  [测试连通]          │
-│                                                              │
-│  文章生成模型                                                 │
-│  Base URL: [____________________________]                    │
-│  API Key:  [****************************]                    │
-│  Model:    [claude-3-5-sonnet-20241022]  [测试连通]          │
-│                                                              │
-│  Embedding 模型                                              │
-│  Base URL: [____________________________]                    │
-│  API Key:  [****************************]                    │
-│  Model:    [text-embedding-3-small    ]  [测试连通]          │
-│                                                              │
+│  [AI 模型]  [MCP]  [Scout]  [存储]  [账户]                   │
 └──────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. 多模型配置
+## 3. AI 模型配置
 
-### 3.1 数据模型
+每个使用场景独立配置，互不影响。
+
+| 场景 | 说明 |
+|------|------|
+| `explain` | 读中即时解释，要求响应快，适合小模型（gpt-4o-mini 等） |
+| `summary` | 读前章节摘要、读后论点卡片生成，可用较强模型 |
+| `embed` | 文本向量化，需支持 `/embeddings` 接口 |
+
+每个场景配置三个字段：
+
+```
+Base URL:  [https://api.openai.com/v1         ]
+API Key:   [sk-****************************   ]  [显示/隐藏]
+Model:     [gpt-4o-mini                       ]  [测试连通]
+```
+
+连通性测试：发送一次最小请求（explain/summary 发 /chat/completions，embed 发 /embeddings），验证 200 响应即可。
+
+---
+
+## 4. MCP 管理
+
+### API Key 列表
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  MCP API Keys                              [生成新 Key]       │
+├──────────────────────────────────────────────────────────────┤
+│  Claude Code       read_write   最近使用：今天    [撤销]       │
+│  Cursor Plugin     read         最近使用：3天前   [撤销]       │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 生成 Key
+
+```
+[标签]: Claude Code
+[权限]: ○ 只读   ● 读写
+[生成]
+```
+
+生成后显示完整 Key（仅显示一次），提示用户复制。
+
+### MCP 服务状态
+
+显示当前 MCP server 监听端口（默认 3721），以及是否正常运行。提供端口修改入口（重启后生效）。
+
+---
+
+## 5. Scout 信源配置
+
+入口跳转到信源管理页（详见 scout.md）。在设置页展示摘要：
+
+```
+已配置 3 个信源，上次抓取：5 分钟前   [管理信源 →]
+```
+
+---
+
+## 6. 存储配置
+
+```
+书籍文件存储模式
+  ○ 引用模式（默认）：记录原始文件路径，不复制文件
+  ● 拷贝模式：导入时复制到应用目录，文件路径变动不影响阅读
+
+应用数据目录：~/Library/Application Support/Lumina/
+              [在 Finder 中打开]
+```
+
+---
+
+## 7. 账户
+
+```
+数据导出
+  导出所有高亮和批注为 JSON / Markdown  [导出]
+
+清除数据
+  清除所有阅读数据（不可恢复）          [清除]
+```
+
+---
+
+## 8. 数据存储
+
+设置全部存在 SQLite `settings` 表中，key-value 结构：
 
 ```sql
-CREATE TABLE user_model_configs (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     UUID REFERENCES users(id) ON DELETE CASCADE,
-  usage       VARCHAR(50) NOT NULL,
-  -- 'aggregation'（聚合分析）
-  -- 'synthesis' （文章生成）
-  -- 'explain'   （即时解释）
-  -- 'embedding' （向量化）
-  base_url    TEXT NOT NULL,
-  api_key     TEXT NOT NULL,  -- AES-256-GCM 加密存储
-  model_name  VARCHAR(200) NOT NULL,
-  UNIQUE (user_id, usage)
-);
+-- AI 模型配置
+INSERT INTO settings VALUES ('ai_config', '{
+  "explain": {"base_url": "...", "api_key": "enc:...", "model": "gpt-4o-mini"},
+  "summary": {"base_url": "...", "api_key": "enc:...", "model": "claude-sonnet-4-6"},
+  "embed":   {"base_url": "...", "api_key": "enc:...", "model": "text-embedding-3-small"}
+}');
+
+-- 存储模式
+INSERT INTO settings VALUES ('storage', '{"mode": "reference"}');
+
+-- MCP 端口
+INSERT INTO settings VALUES ('mcp_port', '3721');
 ```
 
-### 3.2 API Key 加密
-
-- 存储：`AES-256-GCM` 加密，密钥来自环境变量 `ENCRYPTION_KEY`
-- 读取时：前端只看到掩码（`****`），不返回明文
-- 使用时：后端解密后直接传给 LLM 客户端，不经前端
-
-### 3.3 连通性测试
-
-```typescript
-// POST /api/settings/models/test
-async function testModelConnection(config: { baseUrl, apiKey, modelName, usage }) {
-  if (config.usage === 'embedding') {
-    // embedding 测试：embed 一段短文本
-    const result = await embeddingClient.embedOne('test', {
-      baseUrl: config.baseUrl,
-      apiKey: config.apiKey,
-      modelName: config.modelName,
-    })
-    return { success: !!result, dimensions: result?.length }
-  }
-
-  // LLM 测试：发送简短消息
-  try {
-    const result = await generateText({
-      model: createOpenAI({ baseURL: config.baseUrl, apiKey: config.apiKey })(config.modelName),
-      messages: [{ role: 'user', content: 'Hi' }],
-      maxTokens: 5,
-    })
-    return { success: true }
-  } catch (e) {
-    return { success: false, error: e.message }
-  }
-}
-```
+API Key 字段值以 `enc:` 前缀标识加密存储（AES-256-GCM，密钥派生自设备标识）。
 
 ---
 
-## 4. 聚合频率配置
+## 9. Tauri 命令清单
 
-| 选项 | 说明 | Cron 表达式 |
-|------|------|------------|
-| 手动 | 不自动触发，仅手动触发 | 无 |
-| 每天 | 每天凌晨 2 点触发 | `0 2 * * *` |
-| 每周 | 每周日凌晨 2 点触发 | `0 2 * * 0` |
-
-```sql
-ALTER TABLE users ADD COLUMN aggregate_schedule VARCHAR(20) DEFAULT 'manual';
-ALTER TABLE users ADD COLUMN aggregate_cron VARCHAR(100);
-```
-
-设置变更后，`initPublishScheduler` 类似机制重新注册定时任务。
-
----
-
-## 5. MinIO 存储配置
-
-```typescript
-interface StorageConfig {
-  useCustom: boolean   // false = 使用平台默认 MinIO
-  endpoint?: string    // 自定义 MinIO 地址（如 http://192.168.1.100:9000）
-  accessKey?: string
-  secretKey?: string   // AES 加密存储
-  bucket?: string
-  region?: string      // 默认 'us-east-1'
-}
-```
-
-切换存储配置时，**不迁移**已有文件（用户需自行处理），仅影响新上传文件。
-
----
-
-## 6. 账户管理
-
-| 功能 | 接口 | 说明 |
-|------|------|------|
-| 获取个人信息 | GET `/api/account/profile` | 邮箱、注册时间 |
-| 修改密码 | PUT `/api/account/password` | 需验证旧密码 |
-| 全量数据导出 | GET `/api/account/export` | ZIP 包含所有书籍元数据、划线、观点文章 |
-| 账户注销 | DELETE `/api/account` | 软删除 + 清理 MinIO 文件 |
-
----
-
-## 7. API 清单
-
-| Method | Path | 说明 |
-|--------|------|------|
-| GET | `/api/settings/models` | 获取所有模型配置（掩码显示 API Key） |
-| PUT | `/api/settings/models/:usage` | 保存某用途的模型配置 |
-| DELETE | `/api/settings/models/:usage` | 删除某用途的模型配置 |
-| POST | `/api/settings/models/test` | 连通性测试 |
-| GET | `/api/settings/storage` | 获取存储配置 |
-| PUT | `/api/settings/storage` | 保存存储配置 |
-| GET | `/api/settings/share-endpoint` | 获取全局分享地址配置 |
-| PUT | `/api/settings/share-endpoint` | 保存全局分享地址配置 |
-| GET | `/api/settings/schedule` | 获取聚合频率配置 |
-| PUT | `/api/settings/schedule` | 保存聚合频率（触发重新注册定时任务） |
-| GET | `/api/account/profile` | 获取个人信息 |
-| PUT | `/api/account/profile` | 修改个人信息 |
-| PUT | `/api/account/password` | 修改密码 |
-| GET | `/api/account/export` | 全量数据导出（ZIP） |
-| DELETE | `/api/account` | 注销账户 |
-
----
-
-## 8. 验收标准
-
-- [ ] 配置即时解释模型后，阅读器 AI 解释功能正常使用该模型
-- [ ] 配置文章生成模型后，聚合引擎使用该模型合成文章
-- [ ] 配置 Embedding 模型后，向量化使用该模型
-- [ ] API Key 存储后，前端只显示掩码（`****`），无法从响应中还原明文
-- [ ] 连通性测试：配置正确时返回成功，错误 Key 时返回失败
-- [ ] 聚合频率改为"每天"后，定时任务注册成功
-- [ ] 手动触发聚合按钮正常工作
-- [ ] 数据导出 ZIP 包含正确内容
-- [ ] 账户注销后，登录返回 401，MinIO 文件被清理
+| 命令 | 说明 |
+|------|------|
+| `get_settings(key?)` | 获取设置（null = 全部） |
+| `update_settings(key, value)` | 更新设置 |
+| `test_ai_connection(usage)` | 测试 AI 模型连通性 |
+| `get_mcp_keys()` | 获取 MCP API Key 列表（不返回原始 key） |
+| `create_mcp_key(label, permission)` | 生成新 MCP Key（返回明文，仅一次） |
+| `revoke_mcp_key(id)` | 撤销 MCP Key |
+| `export_data(format)` | 导出数据（json / markdown） |

@@ -1,221 +1,247 @@
-# 模块 03：阅读器（reader）
-
-> 阶段：001
-> 对应 PRD：§三.1 阅读页（划线/高亮、批注、进度、排版设置、键盘快捷键）
-> 对应 Tech：§二.2~2.4、§三划线与批注、§三.1~3.4
+# 模块：阅读器（reader）
 
 ---
 
 ## 1. 模块职责
 
-- PDF 阅读器（PDF.js Web Worker 模式 + 虚拟列表）
+- PDF 阅读器（PDF.js Web Worker + 虚拟列表）
 - EPUB 阅读器（epub.js + iframe 章节隔离）
-- 阅读进度自动记录与同步
+- Web 文章阅读器（Readability 提取内容）
+- 阅读进度自动记录
 - 多色高亮划线（4 色）+ 操作菜单
-- 划线批注（附加文字）
-- 排版设置（字体大小、行距、背景色主题）
+- 侧边批注（不打断阅读流）
+- 排版设置（字体大小、行距、主题）
 - 键盘快捷键
-- 阅读分享链接（有效期可选，点击后直接进入阅读页）
-- IndexedDB 本地缓存（乐观写入，后台同步）
-- 跳回原文入口（URL 参数定位）
+- AI 辅助（读前/读中/读后三个时机）
+- 跳回原文入口（从笔记页定位到原文位置）
 
 ---
 
-## 2. 阅读器页面布局
+## 2. 页面布局
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  ← 返回书架   书名                    设置⚙  全屏⛶           │
+│  ← 返回   书名 / 文章标题              ⚙设置  ⛶全屏          │
 ├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│                   [渲染区域]                                  │
-│                 PDF: Canvas + TextLayer                      │
-│                 EPUB: iframe                                  │
-│                                                              │
+│                                │                             │
+│                                │   侧边批注区                 │
+│         [渲染区域]              │   （高亮选中后浮现）          │
+│   PDF: Canvas + TextLayer      │                             │
+│   EPUB: iframe                 │   批注 1：...               │
+│   Article: Prose               │   批注 2：...               │
+│                                │                             │
 ├──────────────────────────────────────────────────────────────┤
 │  第 N 页 / 共 M 页          进度滑块         章节名           │
 └──────────────────────────────────────────────────────────────┘
 
-右上角支持分享：
-
-- 点击分享图标后选择有效期（24 小时 / 7 天 / 30 天 / 永久）
-- 立即复制可访问链接
-- 被分享者直接进入同一阅读页，以只读方式查看正文、目录和已有高亮
-
-右侧浮层（选中文字时出现）：
+选中文字时，文字上方浮出操作菜单：
 ┌────────────────────────────────────┐
-│  🟡  🟢  🔵  🩷  │  ✏️批注  │  🤖解释 │
+│  🟡  🟢  🔵  🩷  │  ✏批注  │  🤖解释 │
 └────────────────────────────────────┘
-
-右侧面板（点击 AI 解释时展开）：
-┌──────────────┐
-│  AI 解释结果  │
-│  流式输出...  │
-└──────────────┘
 ```
 
 ---
 
 ## 3. PDF 阅读器
 
-### 3.1 渲染架构
+### 渲染架构
 
-```
 每页三层叠加（z-index 递增）：
-- Canvas 层：页面图像（PDF.js 渲染）
-- TextLayer：透明，用于文字选中
-- HighlightLayer：SVG，绘制半透明高亮框
-```
+- **Canvas 层**：页面图像（PDF.js Web Worker 渲染）
+- **TextLayer**：透明，用于文字选中
+- **HighlightLayer**：SVG，绘制半透明高亮框
 
-### 3.2 虚拟列表策略
+### 虚拟列表
 
-- 仅渲染可视区域 ±2 页
-- 滚动到某页时异步加载 Canvas
-- 减少 DOM 节点数，保持流畅
+仅渲染可视区域 ±2 页，滚动到某页时异步加载 Canvas。
 
-### 3.3 Web Worker
+### Web Worker
 
-PDF.js 渲染放在 Web Worker 中，主线程只负责接收渲染结果和处理交互。
+PDF.js 渲染在 Web Worker 中执行，主线程只处理交互和渲染结果。
 
 ---
 
 ## 4. EPUB 阅读器
 
-- `epub.js` 加载文件，解析 spine（章节列表）
+- epub.js 加载文件，解析 spine（章节列表）
 - 每章节在独立 `<iframe>` 中渲染（样式隔离）
 - 向 iframe 注入自定义 CSS（排版设置）
-- 向 iframe 注入划线脚本（监听 `mouseup` 事件）
+- 向 iframe 注入划线脚本（监听 `mouseup`）
 
 ---
 
-## 5. 划线与批注
+## 5. 高亮与批注
 
-### 5.1 划线数据模型
+### 数据模型
 
 ```typescript
-// PDF 划线
-interface PdfHighlight {
-  format: 'PDF'
-  pageIndex: number
+// PDF 高亮位置
+interface PdfPosition {
+  page: number
+  rects: DOMRect[]
   paraOffsetStart: number
   paraOffsetEnd: number
-  rects: DOMRect[]       // 用于渲染高亮框
-  content: string
 }
 
-// EPUB 划线
-interface EpubHighlight {
-  format: 'EPUB'
-  cfiRange: string       // epub.js CFI 精确定位
+// EPUB 高亮位置
+interface EpubPosition {
+  cfi: string
   chapterHref: string
-  content: string
 }
 
-// 颜色
+// 文章高亮位置
+interface ArticlePosition {
+  offset: number
+  length: number
+}
+
 type HighlightColor = 'yellow' | 'green' | 'blue' | 'pink'
-// 对应: #FBBF24 | #34D399 | #60A5FA | #F472B6
+
+interface Highlight {
+  id: string
+  sourceType: 'book' | 'article'
+  sourceId: string
+  content: string
+  note?: string
+  color: HighlightColor
+  position: PdfPosition | EpubPosition | ArticlePosition
+  createdAt: number
+}
 ```
 
-### 5.2 划线操作流程
+### 划线操作流程
 
 ```
 用户选中文字（mouseup）
         │
         ▼
-getSelection() → Range 对象
+getSelection() → Range
         │
-        ├─ PDF：TextLayer 计算 pageIndex + paraOffset + clientRects
+        ├─ PDF：TextLayer 计算 page + paraOffset + clientRects
         └─ EPUB：epub.js CFIGenerator.generate(range)
         │
         ▼
-弹出操作菜单（跟随选区位置的浮动 Popover）
+浮出操作菜单（跟随选区位置）
         │
-        ├─ 点击颜色 → 立即渲染高亮（IndexedDB 本地写入）
-        │             异步 POST /api/highlights（不阻塞 UI）
-        ├─ 点击批注 → 弹出文本输入框，输入后更新 note 字段
-        └─ 点击解释 → 调用 AI 即时解释模块（SSE 流式）
+        ├─ 点击颜色 → 立即渲染高亮 + invoke("create_highlight", data)
+        ├─ 点击批注 → 侧边批注区展开内联输入框（不弹 Modal）
+        └─ 点击解释 → invoke("stream_ai_explain") + listen("ai_chunk")
 ```
 
-### 5.3 高亮渲染（PDF）
+### 侧边批注
 
-- 每页维护一个 `<svg>` 覆盖在 Canvas 上
-- 从 IndexedDB 读取该页所有划线的 rects
-- 渲染为半透明 `<rect>`（`fill-opacity: 0.35`）
+- 高亮创建后，侧边栏对应位置出现批注占位
+- 点击占位 → 展开内联输入框，直接输入，失焦保存
+- 批注与高亮关联，页面所有批注形成连续思考流
+- 批注内容通过 `invoke("update_highlight", {id, note})` 保存
 
-### 5.4 IndexedDB 本地缓存
+### 高亮渲染（PDF）
 
-划线数据同时写入 IndexedDB（`db: lumina`，`store: highlights`），避免：
-- 网络延迟导致高亮消失
-- 离线场景下划线丢失
-
-后台定时同步未上传的划线。
+每页维护一个 `<svg>` 覆盖在 Canvas 上，从本地缓存读取该页所有高亮的 rects，渲染为半透明 `<rect>`（`fill-opacity: 0.35`）。
 
 ---
 
-## 6. 跳回原文
+## 6. AI 功能
+
+### 读前：章节摘要
+
+进入阅读器或切换章节时，右上角提供「章节概览」按钮：
+
+```
+invoke("generate_chapter_summary", { sourceId, chapter })
+  → Rust 调用 AI API
+  → 返回：{outline: [...], keyPoints: [...], readTime: N}
+  → 显示在侧边抽屉，可折叠
+```
+
+### 读中：即时解释（流式）
+
+```
+invoke("stream_ai_explain", { text, context })
+  → Rust: POST /chat/completions (stream=true)
+  → listen("ai_chunk") 逐步追加
+  → listen("ai_done") 完成
+```
+
+context 包含：当前书名/文章标题、选中位置前后 200 字。
+
+### 读中：跨笔记关联
+
+选中文字后操作菜单中提供「关联笔记」选项：
+
+```
+invoke("search_related_highlights", { text, limit: 5 })
+  → sqlite-vec 语义搜索
+  → 返回相关高亮列表（含来源书名/文章）
+  → 显示在侧边面板，点击可跳转
+```
+
+### 读后：论点卡片
+
+阅读完成（进度 > 90%）或手动触发，生成本章/本篇的论点卡片：
+
+```
+invoke("generate_note_card", { sourceId, sourceType })
+  → AI 综合该来源的所有高亮
+  → 生成 NoteCard：{title, content (Markdown), sourceHighlightIds}
+  → 存入 note_cards 表
+  → 返回卡片，显示确认弹窗
+```
+
+---
+
+## 7. 跳回原文
+
+从笔记页点击某条高亮，进入阅读器并定位：
 
 ```typescript
-// 知识库文章中引用块携带的定位数据
-interface QuoteBlock {
-  highlightId: string
-  bookId: string
-  format: 'PDF' | 'EPUB'
-  pageIndex?: number      // PDF
-  cfiRange?: string       // EPUB
-}
+// 笔记页跳转
+invoke("open_reader", { sourceType, sourceId, highlightId })
 
-// 跳转逻辑：新标签页打开阅读器，URL 携带定位参数
-const url = `/reader/${bookId}?highlight=${highlightId}`
-
-// 阅读器初始化时：
-// PDF:  scrollToPage(pageIndex) + 闪烁高亮效果
-// EPUB: book.rendition.display(cfiRange)
+// 阅读器初始化时检查 highlightId
+// PDF:  scrollToPage(position.page) → 闪烁高亮
+// EPUB: rendition.display(position.cfi)
+// Article: scrollTo(position.offset) → 高亮文字
 ```
 
 ---
 
-## 7. 阅读进度
+## 8. 阅读进度
 
 ```typescript
-// 自动记录（轻量防抖）
-PUT /api/books/:id/progress
-Body: {
-  id: string
-  progress: number
-  currentPageId?: string
-  currentPageIndex?: number
-  currentSectionIndex?: number
-  currentParagraphIndex?: number
-}  // 0~1
+// 自动记录（防抖 2s）
+invoke("update_reading_progress", {
+  sourceId: string,
+  sourceType: 'book' | 'article',
+  progress: number,          // 0~1
+  currentPageIndex?: number, // PDF
+  currentCfi?: string,       // EPUB
+})
 
-// 优先用 currentPageId 恢复阅读位置
-// PDF: 记录真实页对应的 section/page id
-// EPUB: 记录当前阅读节的页面 id，再回退 paragraph 级位置
+// 打开书籍/文章时恢复进度
+invoke("get_reading_progress", { sourceId, sourceType })
 ```
 
 ---
 
-## 8. 排版设置
+## 9. 排版设置
 
 ```typescript
 interface ReaderSettings {
-  fontSize: 14 | 16 | 18 | 20 | 22  // px
-  lineHeight: 1.5 | 1.6 | 1.75 | 2.0
-  fontFamily: 'system' | 'serif' | 'sans'
+  fontSize: 14 | 16 | 18 | 20 | 22
+  lineHeight: 1.5 | 1.65 | 1.75 | 2.0
   theme: 'day' | 'sepia' | 'night'
-  // day:   bg=#FFFFFF, text=#1A1A1A
-  // sepia: bg=#F5F0E8, text=#3C3C3C
-  // night: bg=#1A1A1A, text=#D4D4D4
 }
+// day:   bg=#F8F7F4, text=#1A1A1A
+// sepia: bg=#F0EBE0, text=#3C3C3C
+// night: bg=#1A1A1A, text=#D4D4D4
 ```
 
-- 设置存 `localStorage`，同时同步到后端 `user_reader_settings` 表
-- EPUB：注入 `<style>` 到 iframe
-- PDF：Canvas 背景色 + CSS filter
+设置存在 Tauri store（持久化），EPUB 通过注入 `<style>` 到 iframe 应用。
 
 ---
 
-## 9. 键盘快捷键
+## 10. 键盘快捷键
 
 | 快捷键 | 功能 |
 |--------|------|
@@ -226,35 +252,24 @@ interface ReaderSettings {
 | `B` | 激活蓝色高亮 |
 | `F` | 全屏切换 |
 | `Esc` | 退出全屏 / 关闭面板 |
-| `/` | 搜索 |
-| `Cmd+B` | 添加书签 |
-
-实现：`useEffect` 中注册全局 `keydown` 监听，阅读器页面挂载时激活。
 
 ---
 
-## 10. API 清单
+## 11. Tauri 命令清单
 
-| Method | Path | 说明 |
-|--------|------|------|
-| GET | `/api/books/:id/progress` | 获取阅读进度 |
-| PUT | `/api/books/:id/progress` | 更新阅读进度 |
-| GET | `/api/books/:id/highlights` | 获取该书所有划线 |
-| POST | `/api/highlights` | 新建划线 |
-| PUT | `/api/highlights/:id` | 更新批注/颜色 |
-| DELETE | `/api/highlights/:id` | 删除划线 |
-| GET | `/api/reader-settings` | 获取阅读设置 |
-| PUT | `/api/reader-settings` | 保存阅读设置 |
-
----
-
-## 11. 验收标准
-
-- [ ] 打开 PDF，页面正常渲染，虚拟列表滚动流畅
-- [ ] 打开 EPUB，章节切换正常
-- [ ] 选中文字，操作菜单出现；点击颜色，高亮立即渲染
-- [ ] 刷新页面，划线高亮持久化（IndexedDB + 后端均有记录）
-- [ ] 批注保存后，悬浮高亮显示批注内容
-- [ ] 排版设置变更后，阅读区立即响应
-- [ ] 翻页快捷键正常；`F` 键全屏切换正常
-- [ ] 从知识库引用块跳转，阅读器定位到指定位置并闪烁高亮
+| 命令 | 说明 |
+|------|------|
+| `get_book_highlights(bookId)` | 获取书籍所有高亮 |
+| `get_article_highlights(articleId)` | 获取文章所有高亮 |
+| `create_highlight(data)` | 新建高亮 |
+| `update_highlight(id, note?, color?)` | 更新批注/颜色 |
+| `delete_highlight(id)` | 删除高亮 |
+| `get_reading_progress(sourceId, sourceType)` | 获取阅读进度 |
+| `update_reading_progress(data)` | 保存阅读进度 |
+| `get_reader_settings()` | 获取排版设置 |
+| `update_reader_settings(data)` | 保存排版设置 |
+| `stream_ai_explain(text, context)` | 流式 AI 解释 |
+| `search_related_highlights(text, limit)` | 跨笔记语义关联 |
+| `generate_chapter_summary(sourceId, chapter)` | 读前章节摘要 |
+| `generate_note_card(sourceId, sourceType)` | 读后论点卡片 |
+| `open_reader(sourceType, sourceId, highlightId?)` | 打开阅读器并定位 |

@@ -1,169 +1,103 @@
-# 模块 02：书库（library）
-
-> 阶段：001
-> 对应 PRD：§三.1 书库（Library）
-> 对应 Tech：§二书籍上传流程、§二.2书籍内容读取、MinIO路径规范、书库API清单
+# 模块：书库（library）
 
 ---
 
 ## 1. 模块职责
 
-- 书架页面：封面网格视图，支持标签筛选
-- 书籍上传：前端直传 MinIO（预签名 URL 方案），支持 PDF/EPUB
-- 异步解析：上传完成后通过 BullMQ Job 提取元数据、目录、生成封面缩略图
-- 书籍管理：修改标签/分类、删除（含 MinIO 文件清理）
-- 书籍访问：生成阅读用预签名 URL，供阅读器模块使用
+- 书架页面：封面网格视图，支持分类/标签筛选
+- 书籍导入：本地文件选择（PDF/EPUB），可选拷贝到应用目录
+- 元数据提取：异步提取书名、作者、目录、封面缩略图
+- 书籍管理：修改标签/分类、删除
+- 书籍访问：返回本地文件路径供阅读器读取
 
 ---
 
-## 2. 书架页面 UI
+## 2. 书架页面
 
-### 2.1 布局
+### 布局
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  [上传书籍]  [新建分类]          搜索框    [标签筛选]         │
+│  [导入书籍]  [新建分类]          搜索框    [标签筛选]         │
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐         │
 │  │封面  │  │封面  │  │封面  │  │封面  │  │      │         │
 │  │      │  │      │  │      │  │      │  │  +   │         │
-│  │      │  │      │  │      │  │      │  │上传  │         │
-│  │书名  │  │书名  │  │书名  │  │书名  │  │      │         │
+│  │书名  │  │书名  │  │书名  │  │书名  │  │导入  │         │
 │  │作者  │  │作者  │  │作者  │  │作者  │  │      │         │
 │  │进度  │  │进度  │  │进度  │  │进度  │  │      │         │
 │  └──────┘  └──────┘  └──────┘  └──────┘  └──────┘         │
-│                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 书籍卡片字段
+### 书籍卡片字段
 
 | 字段 | 说明 |
 |------|------|
-| 封面 | 240×320px，来自 MinIO `cover.jpg`；无封面时显示书名首字占位 |
+| 封面 | 240×320px，提取自书籍文件；无封面时显示书名首字占位 |
 | 书名 | 最多 2 行，超出截断 |
 | 作者 | 单行 |
-| 阅读进度 | 进度条（`read_progress` 字段，0~1） |
+| 阅读进度 | 进度条（0~1） |
 | 最近阅读时间 | 相对时间（"3天前"） |
 
-### 2.3 交互
+---
 
-- 点击卡片 → 进入阅读页（`/reader/[bookId]`）
-- 右键 / 悬浮操作菜单：编辑标签、删除
-- 上传按钮：打开文件选择器，接受 `.pdf` `.epub`
+## 3. 书籍导入
+
+### 流程
+
+```
+用户点击「导入书籍」
+        ↓
+tauri-plugin-dialog 打开系统文件选择器
+（过滤：*.pdf, *.epub，支持多选）
+        ↓
+invoke("import_books", {paths: [...]})
+        ↓
+Rust: 根据设置决定「引用模式」or「拷贝模式」
+        ↓
+tokio::spawn 异步解析：
+  PDF:  lopdf 提取元数据 + pdf-extract 生成封面（第一页渲染）
+  EPUB: epub crate 解析 container.xml，提取 OPF 元数据和封面图
+        ↓
+写入 books 表（id, title, author, format, file_path, cover_path）
+        ↓
+invoke 返回新书籍 ID → 前端刷新书架
+```
+
+### 文件存储模式
+
+**引用模式（默认）**：
+
+记录文件原始路径，阅读时直接读取。适合书籍集中在固定目录的用户。
+
+**拷贝模式**（设置中启用）：
+
+文件拷贝到 `{data_dir}/lumina/books/{id}.{ext}`，原始路径变动不影响阅读。
 
 ---
 
-## 3. 书籍上传流程
+## 4. 书籍删除
 
 ```
-前端                         API Server               MinIO         PostgreSQL
- │                               │                      │               │
- │ 1. 选择文件（≤500MB）           │                      │               │
- │──────────────────────────────→│                      │               │
- │                               │ 2. 校验格式（Magic Bytes）            │
- │                               │ 3. 生成 MinIO 预签名上传 URL          │
- │                               │─────────────────────→│               │
- │ 4. 返回预签名 URL              │                      │               │
- │←──────────────────────────────│                      │               │
- │ 5. 前端直传（带进度条）         │                      │               │
- │──────────────────────────────────────────────────────→│              │
- │ 6. 上传完成，调用 confirm API  │                      │               │
- │──────────────────────────────→│                      │               │
- │                               │ 7. 入库 books 表（status=PROCESSING）│
- │                               │ 8. 推送 BullMQ parse Job            │
- │                               │ 9. WebSocket 通知前端解析完成        │
- │←──────────────────────────────│                      │               │
+invoke("delete_book", {id, deleteFile: bool})
 ```
 
-### 3.1 MinIO 路径规范
-
-```
-books/{userId}/{bookId}/original.pdf   # 原始文件
-books/{userId}/{bookId}/cover.jpg      # 封面缩略图（240×320）
-books/{userId}/{bookId}/meta.json      # 提取的元数据
-```
-
-### 3.2 解析 Job（BullMQ）
-
-**PDF 解析：**
-- 使用 `pdfjs-dist`（Node.js 模式）提取：页数、目录（Outline）
-- 渲染第 1 页为 JPEG 缩略图（240×320px），上传到 MinIO
-
-**EPUB 解析：**
-- 解析 OPF（`content.opf`）提取：书名、作者、spine（章节列表）、封面图
-- 若无封面则渲染第 1 章第 1 页
-
-解析完成后更新 `books` 表：`total_pages`、`cover_path`、`toc_json`（目录 JSON）
+- `deleteFile: false`（默认）：仅删除数据库记录和封面缓存，不删除原始文件
+- `deleteFile: true`：拷贝模式下同时删除 books/ 目录中的文件；引用模式下仅清除记录
 
 ---
 
-## 4. 书籍读取（供阅读器模块使用）
+## 5. Tauri 命令清单
 
-```typescript
-// 获取书籍阅读凭证
-GET /api/books/:id/access-url
-Response: {
-  fileUrl: string,      // MinIO 预签名 URL，15 分钟有效
-  format: 'PDF' | 'EPUB',
-  totalPages?: number,
-  spine?: SpineItem[]   // EPUB 章节列表
-  toc?: TocItem[]       // 目录
-}
-```
-
----
-
-## 5. API 清单
-
-| Method | Path | 说明 |
-|--------|------|------|
-| GET | `/api/books` | 书库列表（支持 tag/search 过滤、分页） |
-| POST | `/api/books/presign` | 获取 MinIO 预签名上传 URL |
-| POST | `/api/books/confirm-upload` | 上传完成，触发解析 Job |
-| GET | `/api/books/:id` | 书籍详情 |
-| GET | `/api/books/:id/access-url` | 获取阅读预签名 URL |
-| GET | `/api/books/:id/toc` | 获取目录 |
-| PUT | `/api/books/:id` | 修改标签/分类 |
-| DELETE | `/api/books/:id` | 删除书籍（含 MinIO 文件） |
-
----
-
-## 6. 数据模型
-
-```typescript
-interface Book {
-  id: string
-  userId: string
-  title: string
-  author?: string
-  format: 'PDF' | 'EPUB'
-  minioPath: string
-  coverPath?: string
-  totalPages?: number
-  tocJson?: TocItem[]   // 目录
-  readProgress: number  // 0~1
-  lastReadAt?: Date
-  tags: string[]
-  createdAt: Date
-}
-
-interface TocItem {
-  title: string
-  pageIndex?: number  // PDF
-  href?: string       // EPUB
-  children?: TocItem[]
-}
-```
-
----
-
-## 7. 验收标准
-
-- [ ] 上传 PDF（≤500MB）成功，书架出现封面卡片
-- [ ] 上传 EPUB 成功，封面从 OPF 中提取
-- [ ] 上传非 PDF/EPUB 文件，后端返回 400 错误（Magic Bytes 校验）
-- [ ] 删除书籍后，MinIO 中对应文件被清理
-- [ ] 书架按标签筛选正常
-- [ ] 书籍解析 Job 失败后，状态更新为 `PARSE_FAILED`，前端显示错误提示
+| 命令 | 说明 |
+|------|------|
+| `import_books(paths)` | 导入书籍文件 |
+| `get_books(filters?)` | 获取书籍列表（支持分类/标签/搜索过滤） |
+| `get_book(id)` | 获取单本书籍详情 |
+| `update_book(id, data)` | 更新标签/分类/书名 |
+| `delete_book(id, deleteFile)` | 删除书籍 |
+| `get_book_file_path(id)` | 获取书籍文件路径（供阅读器使用） |
+| `get_categories()` | 获取所有分类 |
+| `create_category(name)` | 新建分类 |
